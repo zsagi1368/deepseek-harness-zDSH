@@ -1,4 +1,4 @@
-import { lstat, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { type FileHandle, lstat, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -18,7 +18,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
     ...actual,
     open: (async (path: unknown, ...rest: never[]) => {
       state.openedPaths.push(String(path))
-      const handle = await (actual.open as (path: unknown, ...args: never[]) => Promise<actual.FileHandle>)(path, ...rest)
+      const handle = await (actual.open as (path: unknown, ...args: never[]) => Promise<FileHandle>)(path, ...rest)
       const originalSync = handle.sync.bind(handle)
       handle.sync = async () => {
         state.syncedPaths.push(String(path))
