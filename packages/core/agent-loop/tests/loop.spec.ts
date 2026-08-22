@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import LlmRuntime, { createUserMessage, CallId, LlmError, StreamChunk  } from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { createUserMessage, CallId, LlmError, StreamChunk, TRUNCATED_TOOL_CALL_CODE } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId, TurnEndReason } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
@@ -1051,7 +1051,10 @@ describe('agent loop', () => {
     expect(reasons).toEqual([{ kind: 'max-tokens' }, { kind: 'completed' }])
   })
 
-  it('does not dispatch tool calls from a max-tokens-truncated step', async () => {
+  it('fails the turn explicitly when a max-tokens cut-off reaches a tool call (DSHV2-101)', async () => {
+    // The truncated call cannot be executed safely and must not be dropped
+    // silently either: the turn ends as a structured TRUNCATED_TOOL_CALL
+    // error after the safe (empty) assistant anchor is appended.
     const callId = CallId('c1')
     const adapter = new MockAdapter([[
       { type: 'block-start', index: 0, blockType: 'tool-call' },
@@ -1074,22 +1077,24 @@ describe('agent loop', () => {
     const agent = ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
 
     const reasons: TurnEndReason[] = []
+    const errors: LlmError[] = []
     ctx.on('session/event', (_s, event) => { if (event.type === 'turn/end') reasons.push(event.data.reason) })
+    ctx.on('agent/error', ({ error }) => { errors.push(error as LlmError) })
 
     send(agent, 'go')
     await waitForIdle(ctx, agent)
 
     expect(executions).toBe(0)
     expect(agent.session.events.some(e => e.type === 'tool/call')).toBe(false)
-    expect(agent.session.deriveMessages()).toEqual([{
-      id: expect.any(String) as unknown,
-      role: 'user',
-      content: [{ type: 'text', text: 'go' }],
-      source: { kind: 'user' },
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toBeInstanceOf(LlmError)
+    expect(errors[0]?.code).toBe(TRUNCATED_TOOL_CALL_CODE)
+    expect(reasons).toEqual([{
+      kind: 'error',
+      error: { code: TRUNCATED_TOOL_CALL_CODE, message: expect.stringContaining('output-token ceiling') },
     }])
-    expect(reasons).toEqual([{ kind: 'max-tokens' }])
-    // Empty content still needs an assistant/message to carry usage; derivation
-    // skips that host so it does not create a spurious assistant turn.
+    // Empty content still needs an assistant/message to carry usage; the anchor
+    // is appended before the failure so replay consumers keep the boundary.
     const assistantMessage = agent.session.events.find(e => e.type === 'assistant/message')
     expect(assistantMessage?.type === 'assistant/message' && assistantMessage.data).toEqual({
       turn: 1,
@@ -1105,8 +1110,8 @@ describe('agent loop', () => {
   })
 
   it('appends an empty completion anchor for a max-tokens step with no usage', async () => {
-    // The truncated tool call is dropped from durable content, while the
-    // successful provider call still needs an exact replay anchor.
+    // The truncated tool call makes the turn fail with TRUNCATED_TOOL_CALL,
+    // but the successful provider call still needs its exact replay anchor.
     const callId = CallId('c1')
     const adapter = new MockAdapter([[
       { type: 'block-start', index: 0, blockType: 'tool-call' },
@@ -1129,7 +1134,13 @@ describe('agent loop', () => {
     send(agent, 'go')
     await waitForIdle(ctx, agent)
 
-    expect(reasons).toEqual([{ kind: 'max-tokens' }])
+    expect(reasons).toEqual([{
+      kind: 'error',
+      error: {
+        code: TRUNCATED_TOOL_CALL_CODE,
+        message: expect.stringMatching(/output-token ceiling while producing 1 tool call/),
+      },
+    }])
     const assistant = agent.session.events.find(e => e.type === 'assistant/message')!
     expect(assistant.type === 'assistant/message' && assistant.data).toEqual({
       turn: 1,
@@ -1142,12 +1153,6 @@ describe('agent loop', () => {
       },
     })
     expect(assistant.sourceEventSeqs?.length).toBeGreaterThan(0)
-    expect(agent.session.deriveMessages()).toEqual([{
-      id: expect.any(String) as unknown,
-      role: 'user',
-      content: [{ type: 'text', text: 'go' }],
-      source: { kind: 'user' },
-    }])
   })
 
   it('appends an empty completion anchor for a normal stop with no usage', async () => {
