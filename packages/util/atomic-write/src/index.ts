@@ -11,7 +11,7 @@
  */
 
 import { randomBytes } from 'node:crypto'
-import { lstat, mkdir, rename, rm, writeFile } from 'node:fs/promises'
+import { type FileHandle, lstat, mkdir, open, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
 /**
@@ -38,28 +38,71 @@ export interface WriteFileAtomicOptions {
  * with exclusive create (`wx`): the open refuses to follow a symlink planted
  * at the temp path, and the fresh inode carries `options.mode` through the
  * rename, so replacing a wider-permission file narrows it without a chmod
- * race. The rename also replaces a symlinked target itself instead of writing
- * through to its referent, and the same-directory sibling keeps the rename on
- * one filesystem. On any failure the temp file is removed and the failure
- * rethrown. Crash durability (fsync) is out of scope.
+ * race. The temp file's bytes are fsynced before the rename, so whatever name
+ * a reader resolves, the bytes behind it are fully on disk. The rename also
+ * replaces a symlinked target itself instead of writing through to its
+ * referent, and the same-directory sibling keeps the rename on one
+ * filesystem. On any failure the temp file is removed and the failure
+ * rethrown.
+ *
+ * Platform difference (DSHV2-102): persisting the *rename* itself needs a
+ * parent-directory fsync after it. POSIX exposes directory handles, so that
+ * happens there (best effort — see {@link syncDirectoryAfterRename}). win32
+ * has no directory-handle fsync through Node (fsync on an opened directory
+ * fails; NTFS metadata flushing is only reachable via flags Node does not
+ * wrap), so on Windows the replacement is ordered but not crash-durable
+ * against power loss landing inside the rename window — the atomicity
+ * guarantee (old or new complete content) holds everywhere because the data
+ * fsync precedes the handover. Callers needing Windows crash durability must
+ * journal above this module.
  * @param filename - final path receiving the content.
  * @param content - complete next file content.
  * @param options - permission bits for the replacement inode.
  */
 export async function writeFileAtomic(filename: string, content: string, options: WriteFileAtomicOptions): Promise<void> {
-  await mkdir(dirname(filename), {
+  const dir = dirname(filename)
+  await mkdir(dir, {
     recursive: true,
     ...options.dirMode === undefined ? {} : { mode: options.dirMode },
   })
-  // TODO(settings-atomic-durability): Use a replacement that fsyncs the file
-  // and parent directory and preserves owner-only permissions on Windows.
   const temp = `${filename}.${randomBytes(6).toString('hex')}.tmp`
   try {
-    await writeFile(temp, content, { mode: options.mode, flag: 'wx' })
+    // Exclusive create, then fsync before the name changes hands: a reader
+    // that sees the new name never finds truncated or absent bytes behind it.
+    const handle = await open(temp, 'wx', options.mode)
+    try {
+      await handle.writeFile(content)
+      await handle.sync()
+    } finally {
+      await handle.close()
+    }
     await rename(temp, filename)
   } catch (error) {
     await rm(temp, { force: true })
     throw error
+  }
+  await syncDirectoryAfterRename(dir)
+}
+
+/**
+ * Best-effort parent-directory fsync after a successful rename (POSIX only).
+ * A failure is deliberately swallowed: the rename already committed the state
+ * every reader observes, so reporting failure would misrepresent a completed
+ * replacement as an aborted one — the only cost is weakened crash durability,
+ * which is exactly what a caller cannot recover by retrying here.
+ */
+async function syncDirectoryAfterRename(dir: string): Promise<void> {
+  // win32 has no directory-handle fsync (see writeFileAtomic); skipping is the
+  // documented platform behavior, not an optimization.
+  if (process.platform === 'win32') return
+  let handle: FileHandle | undefined
+  try {
+    handle = await open(dir, 'r')
+    await handle.sync()
+  } catch {
+    // Covered by the contract above.
+  } finally {
+    await handle?.close().catch(() => {})
   }
 }
 

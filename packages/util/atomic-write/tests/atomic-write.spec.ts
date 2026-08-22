@@ -4,12 +4,28 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { withFileLock, writeFileAtomic } from '../src/index.ts'
 
-const state = vi.hoisted(() => ({ failLockCreateWithEPERM: false }))
+const state = vi.hoisted(() => ({
+  failLockCreateWithEPERM: false,
+  /** Paths passed to `open`, in call order (durability instrumentation). */
+  openedPaths: [] as string[],
+  /** Paths whose handle was fsynced, in call order (durability instrumentation). */
+  syncedPaths: [] as string[],
+}))
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>()
   return {
     ...actual,
+    open: (async (path: unknown, ...rest: never[]) => {
+      state.openedPaths.push(String(path))
+      const handle = await (actual.open as (path: unknown, ...args: never[]) => Promise<actual.FileHandle>)(path, ...rest)
+      const originalSync = handle.sync.bind(handle)
+      handle.sync = async () => {
+        state.syncedPaths.push(String(path))
+        return originalSync()
+      }
+      return handle
+    }) as typeof actual.open,
     writeFile: (async (path: unknown, ...rest: never[]) => {
       if (state.failLockCreateWithEPERM && String(path).endsWith('.lock')) {
         state.failLockCreateWithEPERM = false
@@ -22,6 +38,8 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 
 afterEach(() => {
   state.failLockCreateWithEPERM = false
+  state.openedPaths.length = 0
+  state.syncedPaths.length = 0
 })
 
 async function scratch(): Promise<string> {
@@ -77,6 +95,46 @@ describe('writeFileAtomic', () => {
     await expect(writeFileAtomic(target, 'content', { mode: 0o600 })).rejects.toThrow()
     expect((await readdir(dir)).filter(entry => entry.includes('.tmp'))).toEqual([])
   })
+})
+
+describe('writeFileAtomic durability (DSHV2-102)', () => {
+  it('fsyncs the temp inode before the rename hands its name over', async () => {
+    // The data fsync is what makes "old or new complete content" hold even on
+    // platforms where the rename itself cannot be made durable.
+    const dir = await scratch()
+    const target = join(dir, 'doc.yaml')
+    await writeFileAtomic(target, 'durable\n', { mode: 0o600 })
+    expect(await readFile(target, 'utf8')).toBe('durable\n')
+    expect(state.syncedPaths).toEqual([expect.stringMatching(/\.tmp$/)])
+  })
+
+  it.runIf(process.platform === 'win32')(
+    'never opens the parent directory for fsync on win32, which has no directory-handle sync',
+    async () => {
+      const dir = await scratch()
+      const target = join(dir, 'doc.yaml')
+      await writeFileAtomic(target, 'win32\n', { mode: 0o600 })
+      expect(state.openedPaths).toEqual([expect.stringMatching(/\.tmp$/)])
+      expect(await readFile(target, 'utf8')).toBe('win32\n')
+    },
+  )
+
+  it.runIf(process.platform !== 'win32')(
+    'fsyncs the parent directory after the rename on posix',
+    async () => {
+      const dir = await scratch()
+      const target = join(dir, 'doc.yaml')
+      await writeFileAtomic(target, 'posix\n', { mode: 0o600 })
+      expect(state.openedPaths).toEqual([
+        expect.stringMatching(/\.tmp$/),
+        dir,
+      ])
+      expect(state.syncedPaths).toEqual([
+        expect.stringMatching(/\.tmp$/),
+        dir,
+      ])
+    },
+  )
 })
 
 describe('withFileLock', () => {
