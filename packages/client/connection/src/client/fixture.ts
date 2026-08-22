@@ -970,14 +970,35 @@ interface FixtureContextBreakdownProjection {
   messageTokens: number
 }
 
-/** Fixed token-meter heuristic constants mirrored by this client-only fixture. */
+/** Script-aware token-meter heuristic constants mirrored by this client-only fixture. */
 const CHARS_PER_TOKEN = 4
+/** One CJK character prices as 4/3 tokens (~0.75 chars/token, mid-band); see token-meter's estimate. */
+const CJK_TOKENS_NUMERATOR = 4
+const CJK_TOKENS_DENOMINATOR = 3
 const BLOCK_OVERHEAD = 4
 const ROLE_OVERHEAD = 4
 
-/** Price fixture content with token-meter's fixed-density heuristic. */
+/** BMP CJK script ranges, mirroring token-meter's CJK_PATTERN exactly. */
+const CJK_PATTERN = new RegExp('[\\u3000-\\u30FF\\u3400-\\u4DBF\\u4E00-\\u9FFF\\uF900-\\uFAFF\\uAC00-\\uD7AF\\uFF00-\\uFFEF]', 'g')
+
+function countCjkUnits(text: string): number {
+  CJK_PATTERN.lastIndex = 0
+  let count = 0
+  for (let match = CJK_PATTERN.exec(text); match !== null; match = CJK_PATTERN.exec(text)) {
+    count += match[0].length
+  }
+  return count
+}
+
+/** Script-aware density price mirroring token-meter's estimateTextTokens. */
+function densityPrice(value: string): number {
+  const cjkUnits = countCjkUnits(value)
+  return Math.ceil((cjkUnits * CJK_TOKENS_NUMERATOR) / CJK_TOKENS_DENOMINATOR)
+    + Math.ceil((value.length - cjkUnits) / CHARS_PER_TOKEN)
+}
+
+/** Price fixture content with token-meter's script-aware density heuristic. */
 function estimateFixtureContent(blocks: readonly ContentBlock[]): number {
-  const densityPrice = (value: string): number => Math.ceil(value.length / CHARS_PER_TOKEN)
   return blocks.reduce((tokens, block) => {
     if (block.type === 'text' || block.type === 'reasoning') {
       return tokens + densityPrice(block.text) + BLOCK_OVERHEAD
@@ -1011,10 +1032,10 @@ function contextBreakdownOf(log: readonly SessionEvent[]): FixtureContextBreakdo
   return {
     systemTokens: header?.system === undefined
       ? 0
-      : Math.ceil(header.system.length / CHARS_PER_TOKEN) + ROLE_OVERHEAD,
+      : densityPrice(header.system) + ROLE_OVERHEAD,
     toolsTokens: header?.tools === undefined || header.tools.length === 0
       ? 0
-      : Math.ceil(JSON.stringify(header.tools).length / CHARS_PER_TOKEN) + BLOCK_OVERHEAD,
+      : densityPrice(JSON.stringify(header.tools)) + BLOCK_OVERHEAD,
     messageTokens,
   }
 }

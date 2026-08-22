@@ -17,6 +17,7 @@ import {
   estimateHeader,
   estimateMessage,
   estimateSystemTokens,
+  estimateTextTokens,
   estimateToolsTokens,
 } from '../src/estimate.ts'
 
@@ -307,5 +308,38 @@ describe('shared estimator', () => {
     expect(estimateHeader(undefined)).toBe(0)
     expect(estimateHeader({ config: CONFIG, system: 'abcdefgh', tools: TOOLS }))
       .toBe(6 + Math.ceil(JSON.stringify(TOOLS).length / 4) + 4)
+  })
+
+  it('prices CJK text at the script-aware density, not the Latin one (DSHV2-104)', () => {
+    // Twelve Han characters: the old flat /4 price said 3; mid-band CJK
+    // density (4/3 tokens per character) says 16.
+    const han = '深渡求索智能体研究测试用'
+    expect(han).toHaveLength(12)
+    expect(estimateTextTokens(han)).toBe(Math.ceil((12 * 4) / 3))
+    expect(estimateTextTokens(han)).toBeGreaterThan(han.length / 4)
+
+    // One character rounds up to its band floor (~1-1.7 tokens each).
+    expect(estimateTextTokens('深')).toBe(2)
+  })
+
+  it('prices mixed Chinese-English text as independent script shares (DSHV2-104)', () => {
+    // "读取 abcd" = 2 Han units at 4/3 + 5 non-CJK units at /4, no cross-talk.
+    expect(estimateTextTokens('读取 abcd')).toBe(Math.ceil(8 / 3) + Math.ceil(5 / 4))
+    // Kana and Hangul ride the same CJK density.
+    expect(estimateTextTokens('かな')).toBe(Math.ceil(8 / 3))
+    expect(estimateTextTokens('한글')).toBe(Math.ceil(8 / 3))
+    // Pure ASCII pricing is unchanged by the split.
+    expect(estimateTextTokens('abcdefgh')).toBe(2)
+  })
+
+  it('prices CJK content blocks and envelopes through the shared density', () => {
+    const cjkArguments = '{"问题":"这个工具是做什么用的呢"}'
+    expect(estimateContent([{ type: 'text', text: '你好世界' }]))
+      .toBe(Math.ceil((4 * 4) / 3) + 4)
+    expect(estimateContent([{
+      type: 'tool-call', id: 'c' as never, name: '搜索', arguments: cjkArguments,
+    }])).toBe(Math.ceil(8 / 3) + estimateTextTokens(cjkArguments) + 4)
+    expect(estimateSystemTokens({ config: CONFIG, system: '你是一个简洁的助手' }))
+      .toBe(estimateTextTokens('你是一个简洁的助手') + 4)
   })
 })
