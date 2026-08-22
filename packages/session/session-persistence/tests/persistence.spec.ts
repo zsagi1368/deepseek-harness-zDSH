@@ -254,20 +254,27 @@ describe('the inherited readRaw default', () => {
   it('rejects unsupported reads distinctly from absence and honors an aborted signal', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)
-    await ctx.plugin(MemoryPersistence)
-    expect(ctx.sessionPersistence.supportsRawArtifacts).toBe(false)
-    await expect(
-      ctx.sessionPersistence.readRaw(SessionId('any-session')),
-    ).rejects.toThrow('does not expose raw artifacts')
-    await expect(
-      ctx.sessionPersistence.readRaw(SessionId('any-session'), AbortSignal.abort()),
-    ).rejects.toThrow()
-    // A non-Error abort reason falls back to a wrapped Error rejection.
-    const controller = new AbortController()
-    controller.abort('boom')
-    await expect(
-      ctx.sessionPersistence.readRaw(SessionId('any-session'), controller.signal),
-    ).rejects.toThrow('aborted')
+    const fiber = await ctx.plugin(MemoryPersistence)
+    try {
+      expect(ctx.sessionPersistence.supportsRawArtifacts).toBe(false)
+      await expect(
+        ctx.sessionPersistence.readRaw(SessionId('any-session')),
+      ).rejects.toThrow('does not expose raw artifacts')
+      await expect(
+        ctx.sessionPersistence.readRaw(SessionId('any-session'), AbortSignal.abort()),
+      ).rejects.toThrow()
+      // A non-Error abort reason falls back to a wrapped Error rejection.
+      const controller = new AbortController()
+      controller.abort('boom')
+      await expect(
+        ctx.sessionPersistence.readRaw(SessionId('any-session'), controller.signal),
+      ).rejects.toThrow('aborted')
+    } finally {
+      // The process-exit drain registers per coordinator; balance it here so
+      // the shared listener share of this test does not outlive its context.
+      await fiber.dispose()
+      await ctx.fiber.dispose()
+    }
   })
 })
 
@@ -417,6 +424,84 @@ describe('PersistenceCoordinator bounded writes', () => {
       await fiber.dispose()
       await ctx.fiber.dispose()
     }
+  })
+})
+
+describe('PersistenceCoordinator process-exit durability (DSHV2-103)', () => {
+  /** Harness: one live coordinator over a controlled backend with an unelapsed window. */
+  async function exitHarness(backend: ControlledBackend) {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    const fiber = await ctx.plugin(Object.assign((inner: Context) => {
+      new PersistenceCoordinator(inner, backend, {
+        preparedSessionCacheSize: DEFAULT_PREPARED_SESSION_CACHE_SIZE,
+        // Large enough that the batching window alone would never drain here.
+        writeBatchMaxDelayMs: MAX_WRITE_BATCH_DELAY_MS,
+      })
+    }, { inject: ['sessions'] }))
+    return { ctx, fiber }
+  }
+
+  it('drains a pending batching window when beforeExit fires', async () => {
+    const backend = new ControlledBackend()
+    const { ctx, fiber } = await exitHarness(backend)
+    try {
+      const session = ctx.sessions.create(SessionId('exit-beforeexit-drain'))
+      await ctx.sessions.flush(session)
+      session.append('turn/start', { turn: 1 })
+      expect(backend.appendAttempts).toBe(0)
+
+      // Node emits this on natural loop exhaustion; the drain must start and
+      // its fs work then keeps the loop alive until durability settles.
+      process.emit('beforeExit', 0)
+
+      await vi.waitFor(() => {
+        expect(backend.appendAttempts).toBe(1)
+        expect(backend.store.get(session.id)?.events.map(event => event.seq)).toEqual([0])
+      })
+    } finally {
+      await fiber.dispose()
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('drains pending batches on SIGTERM, then restores default termination', async () => {
+    const backend = new ControlledBackend()
+    const { ctx, fiber } = await exitHarness(backend)
+    const kill = vi.spyOn(process, 'kill').mockImplementation(() => true)
+    try {
+      const session = ctx.sessions.create(SessionId('exit-signal-drain'))
+      await ctx.sessions.flush(session)
+      session.append('turn/start', { turn: 1 })
+      expect(backend.appendAttempts).toBe(0)
+
+      process.emit('SIGTERM', 'SIGTERM')
+
+      await vi.waitFor(() => {
+        expect(backend.appendAttempts).toBe(1)
+        expect(backend.store.get(session.id)?.events.map(event => event.seq)).toEqual([0])
+      })
+      // The listener only borrows termination: after the drains settle, the
+      // signal is re-delivered natively so exit semantics stay conventional.
+      await vi.waitFor(() => { expect(kill).toHaveBeenCalledWith(process.pid, 'SIGTERM') })
+    } finally {
+      kill.mockRestore()
+      await fiber.dispose()
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('returns its process-exit listener share at graceful disposal', async () => {
+    const heldBefore = new Set(process.listeners('SIGTERM'))
+    const { ctx, fiber } = await exitHarness(new ControlledBackend())
+    // Sole holder at this point in the file: the acquisition contributed one.
+    const addedWhileInstalled = process.listeners('SIGTERM').filter(handler => !heldBefore.has(handler))
+    expect(addedWhileInstalled).toHaveLength(1)
+    await fiber.dispose()
+    await ctx.fiber.dispose()
+    // And graceful disposal hands that exact share back.
+    const lingeringAdded = process.listeners('SIGTERM').filter(handler => !heldBefore.has(handler))
+    expect(lingeringAdded).toEqual([])
   })
 })
 

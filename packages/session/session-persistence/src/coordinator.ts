@@ -32,6 +32,77 @@ export const DEFAULT_WRITE_BATCH_MAX_DELAY_MS = 200
 /** Largest write batching delay accepted by Node's timer implementation. */
 export const MAX_WRITE_BATCH_DELAY_MS = MAX_TIMER_DELAY_MS
 
+/**
+ * Grace cap for the shared process-exit signal drain. It mirrors the bounded
+ * shutdown budget the CLI grants whole-tree disposal; past it, remaining
+ * durability is surrendered rather than hanging the exit.
+ */
+const EXIT_SIGNAL_DRAIN_TIMEOUT_MS = 5_000
+
+/**
+ * Shared last-chance process-exit drain registry (DSHV2-103). The bounded
+ * write-batching window leaves events admitted shortly before an abrupt stop
+ * undurable: graceful owners dispose the context and reach the quiescence
+ * drain effect, but a bare `beforeExit`, SIGINT, or SIGTERM promises nothing.
+ * Every live coordinator registers one async drain starter here; the process
+ * listeners themselves are refcounted and shared, so embedding many backends
+ * cannot multiply listeners. A signal re-raises its default termination once
+ * every registered drain settles (or the grace expires), preserving the
+ * conventional exit behavior the listener would otherwise swallow.
+ */
+interface ExitDrainRegistration { (): Promise<void> }
+const exitDrainTargets = new Set<ExitDrainRegistration>()
+let exitDrainRelease: (() => void) | undefined
+
+function startAllExitDrains(): Promise<void>[] {
+  return [...exitDrainTargets].map(target => target())
+}
+
+/** Remove the shared listeners and re-deliver the terminating signal natively. */
+function restoreDefaultTermination(signal: NodeJS.Signals): void {
+  exitDrainRelease?.()
+  try {
+    process.kill(process.pid, signal)
+  } catch {
+    /* v8 ignore next -- the process usually already exited via another path */
+  }
+}
+
+function onExitDrainSignal(signal: NodeJS.Signals): void {
+  const drains = startAllExitDrains()
+  const deadline = setTimeout(() => { restoreDefaultTermination(signal) }, EXIT_SIGNAL_DRAIN_TIMEOUT_MS)
+  void Promise.allSettled(drains).then(() => {
+    clearTimeout(deadline)
+    restoreDefaultTermination(signal)
+  })
+}
+
+/** Install the shared process listeners once; return the per-registration releaser. */
+function acquireProcessExitDrain(): void {
+  if (exitDrainRelease !== undefined) return
+  const signalHandler = (signal: NodeJS.Signals): void => { onExitDrainSignal(signal) }
+  const beforeExitHandler = (): void => { void startAllExitDrains() }
+  process.on('beforeExit', beforeExitHandler)
+  process.on('SIGINT', signalHandler)
+  process.on('SIGTERM', signalHandler)
+  exitDrainRelease = () => {
+    process.off('beforeExit', beforeExitHandler)
+    process.off('SIGINT', signalHandler)
+    process.off('SIGTERM', signalHandler)
+    exitDrainRelease = undefined
+  }
+}
+
+function registerExitDrain(target: ExitDrainRegistration): () => void {
+  acquireProcessExitDrain()
+  exitDrainTargets.add(target)
+  return () => {
+    if (!exitDrainTargets.delete(target)) return
+    // Last registrant out removes the shared listeners entirely.
+    if (exitDrainTargets.size === 0) exitDrainRelease?.()
+  }
+}
+
 /** Durable session contents failed validation after a successful backend read. */
 export class SessionPersistenceCorruptionError extends Error {
   /**
@@ -601,6 +672,8 @@ export class PersistenceCoordinator<TornMarker = unknown> {
   private chains = new Map<SessionId, Promise<unknown>>()
   /** Resolved fixed write-batching window shared by per-session controllers. */
   private readonly writeBatchMaxDelayMs: number
+  /** Removes this coordinator from the shared process-exit drain (DSHV2-103). */
+  private readonly unregisterExitDrain: () => void
 
   constructor(
     private ctx: Context,
@@ -621,6 +694,7 @@ export class PersistenceCoordinator<TornMarker = unknown> {
     }
     this.writeBatchMaxDelayMs = options.writeBatchMaxDelayMs
     this.preparations = new SessionPreparations(options.preparedSessionCacheSize)
+    this.unregisterExitDrain = registerExitDrain(() => this.drainLiveForExit())
     this.installWritePath()
   }
 
@@ -1090,6 +1164,10 @@ export class PersistenceCoordinator<TornMarker = unknown> {
     // reverse registration order, so event admission closes before this final
     // drain reaches quiescence and closes the backend.
     ctx.effect(() => async () => {
+      // Graceful disposal no longer needs the last-chance process hooks; drop
+      // this coordinator's share before the drain so a late signal cannot
+      // re-enter after admission closed.
+      this.unregisterExitDrain()
       let disposeError: unknown
       try {
         const errors = await settledErrors([...this.live.keys()].map(session => this.flush(session)))
@@ -1335,6 +1413,21 @@ export class PersistenceCoordinator<TornMarker = unknown> {
       throw error
     }
     await live.writes.flush()
+  }
+
+  /**
+   * Start one coalesced flush per live session for the shared process-exit
+   * drain (DSHV2-103). Fire-and-forget by design: the exit hooks cannot await,
+   * so each drain begins immediately and Node stays alive for the in-flight fs
+   * work; failures surface through the logger, never as unhandled rejections.
+   */
+  private drainLiveForExit(): Promise<void> {
+    const drains = [...this.live.keys()].map(session =>
+      this.flush(session).catch((error: unknown) => {
+        this.ctx.logger.warn(`${this.backend.name}: process-exit flush for session "${session.id}" failed: ${String(error)}`)
+      }),
+    )
+    return Promise.all(drains).then(() => undefined)
   }
 
   /** Build one package-private write controller around initialization and id serialization. */
