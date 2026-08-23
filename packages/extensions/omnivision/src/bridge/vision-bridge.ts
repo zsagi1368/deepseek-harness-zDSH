@@ -86,7 +86,7 @@ export class VisionBridge {
       .update(this.sessionId ?? 'default')
       .update(this.mode)
       .update(image.contentHash)
-      .update(query?.slice(0, 32) ?? '') // first 32 chars as intent signal
+      .update(query.slice(0, 32)) // first 32 chars as intent signal
       .digest('hex')
       .slice(0, 16)
   }
@@ -176,12 +176,12 @@ export class VisionBridge {
     }
     const d = data as Record<string, unknown>
     return {
-      summary: (d.summary as string) ?? 'Image content processed',
-      ocr: (d.ocr as string) ?? undefined,
-      regions: (d.regions as Array<{ type: string; text: string; order: number }>) ?? undefined,
+      summary: (d.summary as string | undefined) ?? 'Image content processed',
+      ocr: (d.ocr ?? undefined) as string,
+      regions: (d.regions ?? undefined) as Array<{ type: string; text: string; order: number }>,
       entities:
-        (d.entities as Array<{ name: string; type: string; evidence?: string }>) ?? undefined,
-      uncertainty: (d.uncertainty as string[]) ?? undefined,
+        (d.entities ?? undefined) as Array<{ name: string; type: string; evidence?: string }>,
+      uncertainty: (d.uncertainty ?? undefined) as string[],
       raw: d,
     }
   }

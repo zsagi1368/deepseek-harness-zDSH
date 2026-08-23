@@ -126,7 +126,7 @@ export function redactSecrets(text: string, knownSecrets: string[] = []): string
   // Layer 2: Token shape regex
   out = out.replace(/(?:sk-|pk-)[a-zA-Z0-9_-]{20,}/g, '[REDACTED_KEY]')
   out = out.replace(/Bearer\s+[a-zA-Z0-9._-]{20,}/g, 'Bearer [REDACTED]')
-  out = out.replace(/api[_-]?key["\s:=]+[a-zA-Z0-9_-]{20,}/gi, 'api_key=[REDACTED]')
+  out = out.replace(/api[_-]?key["\s:=]+[a-z0-9_-]{20,}/gi, 'api_key=[REDACTED]')
   // Layer 3: URL userinfo
   out = out.replace(/(https?:\/\/)([^:@\s]+):([^@\s]+)(@)/g, '$1***:***$4')
   return out

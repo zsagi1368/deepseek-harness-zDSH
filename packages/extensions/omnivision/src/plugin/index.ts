@@ -2,6 +2,8 @@
  * Plugin entry point — Main DSH integration
  */
 
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { createShadowReplacements } from '../bridge/shadow-history.js'
 import { VisionBridge } from '../bridge/vision-bridge.js'
 import type { OmniVisionConfig } from '../config/schema.js'
@@ -105,14 +107,12 @@ export class OmniVisionPlugin {
     }
 
     // Read real file metadata for attachments without it
-    const imageInfos = await Promise.all(
-      validAttachments.map(async img => ({
-        path: img.path,
-        contentHash: img.contentHash,
-        mime: img.mime ?? 'image/png',
-        bytes: img.bytes ?? 0,
-      })),
-    )
+    const imageInfos = validAttachments.map(img => ({
+      path: img.path,
+      contentHash: img.contentHash,
+      mime: img.mime ?? 'image/png',
+      bytes: img.bytes ?? 0,
+    }))
 
     const descriptions = await this.bridge.processImages(imageInfos, content)
 
@@ -221,8 +221,6 @@ function createDynamicProvider(
             const ext = img.path.toLowerCase().split('.').pop() ?? ''
             const mimeMap: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml' }
             const mime = img.mime || mimeMap[ext] || 'image/png'
-            const { readFileSync } = require('node:fs')
-            const { resolve } = require('node:path')
             const base64 = readFileSync(resolve(img.path)).toString('base64')
             contents.push({ type: 'image_url', image_url: { url: `data:${mime};base64,${base64}` } })
           }
@@ -251,8 +249,8 @@ function createUnknownProvider(name: string, _baseUrl?: string, model?: string):
     defaultModel: model ?? 'unknown',
     category: 'api' as const,
     speedClass: 'slow' as const,
-    async execute() {
-      return { ok: false, meta: { provider: name, model: 'unknown', durationMs: 0 }, errors: [{ kind: 'NO_ADAPTER' as const, code: 'UNKNOWN_PROVIDER', message: `Provider "${name}" is not implemented`, retryable: false }] }
+    execute() {
+      return Promise.resolve({ ok: false, meta: { provider: name, model: 'unknown', durationMs: 0 }, errors: [{ kind: 'NO_ADAPTER' as const, code: 'UNKNOWN_PROVIDER', message: `Provider "${name}" is not implemented`, retryable: false }] })
     },
   }
 }
