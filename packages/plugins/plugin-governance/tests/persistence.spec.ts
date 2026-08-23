@@ -51,11 +51,11 @@ describe('storage root resolution', () => {
     expect(persistence.storagePath).toBe(resolve(branchHome))
   })
 
-  it('ignores blank env values and defaults to ~/.dsh-dsh under the user home', () => {
+  it('ignores blank env values and defaults to ~/.dsh-zdsh under the user home', () => {
     process.env[DSH_BRANCH_HOME_ENV] = '   '
     const persistence = createDefaultPersistence(deadRegistry)
     expect(persistence.storagePath).toBe(join(homedir(), DSH_BRANCH_DIR_NAME))
-    expect(DSH_BRANCH_DIR_NAME).toBe('.dsh-dsh')
+    expect(DSH_BRANCH_DIR_NAME).toBe('.dsh-zdsh')
   })
 })
 

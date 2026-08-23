@@ -6,7 +6,7 @@ DSH 分支的变更记录：记载本分支在官方 DeepSeek Harness 基线之�
 
 ## 分支状态
 
-`our/v2` 是 DSH 治理增强分支，直接重建自官方 `0.1.1-rc.2`（`upstream/master` 位于 `b150a551b8`）。除非下文条目另有说明，官方文件与上游保持字节一致，因此权威差异始终以提交在库内的汇总文件 `docs/dsh/diff-baseline.txt` 为准，由 `scripts/diff-with-official.mjs` 重新生成。
+`our/v2` 是 DSH 治理增强分支 zDSH（deepseek-harness-zDSH），直接重建自官方 `0.1.1-rc.2`（`upstream/master` 位于 `b150a551b8`）。除非下文条目另有说明，官方文件与上游保持字节一致，因此权威差异始终以提交在库内的汇总文件 `docs/dsh/diff-baseline.txt` 为准，由 `scripts/diff-with-official.mjs` 重新生成。
 
 核心能力——通过宿主网关服务暴露插件治理——由[插件治理网关 Agent Note](../../.agents/notes/implemented/feature/2026-08-23-plugin-governance-gateway.zh.md) 承载；产品概览请从根目录 [README](../../README.zh.md) 读起。
 
@@ -25,7 +25,7 @@ DSH 分支的变更记录：记载本分支在官方 DeepSeek Harness 基线之�
 ### 插件治理与移植修复
 
 - `1888ab80b8` feat(plugins): formalize plugin governance as workspace package
-- `f6290d1d33` fix(plugins): unify plugin persistence under ~/.dsh-dsh
+- `f6290d1d33` fix(plugins): unify plugin persistence under ~/.dsh-zdsh
 - `f718c2c7ea` feat(plugins): CordisAdapter phase 1 - id normalization and official approval bridge
 - `c7151697ca` chore(security): adopt upstream equivalents, drop shadowed local files (T2.7)
 - `1b527d2635` feat(host): wire plugin governance gateway into the web-app bundle

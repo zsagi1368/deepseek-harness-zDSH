@@ -86,7 +86,7 @@ interface PersistedPreset {
 export interface Config {
   /**
    * Persistence root for the registry snapshot, approvals ledger, and
-   * presets; defaults to the governance package's own root (`~/.dsh-dsh`,
+   * presets; defaults to the governance package's own root (`~/.dsh-zdsh`,
    * overridden by `DSH_BRANCH_HOME`).
    */
   storageRoot?: string

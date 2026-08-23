@@ -25,7 +25,7 @@ The headline capability — plugin governance exposed through a host gateway ser
 ### Plugin governance and ported fixes
 
 - `1888ab80b8` feat(plugins): formalize plugin governance as workspace package
-- `f6290d1d33` fix(plugins): unify plugin persistence under ~/.dsh-dsh
+- `f6290d1d33` fix(plugins): unify plugin persistence under ~/.dsh-zdsh
 - `f718c2c7ea` feat(plugins): CordisAdapter phase 1 - id normalization and official approval bridge
 - `c7151697ca` chore(security): adopt upstream equivalents, drop shadowed local files (T2.7)
 - `1b527d2635` feat(host): wire plugin governance gateway into the web-app bundle
