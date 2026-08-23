@@ -337,3 +337,29 @@
     animation: none;
   }
 }
+
+/* Phone breakpoint: controls grow to >=44px touch targets. The rail keeps
+   its 56px column (ui-layout columns.ts), so its side padding narrows to
+   give a 44px control box the same centered seat; the expanded New Session
+   bar only gains height (its width stays full-bleed in the column). */
+@media (max-width: 768px) {
+  .root.collapsed {
+    padding: 18px 6px 6px;
+  }
+
+  .iconButton,
+  .collapsed .iconButton {
+    width: 44px;
+    height: 44px;
+  }
+
+  .newSession {
+    min-height: 44px;
+  }
+
+  .collapsed .newSession {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
+}

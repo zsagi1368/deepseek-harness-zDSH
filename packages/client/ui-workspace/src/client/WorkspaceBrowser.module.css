@@ -504,3 +504,17 @@
     transition: none;
   }
 }
+
+/* Phone breakpoint: the header's icon controls grow to >=44px touch targets.
+   The rail-scoped pairs must be restated because the rail geometry rules
+   above outrank a bare class selector; 44px fits the 56px rail column at its
+   narrowed phone padding (SidebarRoot.module.css). */
+@media (max-width: 768px) {
+  .iconButton,
+  .searchButton,
+  .rail .iconButton,
+  .rail .searchButton {
+    width: 44px;
+    height: 44px;
+  }
+}

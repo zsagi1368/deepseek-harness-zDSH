@@ -240,3 +240,13 @@
   left: -10px;
   width: 10px;
 }
+
+/* Phone breakpoint: menu cells grow to a >=44px touch target across every
+   list density (the restatements outrank the density rules above). */
+@media (max-width: 768px) {
+  .item,
+  .denseList .item,
+  .compactList .item {
+    min-height: 44px;
+  }
+}

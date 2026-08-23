@@ -117,3 +117,33 @@
 .overlayLayer > * {
   pointer-events: auto;
 }
+
+/* Phone breakpoint: an expanded sidebar becomes an overlay drawer above the
+   center column instead of squeezing it. The JS solver still writes its wide
+   tracks inline; the !important here outranks that inline style only on
+   phones, and desktop behavior (>= 769px, including the 1024px rail
+   breakpoint) is untouched. The collapsed state keeps the store-driven
+   geometry — the 56px rail stays reachable as the expand affordance — while
+   the expanded drawer shrink-wraps to the sidebar's own inline width.
+   Details needs no override: the concession chain (columns.ts) already
+   auto-closes it at widths this narrow. Drag handles are pointer-only
+   affordances and hide on touch-scale viewports. */
+@media (max-width: 768px) {
+  .frame:not([data-sidebar-collapsed]) {
+    grid-template-columns: 0px minmax(0, 1fr) 0px !important;
+  }
+
+  .frame:not([data-sidebar-collapsed]) .sidebarCol {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 15; /* above the columns and handles, below shell.overlay (20) */
+    max-width: calc(100% - 64px); /* keep the collapsed rail's edge reachable */
+    box-shadow: var(--dsw-shadow-lv3);
+  }
+
+  .handle {
+    display: none;
+  }
+}

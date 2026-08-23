@@ -424,6 +424,25 @@
   display: none;
 }
 
+/* Phone breakpoint: the composer's round controls grow to a >=44px touch
+   target; the chip-style selects take a moderate height bump (their 13px
+   label ramp is unchanged, so no text reflows). */
+@media (max-width: 768px) {
+  .add {
+    width: 44px;
+    height: 44px;
+  }
+
+  .primary {
+    width: 44px;
+    height: 44px;
+  }
+
+  .select {
+    height: 36px;
+  }
+}
+
 .textRefTrigger {
   position: relative;
 }

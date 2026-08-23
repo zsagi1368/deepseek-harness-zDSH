@@ -168,3 +168,15 @@
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+/* Phone breakpoint: the governance roster keeps its nowrap columns and
+   scrolls horizontally instead of overflowing its column. `display: block`
+   turns the table itself into the scroll clip (an anonymous table box keeps
+   the internal layout), so no wrapper element is needed. */
+@media (max-width: 768px) {
+  .roster {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
