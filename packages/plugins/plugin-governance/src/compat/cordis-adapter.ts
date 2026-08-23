@@ -126,6 +126,8 @@ export class CordisPluginWrapper implements Plugin {
   readonly manifest: PluginManifest
   private readonly service: CordisService
   private readonly logger: PluginLogger
+  /** 治理镜像模式：生命周期归 Cordis 所有，install/uninstall 不再驱动。 */
+  private readonly mirror: boolean
   /** 官方 user-approval 透传：关联的工具调用 ID */
   private readonly approvalCallId: string | undefined
   /** 官方 user-approval 透传：撤回审批问题的中止信号 */
@@ -142,6 +144,12 @@ export class CordisPluginWrapper implements Plugin {
       config?: Record<string, unknown> | undefined
       /** 是否完全授权（默认 true，与 core 一致） */
       fullyAuthorized?: boolean | undefined
+      /**
+       * 治理镜像模式：被包装的服务已由 Cordis Loader 挂载并运行。
+       * install()/uninstall() 不再驱动其生命周期（不重复 start/stop），
+       * 也不走运行时审批 —— 挂载本身即操作者在 cordis 配置中的准入决定。
+       */
+      mirror?: boolean | undefined
       /** 官方 user-approval 字段：关联已流式展示的工具调用 */
       callId?: string | undefined
       /** 官方 user-approval 字段：中止即撤回审批问题 */
@@ -153,6 +161,7 @@ export class CordisPluginWrapper implements Plugin {
     this.logger = context.logger
     this.approvalCallId = cordisConfig.callId
     this.approvalSignal = cordisConfig.signal
+    this.mirror = cordisConfig.mirror === true
 
     // 从 Cordis 配置生成 PluginManifest
     // ID 先做 npm scoped → namespace/name 规范化，保证注册表键与
@@ -178,7 +187,8 @@ export class CordisPluginWrapper implements Plugin {
       permissionLevel: cordisConfig.fullyAuthorized === true
         ? PluginPermissionLevel.CONFIRM_REQUIRED
         : PluginPermissionLevel.WORKSPACE,
-      autoApprove: cordisConfig.fullyAuthorized === true, // 只有显式 true 才自动授权
+      // 镜像模式的准入决定在挂载时已由操作者做出（cordis 配置），无需运行时审批。
+      autoApprove: cordisConfig.mirror === true || cordisConfig.fullyAuthorized === true, // 只有显式 true 才自动授权
       certification: {
         level: PluginCertification.OFFICIAL,
         certifiedAt: Date.now(),
@@ -237,6 +247,13 @@ export class CordisPluginWrapper implements Plugin {
   }
 
   async install(ctx: PluginContext): Promise<void> {
+    // 治理镜像模式：服务已在 Cordis 下运行，注册表登记即可，不重复驱动生命周期。
+    if (this.mirror) {
+      this.logger.info(`CordisAdapter mirroring already-mounted ${this.manifest.id}`)
+      this._status = PluginStatus.ACTIVE
+      return
+    }
+
     this.logger.info(`CordisAdapter installing ${this.manifest.id}`)
 
     try {
@@ -273,13 +290,13 @@ export class CordisPluginWrapper implements Plugin {
    * - 返回 ApprovalOutcome
    */
   private async requestApproval(ctx: PluginContext): Promise<boolean> {
-    // 使用 typed approval 字段（可选），若未提供则降级处理
+    // 使用 typed approval 字段（可选）。缺失审批服务时 fail closed：
+    // 敏感操作宁可拒绝，也不能在无审批通道时静默放行。
     const approval = ctx.approval
 
     if (!approval || typeof approval.request !== 'function') {
-      // 如果没有 approval service，默认允许（降级处理）
-      this.logger.warn(`No approval service available, auto-approving ${this.manifest.id}`)
-      return true
+      this.logger.warn(`No approval service available, refusing sensitive install of ${this.manifest.id}`)
+      return false
     }
 
     // 使用 typed agent 字段（可选）
@@ -311,6 +328,13 @@ export class CordisPluginWrapper implements Plugin {
   }
 
   async uninstall(_ctx: PluginContext): Promise<void> {
+    // 治理镜像模式：Cordis 拥有服务生命周期，这里只翻转治理状态。
+    if (this.mirror) {
+      this.logger.info(`CordisAdapter releasing mirrored ${this.manifest.id}`)
+      this._status = PluginStatus.DISABLED
+      return
+    }
+
     this.logger.info(`CordisAdapter uninstalling ${this.manifest.id}`)
 
     try {
@@ -362,6 +386,8 @@ export function isCordisPlugin(obj: unknown): obj is CordisService {
  * @param context - 插件上下文
  * @param options - 配置选项
  * @param options.fullyAuthorized - 是否自动授权（默认 false，需要确认）
+ * @param options.mirror - 治理镜像模式：服务已由 Cordis 挂载运行，
+ *   install/uninstall 不再驱动其生命周期（用于治理注册表镜像 Loader 条目）。
  */
 export function wrapCordisPlugin(
   service: CordisService,
@@ -372,6 +398,8 @@ export function wrapCordisPlugin(
     version?: string | undefined
     /** 是否完全授权（默认 true，与 core 一致） */
     fullyAuthorized?: boolean | undefined
+    /** 治理镜像模式（见 CordisPluginWrapper 配置说明） */
+    mirror?: boolean | undefined
   },
 ): Plugin {
   const statics = readCordisStatics(service)
@@ -383,6 +411,7 @@ export function wrapCordisPlugin(
     name,
     version: options?.version,
     fullyAuthorized: options?.fullyAuthorized === true, // 只有显式 true 才授权
+    mirror: options?.mirror === true,
   }, context)
 }
 

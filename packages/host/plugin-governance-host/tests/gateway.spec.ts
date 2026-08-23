@@ -3,14 +3,16 @@
  * direct-instantiation behavior against an in-memory governed registry.
  */
 
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { Context } from '@deepseek-ai/cordis'
+import { Context, Service } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/cordis-plugin-loader'
 import {
   DefaultPluginRegistry,
   normalizePluginId,
+  PluginPermissionLevel,
   PluginStatus,
   type Plugin,
 } from '@deepseek-ai/dsh-plugin-governance'
@@ -33,9 +35,18 @@ function gid(value: string): PluginGovernanceId {
 }
 
 /** A bare governed plugin fixture registered under `id`. */
-function barePlugin(id: string, name = id): Plugin {
+function barePlugin(
+  id: string,
+  name = id,
+  admission: { permissionLevel?: PluginPermissionLevel; autoApprove?: boolean } = {},
+): Plugin {
   return {
-    manifest: testManifest({ id, name }),
+    manifest: testManifest({
+      id,
+      name,
+      ...(admission.permissionLevel !== undefined ? { permissionLevel: admission.permissionLevel } : {}),
+      ...(admission.autoApprove !== undefined ? { autoApprove: admission.autoApprove } : {}),
+    }),
     install: () => {},
     uninstall: () => {},
   }
@@ -96,8 +107,35 @@ describe('PluginGovernanceGateway', () => {
     expect(disabled.ok).toBe(true)
     expect(registry.getStatus(normalizePluginId('test/alpha'))).toBe(PluginStatus.DISABLED)
     expect(gateway.health().disabled).toBe(1)
+    // The fixture manifest asks for admission, so the operator approves first.
+    expect(gateway.approve({ pluginId: gid('test/alpha') }).ok).toBe(true)
     expect((await gateway.enable({ pluginId: gid('test/alpha') })).ok).toBe(true)
     expect(gateway.health().active).toBe(2)
+  })
+
+  it('fails enable closed with approval-required until approve records a decision', async () => {
+    const gateway = gatewayWith(await seededRegistry())
+    const denied = await gateway.enable({ pluginId: gid('test/alpha') })
+    expect(denied.ok).toBe(false)
+    if (!denied.ok) expect(denied.error.code).toBe('approval-required')
+    // Fail closed: the plugin stays disabled, nothing was persisted as active.
+    expect(gateway.list().plugins.find(p => p.pluginId === gid('test/alpha'))?.status).toBe('active')
+  })
+
+  it('enables auto-approve and workspace-level plugins without an approval decision', async () => {
+    const registry = new DefaultPluginRegistry()
+    for (const plugin of [
+      barePlugin('test/auto', 'Auto', { autoApprove: true }),
+      barePlugin('test/workspace', 'Workspace', { permissionLevel: PluginPermissionLevel.WORKSPACE }),
+    ]) {
+      const result = await registry.register(plugin)
+      if (!result.success) throw new Error('fixture registration failed')
+    }
+    const gateway = gatewayWith(registry)
+    await registry.disable(normalizePluginId('test/auto'))
+    await registry.disable(normalizePluginId('test/workspace'))
+    expect((await gateway.enable({ pluginId: gid('test/auto') })).ok).toBe(true)
+    expect((await gateway.enable({ pluginId: gid('test/workspace') })).ok).toBe(true)
   })
 
   it('records approvals and surfaces them on the roster', async () => {
@@ -145,5 +183,95 @@ describe('PluginGovernanceGateway', () => {
     const uninstall = gateway.uninstall({ pluginId: gid('test/alpha') })
     expect(uninstall.ok).toBe(false)
     if (!uninstall.ok) expect(uninstall.error.code).toBe('not-implemented')
+  })
+
+  it('persists presetLoad status changes and restores them when the snapshot fails', async () => {
+    const registry = await seededRegistry()
+    const gateway = gatewayWith(registry)
+    await registry.disable(normalizePluginId('test/beta'))
+    expect(gateway.presetSave({ name: 'alpha-only' }).ok).toBe(true)
+
+    // Diverge the live registry, then apply: the snapshot must land on disk.
+    await registry.enable(normalizePluginId('test/beta'))
+    await registry.disable(normalizePluginId('test/alpha'))
+    expect((await gateway.presetLoad({ name: 'alpha-only' })).ok).toBe(true)
+    const persisted = JSON.parse(readFileSync(registryPathOf(gateway), 'utf8')) as {
+      plugins: Array<{ id: string; status: string }>
+    }
+    expect(persisted.plugins.find(p => p.id === 'test/alpha')?.status).toBe(String(PluginStatus.ACTIVE))
+    expect(persisted.plugins.find(p => p.id === 'test/beta')?.status).toBe(String(PluginStatus.DISABLED))
+
+    // Force a snapshot failure by replacing the registry file with a directory;
+    // the live statuses must roll back to their pre-presetLoad values.
+    const registryPath = registryPathOf(gateway)
+    rmSync(registryPath, { force: true })
+    mkdirSync(registryPath)
+    try {
+      await registry.enable(normalizePluginId('test/beta'))
+      await registry.disable(normalizePluginId('test/alpha'))
+      const failing = await gateway.presetLoad({ name: 'alpha-only' })
+      expect(failing.ok).toBe(false)
+      if (!failing.ok) expect(failing.error.code).toBe('persistence-failed')
+      expect(registry.getStatus(normalizePluginId('test/alpha'))).toBe(PluginStatus.DISABLED)
+      expect(registry.getStatus(normalizePluginId('test/beta'))).toBe(PluginStatus.ACTIVE)
+    } finally {
+      rmSync(registryPath, { force: true, recursive: true })
+    }
+  })
+})
+
+/** The registry.json path behind one gateway's persistence (same derivation). */
+function registryPathOf(gateway: PluginGovernanceGateway): string {
+  return (gateway as unknown as { persistence: { registryPath: string } }).persistence.registryPath
+}
+
+describe('PluginGovernanceGateway Loader mirroring', () => {
+  it('registers mounted Loader entries so list() returns real data', async () => {
+    class MountedFixture extends Service {
+      constructor(ctx: Context) {
+        super(ctx, 'governance-mirror-fixture')
+      }
+    }
+
+    const ctx = new Context()
+    contexts.push(ctx)
+    const storageRoot = mkdtempSync(join(tmpdir(), 'gov-gw-loader-'))
+    storageRoots.push(storageRoot)
+
+    const { Loader } = await import('@deepseek-ai/cordis-plugin-loader')
+    await ctx.plugin(Loader)
+    const modules = new Map<string, unknown>([
+      ['@fixtures/dsh-alpha', { default: MountedFixture }],
+    ])
+    ctx.loader.internal = {
+      version: 'v2',
+      async import(specifier: string) {
+        if (!modules.has(specifier)) throw new Error(`unexpected Loader import: ${specifier}`)
+        return modules.get(specifier)
+      },
+    } as unknown as NonNullable<typeof ctx.loader.internal>
+
+    await ctx.loader.create({ name: '@fixtures/dsh-alpha' })
+    await ctx.loader.await()
+
+    await ctx.plugin(PluginGovernanceGateway, { storageRoot })
+    const gateway = ctx.get('pluginGovernance') as PluginGovernanceGateway
+    await gateway.syncMountedPlugins()
+
+    const roster = gateway.list()
+    expect(roster.plugins.length).toBeGreaterThan(0)
+    const row = roster.plugins.find(p => p.pluginId === gid('fixtures/dsh-alpha'))
+    expect(row).toBeDefined()
+    expect(row?.status).toBe('active')
+    // Mirror mode: the mount decision is the admission decision.
+    expect(row?.approvalRequired).toBe(false)
+    expect(gateway.health().active).toBeGreaterThan(0)
+  })
+
+  it('survives a context without a Loader and keeps the roster empty', async () => {
+    const gateway = gatewayWith(await seededRegistry())
+    await expect(gateway.syncMountedPlugins()).resolves.toBeUndefined()
+    // Direct instantiation never mirrors anything; no crash, no dupes.
+    expect(gateway.list().plugins).toHaveLength(2)
   })
 })

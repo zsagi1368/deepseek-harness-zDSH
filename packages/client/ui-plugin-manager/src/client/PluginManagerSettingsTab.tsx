@@ -229,7 +229,8 @@ export function PluginManagerSettingsTab({
                           ) : (
                             <button
                               type="button"
-                              disabled={pending !== null}
+                              disabled={pending !== null || (row.approvalRequired && !row.approved)}
+                              title={row.approvalRequired && !row.approved ? t('approvalRequiredTag') : undefined}
                               onClick={() => { runRosterAction(() => enable(row.pluginId)) }}
                             >
                               {t('enable')}

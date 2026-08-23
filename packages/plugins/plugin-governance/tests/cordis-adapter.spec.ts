@@ -199,7 +199,8 @@ describe('CordisPluginWrapper lifecycle', () => {
   })
 
   it('installs services without a start hook and tolerates missing config', async () => {
-    const idle = new CordisPluginWrapper(new PlainService(), { id: 'o/ns', name: 'NS' }, mockContext())
+    // 镜像模式：无 start 钩子的服务在登记时也不需要审批通道。
+    const idle = new CordisPluginWrapper(new PlainService(), { id: 'o/ns', name: 'NS', mirror: true }, mockContext())
     const context = mockContext()
     context.config = undefined as unknown as Record<string, unknown>
     await expect(idle.install(context)).resolves.toBeUndefined()
@@ -231,11 +232,31 @@ describe('CordisPluginWrapper lifecycle', () => {
     expect(wrapper.status).toBe(PluginStatus.ERROR)
   })
 
-  it('auto-approves when no approval service is present', async () => {
+  it('fails closed when no approval service is present', async () => {
     const service = new OfficialService()
     const wrapper = new CordisPluginWrapper(service, { id: 'o/n', name: 'N' }, mockContext())
-    await wrapper.install(mockContext())
-    expect(service.started).toBe(true)
+    // 无审批服务时不再静默放行：敏感安装直接拒绝（fail closed）。
+    await expect(wrapper.install(mockContext())).rejects.toThrow(/rejected by user/)
+    expect(service.started).toBe(false)
+    expect(wrapper.status).toBe(PluginStatus.ERROR)
+  })
+
+  it('mirror mode installs without approval or lifecycle side effects', async () => {
+    const service = new OfficialService()
+    const wrapper = new CordisPluginWrapper(
+      service,
+      { id: '@deepseek-ai/dsh-mirrored', name: 'Mirrored', mirror: true },
+      mockContext(),
+    )
+    // 挂载即准入：autoApprove 为真，无需审批服务。
+    expect(wrapper.manifest.autoApprove).toBe(true)
+    await expect(wrapper.install(mockContext())).resolves.toBeUndefined()
+    // Cordis 拥有生命周期：不重复 start/stop。
+    expect(service.started).toBe(false)
+    expect(wrapper.status).toBe(PluginStatus.ACTIVE)
+    await expect(wrapper.uninstall(mockContext())).resolves.toBeUndefined()
+    expect(service.stopped).toBe(false)
+    expect(wrapper.status).toBe(PluginStatus.DISABLED)
   })
 
   it('uninstall stops the service and flips status to DISABLED', async () => {
@@ -409,24 +430,24 @@ describe('minimal loader entry chain (wrap -> register -> start/stop -> health)'
     const entry = minimalEntry()
     const service = new OfficialService()
 
-    // 1. 包装：npm scoped 包名规范化为 namespace/name。
+    // 1. 包装：npm scoped 包名规范化为 namespace/name；镜像模式不驱动生命周期。
     const wrapped = wrapCordisPlugin(service, mockContext(), {
       id: normalizeCordisPluginId(entry.name),
       name: 'Persona',
       version: '0.1.1',
+      mirror: true,
     })
     expect(wrapped.manifest.id).toBe('deepseek-ai/dsh-persona')
     expect(wrapped.manifest.sandbox.process.fullyAuthorized).toBe(false)
+    expect(wrapped.manifest.autoApprove).toBe(true)
 
-    // 2. 注册：registry.install 走无 approval 服务的降级路径（自动放行）并启动服务。
+    // 2. 注册：镜像包装登记治理名册，但不重复调用 cordis start。
     const registry = new DefaultPluginRegistry()
     const result = await registry.register(wrapped)
     expect(result.success).toBe(true)
     expect(result.pluginId).toBe('deepseek-ai/dsh-persona')
     expect(registry.getStatus('deepseek-ai/dsh-persona')).toBe(PluginStatus.ACTIVE)
-    expect(service.started).toBe(true)
-    // 注册表上下文的空 config 以对象形式转发给 cordis start。
-    expect(service.started).toBe(true)
+    expect(service.started).toBe(false)
 
     // 3. 健康检查：注册表报告与插件自身委托都可用且健康。
     const report = registry.getHealthReport()
@@ -438,19 +459,23 @@ describe('minimal loader entry chain (wrap -> register -> start/stop -> health)'
     expect(row?.status).toBe(PluginStatus.ACTIVE)
     expect(wrapped.getHealthStatus?.()).toMatchObject({ healthy: true })
 
-    // 4. 启停：卸载触发 cordis stop，条目从注册表移除，可重新注册。
+    // 4. 启停：卸载只翻转治理状态，cordis 服务保持运行（stop 不被触发）。
     await registry.unregister('deepseek-ai/dsh-persona')
-    expect(service.stopped).toBe(true)
+    expect(service.stopped).toBe(false)
     expect(registry.getAll()).toHaveLength(0)
 
+    // 非镜像路径仍驱动生命周期：显式授权的包装在注册时启动服务。
+    const driving = new OfficialService()
     const reRegistered = await registry.register(
-      wrapCordisPlugin(new OfficialService(), mockContext(), {
+      wrapCordisPlugin(driving, mockContext(), {
         id: normalizeCordisPluginId(entry.name),
         name: 'Persona',
+        fullyAuthorized: true,
       }),
     )
     expect(reRegistered.success).toBe(true)
     expect(reRegistered.pluginId).toBe('deepseek-ai/dsh-persona')
+    expect(driving.started).toBe(true)
   })
 
   it('rejects a duplicate registration of the same normalized id', async () => {
@@ -461,12 +486,12 @@ describe('minimal loader entry chain (wrap -> register -> start/stop -> health)'
 
     const registry = new DefaultPluginRegistry()
     const firstResult = await registry.register(
-      wrapCordisPlugin(first, mockContext(), { id, name: 'Persona' }),
+      wrapCordisPlugin(first, mockContext(), { id, name: 'Persona', fullyAuthorized: true }),
     )
     expect(firstResult.success).toBe(true)
 
     const secondResult = await registry.register(
-      wrapCordisPlugin(second, mockContext(), { id, name: 'Persona Clone' }),
+      wrapCordisPlugin(second, mockContext(), { id, name: 'Persona Clone', fullyAuthorized: true }),
     )
     expect(secondResult.success).toBe(false)
     expect(secondResult.errors?.[0]?.message).toBe('Plugin already registered')

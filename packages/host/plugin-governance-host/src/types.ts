@@ -95,6 +95,7 @@ export interface GovernanceHealthReport {
 /** Stable machine-readable failure category of one governance call. */
 export type GovernanceErrorCode =
   | 'plugin-not-found'
+  | 'approval-required'
   | 'preset-not-found'
   | 'preset-already-exists'
   | 'not-implemented'

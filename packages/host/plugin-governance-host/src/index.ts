@@ -8,15 +8,20 @@
 
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { Context, Service } from '@deepseek-ai/cordis'
+import { Context, Service, type Fiber, type FiberState } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import type {} from '@deepseek-ai/cordis-plugin-loader'
 import {
   DefaultPluginRegistry,
+  isCordisPlugin,
   normalizePluginId,
   PluginPersistence,
   PluginPermissionLevel,
   PluginStatus,
+  wrapCordisPlugin,
+  type CordisService,
   type Plugin as GovernedPlugin,
+  type PluginContext as GovernedPluginContext,
   type PluginRegistry,
 } from '@deepseek-ai/dsh-plugin-governance'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
@@ -64,6 +69,25 @@ const STATUS_NAMES = {
   [PluginStatus.ERROR]: 'error',
   [PluginStatus.DEPRECATED]: 'deprecated',
 } as const satisfies Record<PluginStatus, PluginGovernanceStatus>
+
+/** Runtime mirror: `FiberState` is a cross-package const enum with no runtime object. */
+const FIBER_ACTIVE = 2 as FiberState.ACTIVE
+
+/** Minimal read view of one service implementation stored on a mounted fiber. */
+interface ProvidedImplementation {
+  readonly value?: unknown
+}
+
+/** Structural view of the Loader surface this service mirrors from. */
+interface MountedEntry {
+  readonly options: { group?: boolean | null; name: string }
+  readonly disabled?: boolean | null
+  readonly fiber?: Fiber
+}
+
+interface LoaderLike {
+  entries?: () => Iterable<MountedEntry>
+}
 
 /** Preset names double as file stems; path separators and dots stay out. */
 const PRESET_NAME_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
@@ -130,6 +154,10 @@ export class PluginGovernanceGateway extends TypertRemoteService {
   private readonly registry: PluginRegistry
   private readonly persistence: PluginPersistence
   private readonly approvals: Map<PluginGovernanceId, number> = new Map()
+  /** Canonical ids already mirrored from the Loader, so re-syncs stay idempotent. */
+  private readonly mirrored = new Set<PluginGovernanceId>()
+  /** In-flight Loader sync; concurrent triggers reuse one pass. */
+  private syncing: Promise<void> | null = null
 
   /**
    * @param ctx - owning Host context.
@@ -157,6 +185,10 @@ export class PluginGovernanceGateway extends TypertRemoteService {
   protected [Service.init](): void {
     this.persistence.ensureDirectories()
     this.loadApprovals()
+    // Mirror the Loader's mounted plugins into the governance roster so the
+    // roster and the plugin-manager UI hold real data in production, not just
+    // an empty registry. Individual entries fail soft (see syncMountedPlugins).
+    void this.syncMountedPlugins()
     this.ctx.effect(() => () => {
       void this.registry.dispose()
     }, 'plugin-governance.registryDispose')
@@ -168,6 +200,9 @@ export class PluginGovernanceGateway extends TypertRemoteService {
    */
   @Remote('list')
   list(): GovernanceRosterSnapshot {
+    // Late-mounting Loader entries land between polls; each roster read gives
+    // the mirror one chance to pick them up without making the read async.
+    void this.syncMountedPlugins()
     return Object.freeze({
       plugins: Object.freeze(this.registry.getAll().map(plugin => this.summaryOf(plugin))),
     })
@@ -238,15 +273,24 @@ export class PluginGovernanceGateway extends TypertRemoteService {
   }
 
   /**
-   * Re-enable a previously disabled plugin and snapshot the registry.
+   * Re-enable a previously disabled plugin and snapshot the registry. Plugins
+   * whose manifest requests an admission decision stay disabled until
+   * `approve` records one — the gate is enforced here on the server, not just
+   * in client UI.
    * @param request - the plugin to enable.
-   * @returns a receipt, or `plugin-not-found` / `persistence-failed`.
+   * @returns a receipt, or `plugin-not-found` / `approval-required` /
+   * `persistence-failed`.
    */
   @Remote('enable')
   async enable(request: PluginIdRequest): Promise<GovernanceResult<GovernanceAcknowledgement>> {
-    const pluginId = canonicalId(request.pluginId)
-    if (this.registry.get(pluginId) === null) {
-      return failed('plugin-not-found', noSuchPlugin(pluginId))
+    const known = this.requirePlugin(request.pluginId)
+    if (!known.ok) return known
+    const [pluginId, plugin] = known.value
+    if (requiresAdmission(plugin) && !this.approvals.has(pluginId)) {
+      return failed(
+        'approval-required',
+        `plugin ${JSON.stringify(String(pluginId))} requires an admission decision (approve) before it can be enabled`,
+      )
     }
     await this.registry.enable(pluginId)
     return this.persistRegistryChange(() => {
@@ -279,6 +323,7 @@ export class PluginGovernanceGateway extends TypertRemoteService {
    */
   @Remote('health')
   health(): GovernanceHealthReport {
+    void this.syncMountedPlugins()
     const report = this.registry.getHealthReport()
     const plugins: GovernedPluginHealthEntry[] = this.registry.getAll().map((plugin) => {
       const pluginId = canonicalId(plugin.manifest.id)
@@ -382,15 +427,33 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     }
     const applied: PluginGovernanceId[] = []
     const unknown: PluginGovernanceId[] = []
+    /** Previous disabled state per touched id, so IO failure can restore it. */
+    const previousDisabled = new Map<PluginGovernanceId, boolean>()
     for (const entry of preset.entries) {
       const pluginId = canonicalId(entry.pluginId)
       if (this.registry.get(pluginId) === null) {
         unknown.push(pluginId)
         continue
       }
+      previousDisabled.set(
+        pluginId,
+        this.registry.getStatus(pluginId) === PluginStatus.DISABLED,
+      )
       if (entry.status === 'disabled') await this.registry.disable(pluginId)
       else await this.registry.enable(pluginId)
       applied.push(pluginId)
+    }
+    // The applied statuses are durable facts like every other mutation: a
+    // failed snapshot rolls the live registry back before the failure is
+    // reported, so memory and disk never disagree behind an acknowledged call.
+    try {
+      this.persistence.save()
+    } catch (cause) {
+      for (const [pluginId, wasDisabled] of [...previousDisabled].reverse()) {
+        if (wasDisabled) await this.registry.disable(pluginId)
+        else await this.registry.enable(pluginId)
+      }
+      return failed('persistence-failed', `the registry snapshot could not be written: ${describe(cause)}`)
     }
     return succeeded(Object.freeze({
       applied: Object.freeze(applied),
@@ -420,7 +483,85 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     return succeeded(Object.freeze({ acknowledged: true }))
   }
 
+  /**
+   * Mirror the Cordis Loader's currently mounted plugin entries into the
+   * governed registry, so the roster and the plugin-manager UI report real
+   * production data instead of an empty list. Each entry is wrapped through
+   * the governance Cordis adapter in mirror mode: lifecycle stays owned by
+   * Cordis, and the operator's mount decision in the loader configuration
+   * counts as the admission decision. One entry failing to wrap or register
+   * never blocks the rest; already-mirrored ids are skipped on re-runs.
+   *
+   * Runs once at service init and is re-triggered by every `list`/`health`
+   * read so entries mounted after this service can still appear.
+   * @returns when one full sync pass has settled (also a test seam).
+   */
+  async syncMountedPlugins(): Promise<void> {
+    if (this.syncing !== null) return this.syncing
+    this.syncing = this.runSyncPass().finally(() => {
+      this.syncing = null
+    })
+    return this.syncing
+  }
+
   // ── internal helpers ──────────────────────────────────────────────────────
+
+  /** One fail-soft pass over the Loader's active entries. */
+  private async runSyncPass(): Promise<void> {
+    const loader = this.resolveLoader()
+    if (loader === undefined) return
+    for (const entry of loader.entries()) {
+      try {
+        if (entry.options.group || entry.disabled) continue
+        const fiber = entry.fiber
+        if (fiber === undefined || fiber.state !== FIBER_ACTIVE) continue
+        const pluginId = canonicalId(entry.options.name)
+        if (this.mirrored.has(pluginId)) continue
+        if (this.registry.get(pluginId) !== null) {
+          // Registered by another path (e.g. a test-injected registry): still
+          // roster data, and re-registering would only fail as a duplicate.
+          this.mirrored.add(pluginId)
+          continue
+        }
+        const service = resolveMountedService(fiber)
+        // Entries that provide no object-valued service (plain function or
+        // config-only plugins) have no instance to govern; skip them.
+        if (service === undefined) continue
+        const result = await this.registry.register(wrapCordisPlugin(
+          service as CordisService,
+          mirrorPluginContext(String(pluginId)),
+          { id: String(pluginId), name: mountedDisplayName(entry.options.name), mirror: true },
+        ))
+        this.mirrored.add(pluginId)
+        if (!result.success) {
+          this.warn(`failed to register loader entry ${entry.options.name}: ${(result.errors ?? []).map(error => error.message).join('; ')}`)
+        }
+      } catch (cause) {
+        // Fail soft: one broken entry must not blank out the rest of the roster.
+        this.warn(`failed to mirror loader entry ${entry.options.name}: ${describe(cause)}`)
+      }
+    }
+  }
+
+  /** The Loader service when one is present on this context, else `undefined`. */
+  private resolveLoader(): (LoaderLike & { entries: () => Iterable<MountedEntry> }) | undefined {
+    // Context property access resolves through the reflection layer and THROWS
+    // for names nothing provides, so contexts without a Loader must be probed,
+    // not read directly.
+    try {
+      const candidate = (this.ctx as Context & { loader?: LoaderLike }).loader
+      return candidate !== undefined && typeof candidate.entries === 'function'
+        ? candidate as LoaderLike & { entries: () => Iterable<MountedEntry> }
+        : undefined
+    } catch {
+      return undefined
+    }
+  }
+
+  /** Non-fatal sync diagnostics go through the host logger, never to callers. */
+  private warn(message: string): void {
+    this.ctx.logger.warn?.('plugin-governance: %s', message)
+  }
 
   /** Fail unless the id names a registered plugin, returning its canonical form. */
   private requirePlugin(pluginId: PluginGovernanceId): GovernanceResult<readonly [PluginGovernanceId, GovernedPlugin]> {
@@ -433,17 +574,13 @@ export class PluginGovernanceGateway extends TypertRemoteService {
   /** Build the list-line projection for one plugin. */
   private summaryOf(plugin: GovernedPlugin): GovernedPluginSummary {
     const manifest = plugin.manifest
-    const level = manifest.permissionLevel
     const pluginId = canonicalId(manifest.id)
     return Object.freeze({
       pluginId,
       displayName: manifest.name,
       version: manifest.version,
       status: STATUS_NAMES[this.registry.getStatus(pluginId)],
-      approvalRequired: manifest.autoApprove !== true
-        && (level === undefined
-          || level === PluginPermissionLevel.CONFIRM_REQUIRED
-          || level === PluginPermissionLevel.SYSTEM),
+      approvalRequired: requiresAdmission(plugin),
       approved: this.approvals.has(pluginId),
       warnings: Object.freeze(this.registry.getPluginWarnings(pluginId) ?? []),
     })
@@ -518,6 +655,80 @@ export class PluginGovernanceGateway extends TypertRemoteService {
 /** Canonical not-found message for one plugin id. */
 function noSuchPlugin(pluginId: PluginGovernanceId): string {
   return `no registered plugin ${JSON.stringify(String(pluginId))}`
+}
+
+/**
+ * Whether one manifest's permission posture asks for an explicit admission
+ * decision. Shared by the roster projection and the server-side `enable` gate,
+ * so what the UI displays is exactly what the service enforces.
+ */
+function requiresAdmission(plugin: GovernedPlugin): boolean {
+  const level = plugin.manifest.permissionLevel
+  return plugin.manifest.autoApprove !== true
+    && (level === undefined
+      || level === PluginPermissionLevel.CONFIRM_REQUIRED
+      || level === PluginPermissionLevel.SYSTEM)
+}
+
+/**
+ * Pick the mounted instance to govern from one active fiber: prefer a value
+ * that looks like a Cordis service (start/health surface), else the first
+ * object-valued implementation the fiber provided.
+ */
+function resolveMountedService(fiber: Fiber): unknown {
+  const store = fiber.store as Record<string, ProvidedImplementation | undefined> | undefined
+  if (store === undefined) return undefined
+  let fallback: unknown
+  for (const implementation of Object.values(store)) {
+    const value = implementation?.value
+    if (value === null || typeof value !== 'object') continue
+    if (isCordisPlugin(value)) return value
+    fallback ??= value
+  }
+  return fallback
+}
+
+/** Display name for a mounted module specifier (`@scope/pkg` → `pkg`). */
+function mountedDisplayName(moduleName: string): string {
+  const segments = moduleName.split('/')
+  return segments[segments.length - 1] ?? moduleName
+}
+
+/**
+ * Minimal governance-spec context used only to construct mirrored wrappers.
+ * The registry substitutes its own context for install/uninstall; this one
+ * just carries a logger so adapter diagnostics land somewhere visible.
+ */
+function mirrorPluginContext(pluginId: string): GovernedPluginContext {
+  return {
+    services: new Map(),
+    emit: () => {},
+    on: () => () => {},
+    once: () => () => {},
+    off: () => {},
+    config: {},
+    setConfig: () => {},
+    getConfig: <T>(_key: string, defaultValue?: T): T => defaultValue as T,
+    effect: () => {},
+    onDispose: () => {},
+    logger: {
+      info: (message) => { console.log(`[governed ${pluginId}] ${message}`) },
+      warn: (message) => { console.warn(`[governed ${pluginId}] ${message}`) },
+      error: (message) => { console.error(`[governed ${pluginId}] ${message}`) },
+      debug: () => {},
+    },
+    status: PluginStatus.ACTIVE,
+    setWarnings: () => {},
+    markDeprecated: () => {},
+    sandbox: {
+      exec: async () => ({ exitCode: 0, stdout: '', stderr: '', duration: 0 }),
+      read: async () => '',
+      write: async () => {},
+      list: async () => [],
+    },
+    registerCapability: () => {},
+    unregisterCapability: () => {},
+  }
 }
 
 /** Restore a Map entry removed or overwritten by a compensated operation. */
