@@ -133,6 +133,37 @@ describe('native path opener', () => {
     expect(run).toHaveBeenCalledWith(command, args, expect.any(AbortSignal))
   })
 
+  it('tolerates the Windows Explorer success exit code of 1', async () => {
+    const run = vi.fn<PathOpenerRunner>(async () => {
+      throw Object.assign(new Error('spawn explorer ENOENT-ish exit'), { code: 1 })
+    })
+    await expect(revealNativePath('C:\\work\\project', signal(), { platform: 'win32', run }))
+      .resolves.toBeUndefined()
+    // The WSL reveal path tolerates the same quirk.
+    const wslRun = vi.fn<PathOpenerRunner>(async command => command === 'wslpath'
+      ? { stdout: '\\\\wsl.localhost\\Ubuntu\\home\\test\\a.txt\r\n', stderr: '' }
+      : (() => { throw Object.assign(new Error('explorer exit'), { code: 1 }) })())
+    await expect(revealNativePath('/home/test/a.txt', signal(), {
+      platform: 'linux', osRelease: '5.15.153.1-microsoft-standard-WSL2',
+      env: { WSL_DISTRO_NAME: 'Ubuntu' }, run: wslRun,
+    })).resolves.toBeUndefined()
+  })
+
+  it('still rejects real Explorer spawn failures and aborts', async () => {
+    const missing = vi.fn<PathOpenerRunner>(async () => {
+      throw Object.assign(new Error('spawn explorer ENOENT'), { code: 'ENOENT' })
+    })
+    await expect(revealNativePath('C:\\work\\project', signal(), { platform: 'win32', run: missing }))
+      .rejects.toThrow('ENOENT')
+    const abort = new AbortController()
+    abort.abort(new Error('closed'))
+    const aborted = vi.fn<PathOpenerRunner>(async () => {
+      throw Object.assign(new Error('aborted'), { code: 'ABORT_ERR' })
+    })
+    await expect(revealNativePath('C:\\work\\project', abort.signal, { platform: 'win32', run: aborted }))
+      .rejects.toThrow('aborted')
+  })
+
   it('opens the containing directory on desktop Linux where no selection verb exists', async () => {
     const run = vi.fn<PathOpenerRunner>(async () => ({ stdout: '', stderr: '' }))
     await revealNativePath('/home/test/work/file.txt', signal(), {

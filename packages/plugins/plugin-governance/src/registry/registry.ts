@@ -17,27 +17,7 @@ import {
   validatePluginId,
   normalizePluginId,
 } from '../spec/index.js'
-
-/**
- * Minimal semver comparison: parses "major.minor.patch" and optional prerelease tags.
- * Returns -1 if a < b, 0 if equal, 1 if a > b.
- */
-function semverCompare(a: string, b: string): number {
-  const parse = (v: string): [number, number, number, string] => {
-    const m = v.trim().match(/^(\d+)\.(\d+)\.(\d+)(?:-(.+))?$/)
-    if (!m) return [0, 0, 0, v]
-    return [Number(m[1]), Number(m[2]), Number(m[3]), m[4] ?? '']
-  }
-  const [aMaj, aMin, aPat, aPre] = parse(a)
-  const [bMaj, bMin, bPat, bPre] = parse(b)
-  if (aMaj !== bMaj) return aMaj - bMaj
-  if (aMin !== bMin) return aMin - bMin
-  if (aPat !== bPat) return aPat - bPat
-  // prerelease has lower precedence than release
-  if (aPre && !bPre) return -1
-  if (!aPre && bPre) return 1
-  return aPre.localeCompare(bPre)
-}
+import { semverCompare } from '../semver.js'
 
 export class DefaultPluginRegistry implements PluginRegistry {
   private plugins = new Map<string, Plugin>()

@@ -201,6 +201,25 @@ export function openNativeTextFile(
 }
 
 /**
+ * Tolerate Explorer's famous quirk: `explorer /select,<path>` exits with
+ * code 1 even when it succeeds and opens the window. Only a numeric exit
+ * code of exactly 1 is swallowed; spawn failures ('ENOENT') and aborts keep
+ * rejecting.
+ */
+function isExplorerQuirkExit(error: unknown): boolean {
+  return (error as { code?: unknown } | null)?.code === 1
+}
+
+/** Run one command, tolerating the Windows Explorer success exit code of 1. */
+async function runExplorer(command: string, args: readonly string[], signal: AbortSignal, run: PathOpenerRunner): Promise<void> {
+  try {
+    await run(command, args, signal)
+  } catch (error) {
+    if (!isExplorerQuirkExit(error)) throw error
+  }
+}
+
+/**
  * Reveal one path in the platform's file manager, selecting it among its
  * siblings: Explorer's `/select` on Windows (WSL translates the path first),
  * Finder's "reveal" on macOS, and the containing directory through `xdg-open`
@@ -220,7 +239,7 @@ export async function revealNativePath(
   const wsl = platform === 'linux' && isWsl(internals)
 
   if (platform === 'win32') {
-    await run('explorer', [`/select,${path}`], signal)
+    await runExplorer('explorer', [`/select,${path}`], signal, run)
     return
   }
   if (platform === 'darwin') {
@@ -233,7 +252,7 @@ export async function revealNativePath(
       signal.throwIfAborted()
       const windowsPath = translated.stdout.replace(/[\r\n]+$/, '')
       if (windowsPath === '') throw new Error('wslpath returned no Windows path')
-      await run('explorer', [`/select,${windowsPath}`], signal)
+      await runExplorer('explorer', [`/select,${windowsPath}`], signal, run)
       return
     }
     await run('xdg-open', [dirname(path)], signal)

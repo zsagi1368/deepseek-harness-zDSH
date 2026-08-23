@@ -6,6 +6,7 @@
 
 import { Plugin, LoadResult } from '../spec/index.js'
 import type { PluginSandboxConfig, CapabilityDeclaration } from '../spec/index.js'
+import { semverCompare } from '../semver.js'
 
 /**
  * 预检查看到的清单形状：字段可能缺失或畸形（这正是检查要拦截的），
@@ -105,10 +106,11 @@ class VersionCompatibilityCheck implements PreLoadCheck {
   run(plugin: Plugin, kernelVersion: string): CheckResult {
     const compatible = (plugin.manifest as LooseManifest).dsh?.compatible || ''
 
-    // 简单版本检查：确保 kernelVersion 在兼容范围内
+    // 版本检查走共享 semver 比较（semver.ts），杜绝字典序误判
+    // （如 '0.9.0' >= '0.10.0' 在字符串比较下为真）。
     if (compatible.includes('<')) {
       const maxVersion = compatible.split('<')[1]?.trim()
-      if (maxVersion && kernelVersion >= maxVersion) {
+      if (maxVersion && semverCompare(kernelVersion, maxVersion) >= 0) {
         return new CheckFailed(
           `Plugin requires DSH < ${maxVersion}, but running ${kernelVersion}`,
           'error',
@@ -118,7 +120,7 @@ class VersionCompatibilityCheck implements PreLoadCheck {
 
     if (compatible.includes('>=')) {
       const minVersion = compatible.split('>=')[1]?.split(' ')[0]
-      if (minVersion && kernelVersion < minVersion) {
+      if (minVersion && semverCompare(kernelVersion, minVersion) < 0) {
         return new CheckFailed(
           `Plugin requires DSH >= ${minVersion}, but running ${kernelVersion}`,
           'error',
