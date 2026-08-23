@@ -222,7 +222,7 @@ export function PluginManagerSettingsTab({
                             <button
                               type="button"
                               disabled={pending !== null}
-                              onClick={() => runRosterAction(() => disable(row.pluginId))}
+                              onClick={() => { runRosterAction(() => disable(row.pluginId)) }}
                             >
                               {t('disable')}
                             </button>
@@ -230,7 +230,7 @@ export function PluginManagerSettingsTab({
                             <button
                               type="button"
                               disabled={pending !== null}
-                              onClick={() => runRosterAction(() => enable(row.pluginId))}
+                              onClick={() => { runRosterAction(() => enable(row.pluginId)) }}
                             >
                               {t('enable')}
                             </button>
@@ -239,7 +239,7 @@ export function PluginManagerSettingsTab({
                             <button
                               type="button"
                               disabled={pending !== null}
-                              onClick={() => runRosterAction(() => approve(row.pluginId))}
+                              onClick={() => { runRosterAction(() => approve(row.pluginId)) }}
                             >
                               {t('approve')}
                             </button>
@@ -280,7 +280,7 @@ export function PluginManagerSettingsTab({
               <button
                 type="button"
                 disabled={presetActionsDisabled}
-                onClick={() => runPresetAction('save')}
+                onClick={() => { runPresetAction('save') }}
               >
                 {t('presetSave')}
               </button>
@@ -293,7 +293,7 @@ export function PluginManagerSettingsTab({
               <button
                 type="button"
                 disabled={presetActionsDisabled}
-                onClick={() => runPresetAction('delete')}
+                onClick={() => { runPresetAction('delete') }}
               >
                 {t('presetDelete')}
               </button>

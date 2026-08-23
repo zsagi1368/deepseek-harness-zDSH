@@ -1091,7 +1091,7 @@ describe('agent loop', () => {
     expect(errors[0]?.code).toBe(TRUNCATED_TOOL_CALL_CODE)
     expect(reasons).toEqual([{
       kind: 'error',
-      error: { code: TRUNCATED_TOOL_CALL_CODE, message: expect.stringContaining('output-token ceiling') },
+      error: { code: TRUNCATED_TOOL_CALL_CODE, message: expect.stringContaining('output-token ceiling') as unknown },
     }])
     // Empty content still needs an assistant/message to carry usage; the anchor
     // is appended before the failure so replay consumers keep the boundary.
@@ -1138,7 +1138,7 @@ describe('agent loop', () => {
       kind: 'error',
       error: {
         code: TRUNCATED_TOOL_CALL_CODE,
-        message: expect.stringMatching(/output-token ceiling while producing 1 tool call/),
+        message: expect.stringMatching(/output-token ceiling while producing 1 tool call/) as unknown,
       },
     }])
     const assistant = agent.session.events.find(e => e.type === 'assistant/message')!

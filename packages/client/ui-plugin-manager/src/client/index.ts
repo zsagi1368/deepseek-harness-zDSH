@@ -33,7 +33,7 @@ export const inject = ['slots', 'locale', 'remote', 'remote.pluginGovernance']
 async function call<T>(promise: Promise<RemoteResult<GovernanceResult<T>>>): Promise<T> {
   const transport = await promise
   if (!transport.ok) {
-    throw new Error(`pluginGovernance transport failed: ${String(transport.error)}`)
+    throw new Error(`pluginGovernance transport failed: ${transport.error.code}: ${transport.error.message}`)
   }
   const business = transport.value
   if (!business.ok) {
@@ -46,7 +46,7 @@ async function call<T>(promise: Promise<RemoteResult<GovernanceResult<T>>>): Pro
 async function callRaw<T>(promise: Promise<RemoteResult<T>>): Promise<T> {
   const transport = await promise
   if (!transport.ok) {
-    throw new Error(`pluginGovernance transport failed: ${String(transport.error)}`)
+    throw new Error(`pluginGovernance transport failed: ${transport.error.code}: ${transport.error.message}`)
   }
   return transport.value
 }

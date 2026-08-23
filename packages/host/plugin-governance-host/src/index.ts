@@ -14,6 +14,7 @@ import {
   DefaultPluginRegistry,
   normalizePluginId,
   PluginPersistence,
+  PluginPermissionLevel,
   PluginStatus,
   type Plugin as GovernedPlugin,
   type PluginRegistry,
@@ -111,7 +112,7 @@ function succeeded<T>(value: T): GovernanceResult<T> {
  * @param message - correction-oriented message without sensitive values.
  */
 function failed(code: GovernanceErrorCode, message: string): GovernanceResult<never> {
-  return Object.freeze({ ok: false, error: Object.freeze({ code, message }) }) as GovernanceResult<never>
+  return Object.freeze({ ok: false, error: Object.freeze({ code, message }) })
 }
 
 /**
@@ -153,7 +154,7 @@ export class PluginGovernanceGateway extends TypertRemoteService {
   }
 
   /** Create the storage directories up front so misconfiguration fails loud at load. */
-  protected async [Service.init](): Promise<void> {
+  protected [Service.init](): void {
     this.persistence.ensureDirectories()
     this.loadApprovals()
     this.ctx.effect(() => () => {
@@ -217,7 +218,7 @@ export class PluginGovernanceGateway extends TypertRemoteService {
    * @returns always `not-implemented`.
    */
   @Remote('install')
-  async install(_request: InstallPluginRequest): Promise<GovernanceResult<GovernanceAcknowledgement>> {
+  install(_request: InstallPluginRequest): GovernanceResult<GovernanceAcknowledgement> {
     return failed('not-implemented', 'install awaits the guarded download-and-admit pipeline; mount plugins through the Loader for now')
   }
 
@@ -228,7 +229,7 @@ export class PluginGovernanceGateway extends TypertRemoteService {
    * @returns always `not-implemented`, or `plugin-not-found`.
    */
   @Remote('uninstall')
-  async uninstall(request: PluginIdRequest): Promise<GovernanceResult<GovernanceAcknowledgement>> {
+  uninstall(request: PluginIdRequest): GovernanceResult<GovernanceAcknowledgement> {
     const pluginId = canonicalId(request.pluginId)
     if (this.registry.get(pluginId) === null) {
       return failed('plugin-not-found', noSuchPlugin(pluginId))
@@ -247,8 +248,10 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     if (this.registry.get(pluginId) === null) {
       return failed('plugin-not-found', noSuchPlugin(pluginId))
     }
-    this.registry.enable(pluginId)
-    return this.persistRegistryChange(() => this.registry.disable(pluginId))
+    await this.registry.enable(pluginId)
+    return this.persistRegistryChange(() => {
+      void this.registry.disable(pluginId)
+    })
   }
 
   /**
@@ -263,8 +266,10 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     if (this.registry.get(pluginId) === null) {
       return failed('plugin-not-found', noSuchPlugin(pluginId))
     }
-    this.registry.disable(pluginId, request.reason ?? undefined)
-    return this.persistRegistryChange(() => this.registry.enable(pluginId))
+    await this.registry.disable(pluginId, request.reason ?? undefined)
+    return this.persistRegistryChange(() => {
+      void this.registry.enable(pluginId)
+    })
   }
 
   /**
@@ -304,7 +309,7 @@ export class PluginGovernanceGateway extends TypertRemoteService {
    * @returns a receipt, or `plugin-not-found` / `persistence-failed`.
    */
   @Remote('approve')
-  async approve(request: PluginIdRequest): Promise<GovernanceResult<GovernanceAcknowledgement>> {
+  approve(request: PluginIdRequest): GovernanceResult<GovernanceAcknowledgement> {
     const pluginId = canonicalId(request.pluginId)
     if (this.registry.get(pluginId) === null) {
       return failed('plugin-not-found', noSuchPlugin(pluginId))
@@ -329,7 +334,7 @@ export class PluginGovernanceGateway extends TypertRemoteService {
    * `persistence-failed`.
    */
   @Remote('presetSave')
-  async presetSave(request: PresetNameRequest): Promise<GovernanceResult<GovernanceAcknowledgement>> {
+  presetSave(request: PresetNameRequest): GovernanceResult<GovernanceAcknowledgement> {
     const nameError = checkPresetName(request.name)
     if (nameError !== null) return failed('request-invalid', nameError)
     const path = this.presetPath(request.name)
@@ -383,8 +388,8 @@ export class PluginGovernanceGateway extends TypertRemoteService {
         unknown.push(pluginId)
         continue
       }
-      if (entry.status === 'disabled') this.registry.disable(pluginId)
-      else this.registry.enable(pluginId)
+      if (entry.status === 'disabled') await this.registry.disable(pluginId)
+      else await this.registry.enable(pluginId)
       applied.push(pluginId)
     }
     return succeeded(Object.freeze({
@@ -400,7 +405,7 @@ export class PluginGovernanceGateway extends TypertRemoteService {
    * `persistence-failed`.
    */
   @Remote('presetDelete')
-  async presetDelete(request: PresetNameRequest): Promise<GovernanceResult<GovernanceAcknowledgement>> {
+  presetDelete(request: PresetNameRequest): GovernanceResult<GovernanceAcknowledgement> {
     const nameError = checkPresetName(request.name)
     if (nameError !== null) return failed('request-invalid', nameError)
     const path = this.presetPath(request.name)
@@ -436,7 +441,9 @@ export class PluginGovernanceGateway extends TypertRemoteService {
       version: manifest.version,
       status: STATUS_NAMES[this.registry.getStatus(pluginId)],
       approvalRequired: manifest.autoApprove !== true
-        && (level === undefined || level === 'confirm-required' || level === 'system'),
+        && (level === undefined
+          || level === PluginPermissionLevel.CONFIRM_REQUIRED
+          || level === PluginPermissionLevel.SYSTEM),
       approved: this.approvals.has(pluginId),
       warnings: Object.freeze(this.registry.getPluginWarnings(pluginId) ?? []),
     })

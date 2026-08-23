@@ -38,7 +38,7 @@ function barePlugin(id: string, name = id): Plugin {
     manifest: testManifest({ id, name }),
     install: () => {},
     uninstall: () => {},
-  } as unknown as Plugin
+  }
 }
 
 /** A registry pre-seeded with two governed plugins. */
@@ -102,29 +102,28 @@ describe('PluginGovernanceGateway', () => {
 
   it('records approvals and surfaces them on the roster', async () => {
     const gateway = gatewayWith(await seededRegistry())
-    expect((await gateway.approve({ pluginId: gid('test/alpha') })).ok).toBe(true)
+    expect(gateway.approve({ pluginId: gid('test/alpha') }).ok).toBe(true)
     expect(gateway.list().plugins.find(p => p.pluginId === gid('test/alpha'))?.approved).toBe(true)
   })
 
   it('round-trips presets including duplicate rejection and unknown-id reporting', async () => {
     const registry = await seededRegistry()
     const gateway = gatewayWith(registry)
-    registry.disable(normalizePluginId('test/beta'))
-
-    expect((await gateway.presetSave({ name: 'focus-alpha' })).ok).toBe(true)
-    const duplicate = await gateway.presetSave({ name: 'focus-alpha' })
+    await registry.disable(normalizePluginId('test/beta'))
+    expect(gateway.presetSave({ name: 'focus-alpha' }).ok).toBe(true)
+    const duplicate = gateway.presetSave({ name: 'focus-alpha' })
     expect(duplicate.ok).toBe(false)
     if (!duplicate.ok) expect(duplicate.error.code).toBe('preset-already-exists')
 
-    registry.enable(normalizePluginId('test/beta'))
-    registry.disable(normalizePluginId('test/alpha'))
+    await registry.enable(normalizePluginId('test/beta'))
+    await registry.disable(normalizePluginId('test/alpha'))
     const applied = await gateway.presetLoad({ name: 'focus-alpha' })
     expect(applied.ok).toBe(true)
     if (applied.ok) {
       expect(applied.value.applied).toEqual([gid('test/alpha'), gid('test/beta')])
       expect(applied.value.unknown).toEqual([])
     }
-    expect((await gateway.presetDelete({ name: 'focus-alpha' })).ok).toBe(true)
+    expect(gateway.presetDelete({ name: 'focus-alpha' }).ok).toBe(true)
 
     const missing = await gateway.presetLoad({ name: 'focus-alpha' })
     expect(missing.ok).toBe(false)
@@ -133,17 +132,17 @@ describe('PluginGovernanceGateway', () => {
 
   it('rejects preset names outside the file-stem grammar', async () => {
     const registry = await seededRegistry()
-    const bad = await gatewayWith(registry).presetSave({ name: '../escape' })
+    const bad = gatewayWith(registry).presetSave({ name: '../escape' })
     expect(bad.ok).toBe(false)
     if (!bad.ok) expect(bad.error.code).toBe('request-invalid')
   })
 
   it('keeps install/uninstall explicitly not-implemented until admission lands', async () => {
     const gateway = gatewayWith(await seededRegistry())
-    const install = await gateway.install({ source: 'npm:some/package' } as never)
+    const install = gateway.install({ source: 'npm:some/package' })
     expect(install.ok).toBe(false)
     if (!install.ok) expect(install.error.code).toBe('not-implemented')
-    const uninstall = await gateway.uninstall({ pluginId: gid('test/alpha') })
+    const uninstall = gateway.uninstall({ pluginId: gid('test/alpha') })
     expect(uninstall.ok).toBe(false)
     if (!uninstall.ok) expect(uninstall.error.code).toBe('not-implemented')
   })
