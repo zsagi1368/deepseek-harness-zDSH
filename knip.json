@@ -158,6 +158,12 @@
         "tests/**/*.tsx"
       ]
     },
+    "packages/client/ui-plugin-manager": {
+      "project": [
+        "src/**/*.ts",
+        "src/**/*.tsx"
+      ]
+    },
     "packages/client/ui-deliverables": {
       "entry": [
         "tests/**/*.spec.tsx"
