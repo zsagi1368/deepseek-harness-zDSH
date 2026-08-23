@@ -11,7 +11,16 @@
 import { WebError } from '@deepseek-ai/dsh-web'
 import type { WebFetchBody, WebFetchProvider, WebFetchRequest, WebFetchResult } from '@deepseek-ai/dsh-web'
 import { deadline, timeoutOf } from '@deepseek-ai/dsh-timeout'
+import type { ProxyAgent } from 'undici'
+import { createProxyDispatcher } from './proxy.ts'
 import { classifyContentType, decoderForCharset, isSameOrigin, parseCharset, validateFetchUrl } from './policy.ts'
+
+/**
+ * Node's global `fetch` accepts undici's non-standard `dispatcher` request
+ * option; the DOM `RequestInit` type does not model it, so proxied requests
+ * extend the init with one.
+ */
+type FetchInit = RequestInit & { dispatcher?: ProxyAgent }
 
 /** Resolved provider limits (the plugin's schemastery Config supplies defaults). */
 export interface HttpFetchLimits {
@@ -27,6 +36,12 @@ export interface HttpFetchLimits {
   maxRedirects: number
   /** `User-Agent` header sent on every request. */
   userAgent: string
+  /**
+   * Outbound proxy URL (pure `http://`). The plugin config layer resolves the
+   * environment-variable fallback before constructing a provider; absent means
+   * every request goes out directly.
+   */
+  proxyUrl?: string
 }
 
 /** Stable id this provider registers under. */
@@ -36,7 +51,14 @@ export const LOCAL_FETCH_PROVIDER_ID = 'http'
 export class HttpFetchProvider implements WebFetchProvider {
   readonly id = LOCAL_FETCH_PROVIDER_ID
 
-  constructor(private readonly limits: HttpFetchLimits) {}
+  /** Undici dispatcher for proxied requests; `undefined` fetches directly. */
+  private readonly proxyDispatcher: ProxyAgent | undefined
+
+  constructor(private readonly limits: HttpFetchLimits) {
+    // ProxyAgent construction is local (no connection), so building it eagerly
+    // keeps the request path allocation-free and surfaces a bad proxy URL here.
+    this.proxyDispatcher = limits.proxyUrl === undefined ? undefined : createProxyDispatcher(limits.proxyUrl)
+  }
 
   /** No credentials to check — an anonymous public fetcher is always usable. */
   available(): boolean {
@@ -101,13 +123,17 @@ export class HttpFetchProvider implements WebFetchProvider {
   }
 
   private async requestOnce(url: URL, signal: AbortSignal): Promise<Response> {
+    // Node's global fetch ignores proxy environment variables, so proxying is
+    // expressed as an undici dispatcher attached to the request itself.
+    const init: FetchInit = {
+      method: 'GET',
+      redirect: 'manual',
+      headers: { 'user-agent': this.limits.userAgent, 'accept': 'text/html,application/xhtml+xml,text/*;q=0.9,application/json;q=0.8' },
+      signal,
+    }
+    if (this.proxyDispatcher !== undefined) init.dispatcher = this.proxyDispatcher
     try {
-      return await fetch(url, {
-        method: 'GET',
-        redirect: 'manual',
-        headers: { 'user-agent': this.limits.userAgent, 'accept': 'text/html,application/xhtml+xml,text/*;q=0.9,application/json;q=0.8' },
-        signal,
-      })
+      return await fetch(url, init)
     } catch (error: unknown) {
       throw translateAbortOrNetwork(error, signal)
     }

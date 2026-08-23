@@ -33,8 +33,9 @@
 | `timeoutMs` | `30_000` | Node 定时器范围内的抓取超时：直接 `ctx.web.fetch()` 调用方的资源兜底，而非面向模型的工具调用预算（后者属于 `dsh-tool-call-timeout-policy`）。 |
 | `maxRedirects` | `5` | 同源重定向最大跳数（`0` 表示完全不跟随）。 |
 | `userAgent` | `deepseek-harness/…` | `User-Agent` 标头。 |
+| `proxyUrl` | _（环境变量）_ | 每次抓取使用的出站代理 URL（纯 `http://`；https 目标经 CONNECT 隧道传输）。省略时回退到环境变量，按 `HTTPS_PROXY` → `HTTP_PROXY` → `ALL_PROXY` 顺序取用；均不可用时直连。 |
 
-数值限制会在插件构造时验证：除 `maxRedirects` 外，每个上限都必须是正的有限数；`maxRedirects` 必须是非负整数。无效值会抛出异常，不会静默构造限制荒谬的提供方。
+数值限制会在插件构造时验证：除 `maxRedirects` 外，每个上限都必须是正的有限数；`maxRedirects` 必须是非负整数。无效值会抛出异常，不会静默构造限制荒谬的提供方。显式配置的 `proxyUrl` 同样在构造时验证：必须是可解析的纯 `http://` URL。不可用的环境变量条目会被跳过而非报错——Node 的全局 fetch 本身不理会代理环境变量，因此解析出的代理会以 undici `ProxyAgent` 调度器的形式逐请求注入。
 
 ## 模型体验
 

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { AddressInfo } from 'node:net'
 import { Context } from '@deepseek-ai/cordis'
@@ -7,6 +7,8 @@ import { HttpFetchProvider, LOCAL_FETCH_PROVIDER_ID } from '@deepseek-ai/dsh-web
 import type { HttpFetchLimits } from '@deepseek-ai/dsh-web-fetch-http'
 import * as fetchPlugin from '@deepseek-ai/dsh-web-fetch-http'
 import { classifyContentType, decoderForCharset, isSameOrigin, parseCharset, validateFetchUrl } from '../src/policy.ts'
+import { resolveProxyUrl } from '../src/proxy.ts'
+import { ProxyAgent } from 'undici'
 
 const limits: HttpFetchLimits = {
   maxUrlLength: 2048,
@@ -367,6 +369,75 @@ describe('HttpFetchProvider body cancellation on error paths', () => {
   })
 })
 
+describe('proxy resolution', () => {
+  it('prefers an explicit proxyUrl over proxy environment variables', () => {
+    expect(resolveProxyUrl('http://explicit:1', { HTTPS_PROXY: 'http://env:2' })).toBe('http://explicit:1')
+  })
+
+  it('falls back through HTTPS_PROXY, HTTP_PROXY, ALL_PROXY in order', () => {
+    expect(resolveProxyUrl(undefined, {})).toBeUndefined()
+    expect(resolveProxyUrl(undefined, { HTTPS_PROXY: 'http://a:1' })).toBe('http://a:1')
+    expect(resolveProxyUrl(undefined, { HTTPS_PROXY: '', HTTP_PROXY: 'http://b:2' })).toBe('http://b:2')
+    expect(resolveProxyUrl(undefined, { HTTPS_PROXY: undefined, HTTP_PROXY: '', ALL_PROXY: 'http://c:3' })).toBe('http://c:3')
+  })
+
+  it('honors lowercase environment spellings when uppercase is absent', () => {
+    expect(resolveProxyUrl(undefined, { https_proxy: 'http://lower:1' })).toBe('http://lower:1')
+    expect(resolveProxyUrl(undefined, { http_proxy: 'http://lower:2' })).toBe('http://lower:2')
+    expect(resolveProxyUrl(undefined, { all_proxy: 'http://lower:3' })).toBe('http://lower:3')
+  })
+
+  it('skips unusable environment entries and stays direct when none apply', () => {
+    expect(resolveProxyUrl(undefined, { HTTPS_PROXY: 'not a url', HTTP_PROXY: 'http://b:2' })).toBe('http://b:2')
+    expect(resolveProxyUrl(undefined, { HTTPS_PROXY: 'https://tls-only:8443' })).toBeUndefined()
+    expect(resolveProxyUrl(undefined, { ALL_PROXY: '   ' })).toBeUndefined()
+  })
+
+  it('validates an explicit proxyUrl strictly', () => {
+    expect(() => resolveProxyUrl('https://proxy:8443', {})).toThrow(/must use the http:\/\/ scheme/)
+    expect(() => resolveProxyUrl('garbage', {})).toThrow(/is not a valid URL/)
+  })
+})
+
+/** Stub the global fetch with a mock that answers a plain 200 text response. */
+function stubFetch(): Mock<(url?: unknown, init?: unknown) => Promise<Response>> {
+  const fetchMock = vi.fn(async (_url?: unknown, _init?: unknown) =>
+    new Response('proxied', { status: 200, headers: { 'content-type': 'text/plain' } }))
+  vi.stubGlobal('fetch', fetchMock)
+  return fetchMock
+}
+
+function dispatcherOf(fetchMock: { mock: { calls: unknown[][] } }): unknown {
+  return (fetchMock.mock.calls.at(-1)![1] as { dispatcher?: unknown }).dispatcher
+}
+
+describe('HttpFetchProvider proxy dispatcher', () => {
+  it('attaches an undici ProxyAgent dispatcher when a proxy is configured', async () => {
+    const fetchMock = stubFetch()
+    const result = await provider({ proxyUrl: 'http://proxy.example:8080' }).fetch({ url: base })
+    expect(result.statusCode).toBe(200)
+    expect(result.body.content).toBe('proxied')
+    expect(dispatcherOf(fetchMock)).toBeInstanceOf(ProxyAgent)
+  })
+
+  it('reuses one dispatcher across requests of the same provider', async () => {
+    const fetchMock = stubFetch()
+    const proxied = provider({ proxyUrl: 'http://proxy.example:8080' })
+    await proxied.fetch({ url: base })
+    await proxied.fetch({ url: base })
+    expect(fetchMock.mock.calls).toHaveLength(2)
+    expect(dispatcherOf(fetchMock)).toBe(dispatcherOf({ mock: { calls: fetchMock.mock.calls.slice(0, 1) } }))
+  })
+
+  it('omits the dispatcher entirely when no proxy applies', async () => {
+    const fetchMock = stubFetch()
+    const result = await provider().fetch({ url: base })
+    expect(result.body.content).toBe('proxied')
+    const init = fetchMock.mock.calls[0]![1] as Record<string, unknown>
+    expect('dispatcher' in init).toBe(false)
+  })
+})
+
 describe('web-fetch-http plugin registration', () => {
   it('registers the provider into ctx.web (HMR-safe)', async () => {
     const ctx = new Context()
@@ -425,5 +496,30 @@ describe('web-fetch-http plugin registration', () => {
     await expect(ctx.web.fetch({ url: `${base}/` }))
       .resolves.toMatchObject({ statusCode: 200 })
     await fiber.dispose()
+  })
+
+  it('flows a configured proxyUrl into the registered provider as a dispatcher', async () => {
+    const fetchMock = stubFetch()
+    const ctx = new Context()
+    await ctx.plugin(WebRuntime, { fetchProvider: LOCAL_FETCH_PROVIDER_ID })
+    const fiber = await ctx.plugin(fetchPlugin, { proxyUrl: 'http://config-proxy:3128' })
+    await expect(ctx.web.fetch({ url: `${base}/` }))
+      .resolves.toMatchObject({ statusCode: 200 })
+    expect(dispatcherOf(fetchMock)).toBeInstanceOf(ProxyAgent)
+    await fiber.dispose()
+  })
+
+  it('rejects a non-http proxyUrl at construction', async () => {
+    const ctx = new Context()
+    await ctx.plugin(WebRuntime, { fetchProvider: LOCAL_FETCH_PROVIDER_ID })
+    await expect(ctx.plugin(fetchPlugin, { proxyUrl: 'https://tls-proxy:8443' }))
+      .rejects.toThrow(/must use the http:\/\/ scheme/)
+  })
+
+  it('rejects an unparseable proxyUrl at construction', async () => {
+    const ctx = new Context()
+    await ctx.plugin(WebRuntime, { fetchProvider: LOCAL_FETCH_PROVIDER_ID })
+    await expect(ctx.plugin(fetchPlugin, { proxyUrl: 'not a url' }))
+      .rejects.toThrow(/is not a valid URL/)
   })
 })

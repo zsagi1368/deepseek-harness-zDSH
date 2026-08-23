@@ -33,8 +33,9 @@ A shipping web-tool deployment sets the provider backstop above the tool budget,
 | `timeoutMs` | `30_000` | Fetch timeout within Node's timer range — a resource backstop for direct `ctx.web.fetch()` callers, not the model-facing tool-call budget (that is `dsh-tool-call-timeout-policy`). |
 | `maxRedirects` | `5` | Maximum same-origin redirect hops (`0` follows none). |
 | `userAgent` | `deepseek-harness/…` | `User-Agent` header. |
+| `proxyUrl` | _(environment)_ | Outbound proxy URL for every fetch (pure `http://`; https targets are tunnelled via CONNECT). Omit to fall back to the environment, consulted as `HTTPS_PROXY` → `HTTP_PROXY` → `ALL_PROXY`; requests go direct when none applies. |
 
-The numeric limits are validated at plugin construction: every cap except `maxRedirects` must be a positive finite number, and `maxRedirects` must be a non-negative integer. An invalid value throws rather than silently constructing a provider with nonsensical limits.
+The numeric limits are validated at plugin construction: every cap except `maxRedirects` must be a positive finite number, and `maxRedirects` must be a non-negative integer. An invalid value throws rather than silently constructing a provider with nonsensical limits. An explicitly configured `proxyUrl` is validated the same way: it must parse as a pure `http://` URL. Unusable environment entries are skipped, not fatal — Node's global fetch ignores proxy environment variables on its own, so a resolved proxy is injected per request as an undici `ProxyAgent` dispatcher.
 
 ## Model Experience
 

@@ -12,6 +12,7 @@ import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-web'
 import { HttpFetchProvider } from './provider.ts'
 import type { HttpFetchLimits } from './provider.ts'
+import { resolveProxyUrl } from './proxy.ts'
 
 const MAX_NODE_TIMER_DELAY_MS = 2_147_483_647
 
@@ -44,6 +45,13 @@ export interface Config {
   maxRedirects?: number
   /** `User-Agent` header sent on every request. */
   userAgent?: string
+  /**
+   * Outbound proxy URL for every fetch (pure `http://`; https targets are
+   * tunnelled via CONNECT). Omit to fall back to the environment, consulted in
+   * the order `HTTPS_PROXY` → `HTTP_PROXY` → `ALL_PROXY`; with no usable entry
+   * requests go out directly.
+   */
+  proxyUrl?: string
 }
 
 export const Config: z<Config> = z.object({
@@ -53,6 +61,7 @@ export const Config: z<Config> = z.object({
   timeoutMs: z.number().default(30_000),
   maxRedirects: z.number().default(5),
   userAgent: z.string().default(DEFAULT_USER_AGENT),
+  proxyUrl: z.string(),
 })
 
 /** Complete config after schemastery applies every field default. */
@@ -89,6 +98,7 @@ export function apply(ctx: Context, config: Config): void {
   assertPositiveFinite('maxBodyChars', resolved.maxBodyChars)
   assertTimeoutMs(resolved.timeoutMs)
   assertNonNegativeInteger('maxRedirects', resolved.maxRedirects)
+  const proxyUrl = resolveProxyUrl(resolved.proxyUrl)
   const limits: HttpFetchLimits = {
     maxUrlLength: resolved.maxUrlLength,
     maxResponseBytes: resolved.maxResponseBytes,
@@ -97,5 +107,6 @@ export function apply(ctx: Context, config: Config): void {
     maxRedirects: resolved.maxRedirects,
     userAgent: resolved.userAgent,
   }
+  if (proxyUrl !== undefined) limits.proxyUrl = proxyUrl
   ctx.web.registerFetchProvider(new HttpFetchProvider(limits))
 }
