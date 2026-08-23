@@ -102,6 +102,16 @@ export function apply(ctx: ClientContext): void {
       await ctx.workspaces.insertSessionBefore(workspaceId, sessionId, beforeSessionId)
     },
     createWorkspace: input => ctx.workspaces.create(input),
+    // Offered only while the connected host says it can reach a native
+    // desktop at all (host.describe's canOpenPath); otherwise the row menus
+    // simply omit the entry instead of offering a button that fails.
+    ...(hostDescription.getSnapshot()?.canOpenPath === true
+      ? {
+        revealWorkspacePath: async (path: string): Promise<void> => {
+          await ctx.workspaces.revealPath(path)
+        },
+      }
+      : {}),
     hooks: { directoryFlow: browserFlowSource, hostDescription },
   })
   const pickerInjected = (): WorkspacePickerInjected => ({

@@ -9,7 +9,7 @@
  */
 
 import { release as osRelease } from 'node:os'
-import { extname } from 'node:path'
+import { dirname, extname } from 'node:path'
 import { runNativeCommand, type NativeCommandRunner } from '@deepseek-ai/dsh-native-command'
 
 /** Testable command boundary; native implementations never invoke a shell. */
@@ -84,7 +84,6 @@ type PathOpenIntent = 'default' | 'text-editor'
 function powershellLiteral(path: string): string {
   return `'${path.replace(/'/g, "''")}'`
 }
-
 /** Whether one environment marker is set to a non-empty value. */
 function present(value: string | undefined): boolean {
   return value !== undefined && value !== ''
@@ -199,4 +198,46 @@ export function openNativeTextFile(
   internals: PathOpenerInternals = {},
 ): Promise<void> {
   return openNativePathWithIntent(path, signal, 'text-editor', internals)
+}
+
+/**
+ * Reveal one path in the platform's file manager, selecting it among its
+ * siblings: Explorer's `/select` on Windows (WSL translates the path first),
+ * Finder's "reveal" on macOS, and the containing directory through `xdg-open`
+ * elsewhere — the freedesktop convention names no selection verb. WSL reveals
+ * through the Windows desktop like every other native hand-off.
+ * @param path - absolute filesystem path to reveal.
+ * @param signal - caller/connection lifetime; abort terminates the native command.
+ * @param internals - Platform, environment, and runner hooks for deterministic tests.
+ */
+export async function revealNativePath(
+  path: string,
+  signal: AbortSignal,
+  internals: PathOpenerInternals = {},
+): Promise<void> {
+  const platform = internals.platform ?? process.platform
+  const run = internals.run ?? runNativeCommand
+  const wsl = platform === 'linux' && isWsl(internals)
+
+  if (platform === 'win32') {
+    await run('explorer', [`/select,${path}`], signal)
+    return
+  }
+  if (platform === 'darwin') {
+    await run('open', ['-R', path], signal)
+    return
+  }
+  if (platform === 'linux') {
+    if (wsl) {
+      const translated = await run('wslpath', ['-w', path], signal)
+      signal.throwIfAborted()
+      const windowsPath = translated.stdout.replace(/[\r\n]+$/, '')
+      if (windowsPath === '') throw new Error('wslpath returned no Windows path')
+      await run('explorer', [`/select,${windowsPath}`], signal)
+      return
+    }
+    await run('xdg-open', [dirname(path)], signal)
+    return
+  }
+  throw new Error(`native path reveal is unsupported on ${platform}`)
 }

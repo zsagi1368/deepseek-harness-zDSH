@@ -358,6 +358,11 @@ describe('WorkspaceRuntime', () => {
     expect(api.callsOf('host.openPath')).toEqual([{ path: '/w/alpha/a.ts' }])
     api.onOpenPath = () => Promise.resolve(err({ code: 'internal', message: 'boom', details: {} }))
     await expect(workspaces.openPath('/missing')).rejects.toThrow(/path open failed/)
+
+    await expect(workspaces.revealPath('/w/alpha')).resolves.toBeUndefined()
+    expect(api.callsOf('host.revealPath')).toEqual([{ path: '/w/alpha' }])
+    api.onRevealPath = () => Promise.resolve(err({ code: 'internal', message: 'boom', details: {} }))
+    await expect(workspaces.revealPath('/missing')).rejects.toThrow(/path reveal failed/)
   })
 
   it('deletes a Workspace or preserves it when the Host rejects deletion', async () => {

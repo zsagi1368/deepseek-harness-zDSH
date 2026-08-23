@@ -109,7 +109,9 @@ import {
   hasApiRemoteSubagentOwner,
   inspectApiRemoteSession,
 } from '@deepseek-ai/dsh-api-remotes'
-import { canOpenNativePath, openNativePath, openNativeTextFile } from './native-path-opener.ts'
+import {
+  canOpenNativePath, openNativePath, openNativeTextFile, revealNativePath,
+} from './native-path-opener.ts'
 
 /** Page size when history is called without maxMessages. */
 const DEFAULT_MAX_MESSAGES = 50
@@ -596,6 +598,8 @@ export interface ApiProxyDefaults {
   openPath?: (path: string, signal: AbortSignal) => Promise<void>
   /** Native text-editor handoff; injectable for settings-document tests. */
   openTextFile?: (path: string, signal: AbortSignal) => Promise<void>
+  /** Native file-manager reveal (select the entry); injectable for carrier tests. */
+  revealPath?: (path: string, signal: AbortSignal) => Promise<void>
   /** Validated DEFLATE level for session-log ZIP entries; defaults to 6. */
   sessionExportCompressionLevel?: SessionLogCompressionLevel
   /** Maximum artifact size eligible for one cold blankness read. */
@@ -1854,6 +1858,31 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
     return openTarget(request, path, signal, open)
   }
 
+  /** Reveal one Host-resolved path in the platform's file manager, failures mapped like openTarget's. */
+  async function revealTarget(
+    request: RpcRequest<unknown>, path: string, signal: AbortSignal,
+  ): Promise<RpcResponse<{ revealed: true }>> {
+    const reveal = defaults.revealPath
+      ?? ((target: string, revealSignal: AbortSignal) => revealNativePath(target, revealSignal))
+    try {
+      await reveal(path, signal)
+      return ok(request, { revealed: true as const })
+    } catch (error: unknown) {
+      if (signal.aborted) {
+        return err(request, {
+          code: 'cancelled',
+          message: 'path reveal was aborted',
+          details: {},
+        })
+      }
+      return err(request, {
+        code: 'internal',
+        message: `path reveal failed: ${error instanceof Error ? error.message : String(error)}`,
+        details: {},
+      })
+    }
+  }
+
   /** Whether this deployment can hand a path to a native opener at all. */
   function canOpenPaths(): boolean {
     if (defaults.canOpenPath !== undefined) return defaults.canOpenPath()
@@ -2908,6 +2937,10 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
 
       async openPath(request, signal) {
         return openPath(request, request.payload.path, signal)
+      },
+
+      async revealPath(request, signal) {
+        return revealTarget(request, request.payload.path, signal)
       },
     },
 

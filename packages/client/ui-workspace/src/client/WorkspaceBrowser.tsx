@@ -243,6 +243,11 @@ type SessionTreeProps = Pick<
   pinnedSessions: readonly string[]
   /** Pin/unpin a session in the persisted view state. */
   onTogglePin: (sessionId: SessionNode['id']) => void
+  /**
+   * Reveal a host path in the platform's file manager; absent when the
+   * connected host reports no native desktop.
+   */
+  onRevealWorkspace?: ((path: string) => Promise<void>) | undefined
   /** Open the browser-owned rename dialog for a real Workspace group. */
   onRenameRequest: (workspaceId: WorkspaceId, currentTitle: string) => void
   /** Open the browser-owned delete-confirmation dialog for a real Workspace group. */
@@ -262,7 +267,7 @@ function SessionTree({
   insertWorkspaceBefore, insertSessionBefore, orderBy,
   groupExpansion, setGroupExpanded,
   sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder,
-  pinnedSessions, onTogglePin, home, t,
+  pinnedSessions, onTogglePin, onRevealWorkspace, home, t,
 }: SessionTreeProps) {
   const list = useSessions(s => s)
   const current = list.current
@@ -488,6 +493,15 @@ function SessionTree({
                     /* v8 ignore next -- narrowing guard: the actions object exists only for real-workspace groups. */
                       if (group.workspaceId !== undefined) onDeleteRequest(group.workspaceId, group.label)
                     },
+                    ...(onRevealWorkspace === undefined || group.cwd === undefined
+                      ? {}
+                      : {
+                        reveal: () => {
+                          onRevealWorkspace(group.cwd as string).catch((reason: unknown) => {
+                            console.warn('workspace reveal rejected:', reason)
+                          })
+                        },
+                      }),
                   }}
               />
               {(expandedSessionGroups.includes(group.key)
@@ -777,6 +791,7 @@ export function WorkspaceBrowser({
   archiveSession,
   insertSessionBefore,
   createWorkspace,
+  revealWorkspacePath,
   searchSessions,
   searchResultLimit,
   useDirectoryFlow,
@@ -1212,6 +1227,7 @@ export function WorkspaceBrowser({
                 archivedSessionIds={archivedSessionIds}
                 pinnedSessions={pinnedSessionIds}
                 onTogglePin={onTogglePin}
+                onRevealWorkspace={revealWorkspacePath}
                 startSession={startSession}
                 open={open}
                 insertWorkspaceBefore={insertWorkspaceBefore}

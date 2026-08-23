@@ -95,4 +95,15 @@ export interface HostApi {
     request: RpcRequest<{ path: string }>,
     signal: AbortSignal,
   ): Promise<RpcResponse<{ opened: true }>>
+
+  /**
+   * Reveal a filesystem path in the platform's file manager with the entry
+   * selected (Explorer `/select`, Finder `open -R`; elsewhere the containing
+   * directory opens through `xdg-open`). Same trust fence and capability
+   * posture as {@link openPath}.
+   */
+  revealPath(
+    request: RpcRequest<{ path: string }>,
+    signal: AbortSignal,
+  ): Promise<RpcResponse<{ revealed: true }>>
 }

@@ -16,7 +16,10 @@ vi.mock('node:child_process', () => ({ execFile: execFileMock }))
 
 import { release as osRelease } from 'node:os'
 import { describe, expect, it, vi } from 'vitest'
-import { canOpenNativePath, openNativePath, openNativeTextFile, type PathOpenerRunner } from '../src/native-path-opener.ts'
+import {
+  canOpenNativePath, openNativePath, openNativeTextFile, revealNativePath,
+  type PathOpenerRunner,
+} from '../src/native-path-opener.ts'
 
 const signal = () => new AbortController().signal
 
@@ -119,6 +122,43 @@ describe('native path opener', () => {
   it('rejects unsupported platforms', async () => {
     await expect(openNativePath('/x', signal(), { platform: 'freebsd' as NodeJS.Platform }))
       .rejects.toThrow('unsupported on freebsd')
+  })
+
+  it.each([
+    ['C:\\work\\project', 'explorer', ['/select,C:\\work\\project']],
+    ['/Users/test/notes.md', 'open', ['-R', '/Users/test/notes.md']],
+  ])('reveals %s with the platform file manager selection verb', async (path, command, args) => {
+    const run = vi.fn<PathOpenerRunner>(async () => ({ stdout: '', stderr: '' }))
+    await revealNativePath(path, signal(), { platform: path.startsWith('C:') ? 'win32' : 'darwin', run })
+    expect(run).toHaveBeenCalledWith(command, args, expect.any(AbortSignal))
+  })
+
+  it('opens the containing directory on desktop Linux where no selection verb exists', async () => {
+    const run = vi.fn<PathOpenerRunner>(async () => ({ stdout: '', stderr: '' }))
+    await revealNativePath('/home/test/work/file.txt', signal(), {
+      platform: 'linux', osRelease: '6.8.0-generic',
+      env: { WSL_DISTRO_NAME: '', WSL_INTEROP: '' }, run,
+    })
+    expect(run).toHaveBeenCalledWith('xdg-open', ['/home/test/work'], expect.any(AbortSignal))
+  })
+
+  it('reveals WSL paths through the Windows Explorer after translation', async () => {
+    const run = vi.fn<PathOpenerRunner>(async command => command === 'wslpath'
+      ? { stdout: '\\\\wsl.localhost\\Ubuntu\\home\\test\\a.txt\r\n', stderr: '' }
+      : { stdout: '', stderr: '' })
+    await revealNativePath('/home/test/a.txt', signal(), {
+      platform: 'linux', osRelease: '5.15.153.1-microsoft-standard-WSL2',
+      env: { WSL_DISTRO_NAME: 'Ubuntu' }, run,
+    })
+    expect(run.mock.calls).toEqual([
+      ['wslpath', ['-w', '/home/test/a.txt'], expect.any(AbortSignal)],
+      ['explorer', ['/select,\\\\wsl.localhost\\Ubuntu\\home\\test\\a.txt'], expect.any(AbortSignal)],
+    ])
+  })
+
+  it('rejects a reveal on unsupported platforms too', async () => {
+    await expect(revealNativePath('/x', signal(), { platform: 'freebsd' as NodeJS.Platform }))
+      .rejects.toThrow('reveal is unsupported on freebsd')
   })
 
   it('uses the current process platform when no platform override is supplied', async () => {

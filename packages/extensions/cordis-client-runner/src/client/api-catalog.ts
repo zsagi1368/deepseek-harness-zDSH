@@ -342,6 +342,11 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'path', description: 'absolute or host-resolvable path.' }],
       },
       {
+        signature: 'revealPath(path: string): Promise<void>',
+        description: 'Reveal a filesystem path in the file manager of the host platform.',
+        parameters: [{ name: 'path', description: 'absolute or host-resolvable path.' }],
+      },
+      {
         signature: 'rename(workspaceId: WorkspaceId, title: string): Promise<WorkspaceView>',
         description: 'Rename a Workspace.',
         parameters: [{ name: 'workspaceId', description: 'target workspace.' }, { name: 'title', description: 'the new display title.' }],

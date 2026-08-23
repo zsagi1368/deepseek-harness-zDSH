@@ -137,6 +137,12 @@ export type WorkspaceBrowserInjected = {
   insertSessionBefore: (workspaceId: WorkspaceId, sessionId: SessionId, beforeSessionId?: SessionId) => Promise<void>
   /** Adopt a picked host directory as a real Workspace before targeting a Session. */
   createWorkspace: (input: { path: string }) => Promise<WorkspaceView>
+  /**
+   * Reveal one host path in the platform's file manager with the entry
+   * selected (Explorer `/select`, Finder `open -R`; elsewhere its directory
+   * opens through `xdg-open`). Absent when the host cannot open paths.
+   */
+  revealWorkspacePath?: (path: string) => Promise<void>
 }
 
 /** Full browser props: shell owner share + viewing store + injected actions + the locale seat. */

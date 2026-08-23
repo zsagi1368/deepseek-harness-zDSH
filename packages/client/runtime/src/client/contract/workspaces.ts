@@ -59,6 +59,13 @@ export interface IWorkspaces {
    */
   openPath(path: string): Promise<void>
   /**
+   * Reveal a filesystem path in the Host platform's file manager with the
+   * entry selected (Explorer `/select`, Finder `open -R`; elsewhere the
+   * containing directory opens through `xdg-open`).
+   * @param path - absolute or host-resolvable path.
+   */
+  revealPath(path: string): Promise<void>
+  /**
    * Rename a Workspace.
    * @param workspaceId - target workspace.
    * @param title - the new display title.
