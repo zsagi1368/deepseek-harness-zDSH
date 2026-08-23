@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/dsh/CHANGELOG.md
-CHANGELOG.md: e89c0c100b02c79fa460113e7ced10e7e54d913a
-CHANGELOG.zh.md: 21842e0239dee5b7ea99c6d74d0ed70365b2287a
+CHANGELOG.md: b16e693b267056a7264dfe7c65ca08d239a9aa97
+CHANGELOG.zh.md: 6ef0079fd330c358aa8b5264e4a6169e67e3b9be

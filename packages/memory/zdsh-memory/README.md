@@ -1,5 +1,7 @@
 # @deepseek-ai/dsh-agent-memory
 
+English | [中文](README.zh.md)
+
 Cross-session heuristic memory for the DeepSeek Harness: zero-LLM extraction from the session event stream, daily-shard branch-local persistence, and keyword-overlap Top-K injection through the existing system-prompt section mechanism.
 
 ## Service API
