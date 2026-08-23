@@ -779,7 +779,9 @@ describe('hand-declared providers', () => {
     fireEvent.click(screen.getByText(en.create))
 
     await waitFor(() => { expect(onClose).toHaveBeenCalledWith(true) })
-    const profile = firstMutate(mutate).ops[0].value as Record<string, unknown>
+    const op = firstMutate(mutate).ops.at(0)
+    expect(op).toBeDefined()
+    const profile = op!.value as Record<string, unknown>
     expect(profile['reasoning']).toBe('high')
   })
 

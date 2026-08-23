@@ -159,6 +159,9 @@ function fakeApi(overrides: Partial<{ muxFrames: MuxFrame[]; hostFrames: HostFra
       async openPath(request) {
         return { rpcId: request.rpcId, result: { ok: true, value: { opened: true as const } } }
       },
+      async revealPath(request) {
+        return { rpcId: request.rpcId, result: { ok: true, value: { revealed: true as const } } }
+      },
     },
     workspace: {
       async list(request) {
@@ -422,6 +425,18 @@ describe('unary round trip (handler ⇄ client, no network)', () => {
     const response = await client(api).host.openPath({ path: '/tmp/a.txt' })
     expect(opened).toBe('/tmp/a.txt')
     expect(response.result).toEqual({ ok: true, value: { opened: true } })
+  })
+
+  it('round-trips host.revealPath through the wire form', async () => {
+    const api = fakeApi()
+    let revealed: string | undefined
+    api.host.revealPath = async (request) => {
+      revealed = request.payload.path
+      return { rpcId: request.rpcId, result: { ok: true, value: { revealed: true as const } } }
+    }
+    const response = await client(api).host.revealPath({ path: '/tmp/a.txt' })
+    expect(revealed).toBe('/tmp/a.txt')
+    expect(response.result).toEqual({ ok: true, value: { revealed: true } })
   })
 
   it('round-trips skill.list through the wire form', async () => {
