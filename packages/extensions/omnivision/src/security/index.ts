@@ -3,6 +3,7 @@
  */
 import { lookup } from 'node:dns/promises'
 import { lstatSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { isAbsolute, relative, resolve } from 'node:path'
 
 /**
@@ -92,6 +93,19 @@ export function isPlainFileAt(path: string): boolean {
 }
 
 /**
+ * Best-effort lstat probe of the FINAL path component: true only when it
+ * exists and is a symbolic link. Unreadable or missing targets read as "not a
+ * symlink" — the same ENOENT tolerance rejectSymlink applies.
+ */
+function isFinalSymlink(path: string): boolean {
+  try {
+    return lstatSync(path).isSymbolicLink()
+  } catch {
+    return false
+  }
+}
+
+/**
  * Path policy — whitelist-based access control
  */
 export class PathPolicy {
@@ -102,15 +116,28 @@ export class PathPolicy {
   constructor(workspace: string, options: { allowedDirs?: string[]; tempDir?: string } = {}) {
     this.workspace = resolve(workspace)
     this.allowedDirs = new Set((options.allowedDirs ?? []).map(d => resolve(d)))
-    this.tempDir = options.tempDir ?? process.env.TEMP ?? '/tmp'
+    // os.tmpdir() resolves TEMP/TMP/TMPDIR for the running platform instead of
+    // a hard-coded '/tmp' that is meaningless on Windows.
+    this.tempDir = options.tempDir ?? tmpdir()
   }
 
+  /**
+   * Whether `resolved` passes containment AND its final component is not a
+   * symbolic link (R1-06 best effort): a symlink planted inside an allowed
+   * root must not pivot the read elsewhere. RESIDUAL RISK: interior path
+   * segments are not resolved here, so a symlinked directory component can
+   * still traverse outside the root between this check and the actual open;
+   * closing that window needs O_NOFOLLOW/openat-style relative handles, which
+   * this layer does not perform (see also isPlainFileAt).
+   */
   allowInput(path: string): boolean {
     const resolved = resolve(path)
     return (
-      isPathWithinRoot(resolved, this.workspace)
-      || isPathWithinRoot(resolved, this.tempDir)
-      || [...this.allowedDirs].some(dir => isPathWithinRoot(resolved, dir))
+      (
+        isPathWithinRoot(resolved, this.workspace)
+        || isPathWithinRoot(resolved, this.tempDir)
+        || [...this.allowedDirs].some(dir => isPathWithinRoot(resolved, dir))
+      ) && !isFinalSymlink(resolved)
     )
   }
 
@@ -119,10 +146,13 @@ export class PathPolicy {
     return [this.workspace, this.tempDir]
   }
 
+  /** Same containment-plus-final-symlink discipline as {@link allowInput}. */
   allowOutput(path: string): boolean {
     const resolved = resolve(path)
     return (
-      isPathWithinRoot(resolved, this.workspace) || isPathWithinRoot(resolved, this.tempDir)
+      (
+        isPathWithinRoot(resolved, this.workspace) || isPathWithinRoot(resolved, this.tempDir)
+      ) && !isFinalSymlink(resolved)
     )
   }
 

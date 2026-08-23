@@ -153,15 +153,26 @@ export class OmniVisionPlugin {
     // PathPolicy gate: tool-supplied local image paths never reach a provider
     // unless they sit inside the workspace or temp locations.
     const allowed = this.pathPolicy.allowInput.bind(this.pathPolicy)
-    const imagesArg = args.images as Array<{ path: string; contentHash: string; mime?: string; bytes?: number }> | undefined
-    const images = (imagesArg ?? []).filter(img =>
-      typeof img === 'object' && img !== null && typeof img.path === 'string' && allowed(img.path),
-    ).map(img => ({
-      kind: 'local' as const,
-      path: img.path,
-      contentHash: img.contentHash,
-      ...(img.mime !== undefined && { mime: img.mime }),
-    }))
+    const imagesArg = args.images as Array<unknown> | undefined
+    const images = (imagesArg ?? []).flatMap((raw) => {
+      // Tool arguments are untrusted at runtime despite the wire shape, so
+      // every entry is narrowed before use and malformed ones simply drop.
+      if (typeof raw !== 'object' || raw === null) return []
+      const candidate = raw as { path?: unknown }
+      if (typeof candidate.path !== 'string') return []
+      if (!allowed(candidate.path)) {
+        // An over-privileged image path must not vanish silently (N-05).
+        console.warn(`[omnivision] rejected unauthorized image path ${JSON.stringify(candidate.path)}`)
+        return []
+      }
+      const img = raw as { path: string; contentHash: string; mime?: string }
+      return [{
+        kind: 'local' as const,
+        path: img.path,
+        contentHash: img.contentHash,
+        ...(img.mime !== undefined && { mime: img.mime }),
+      }]
+    })
 
     return executeWithFailover(
       this.providers,

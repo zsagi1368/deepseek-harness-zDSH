@@ -10,12 +10,16 @@ import type { VisionProvider } from './provider.js'
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024 // 25MB
 // Local image reads are admitted only from temp locations or caller-declared
-// roots (the plugin's workspace), compared at path-segment boundaries.
-const BASE_ALLOWED_ROOTS = ['/tmp', '/private/tmp']
+// roots (the plugin's workspace), compared at path-segment boundaries. The
+// temp root comes from os.tmpdir() rather than hard-coded '/tmp' literals, so
+// the platform's real temp directory resolves on Windows and macOS too.
+function baseAllowedRoots(): string[] {
+  return [tmpdir()]
+}
 
 /** Effective readable roots for one execute call: base temp roots + extras. */
 export function resolveAllowedRoots(allowedPaths?: readonly string[]): string[] {
-  return [...BASE_ALLOWED_ROOTS, tmpdir(), ...(allowedPaths ?? [])].map(root => resolve(root))
+  return [...baseAllowedRoots(), ...(allowedPaths ?? [])].map(root => resolve(root))
 }
 
 /**
