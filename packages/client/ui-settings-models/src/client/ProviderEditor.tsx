@@ -11,14 +11,14 @@
  * display name and wire protocol of a pi-ai route the adapter does not ship —
  * the two fields the create card asked that route for, editable here for the
  * same reason).
- * Reasoning effort is deliberately absent: it is a per-MODEL capability, and
- * the models under one provider disagree about it, so a provider-scoped
- * control can only be set to a value some of them reject. The composer's
- * model picker offers each model its own levels; `settings.yaml` keeps the
- * profile field for a deployment that knows its route. Everything else stays
- * owned by `settings.yaml`. Profile edits land as minimal `settings.mutate`
- * path ops against the stored section — the card names only the fields it can
- * see instead of rebuilding the whole subtree from a partial descriptor.
+ * Reasoning effort appears only as the pi-ai route-level default (`reasoning`,
+ * the same seam the official DeepSeek route carries as its `reasoningEffort`
+ * config field): it seeds requests to models that support the level, while the
+ * composer's model picker keeps owning the per-model, per-session choice.
+ * `settings.yaml` keeps every other profile field. Profile edits land as
+ * minimal `settings.mutate` path ops against the stored section — the card
+ * names only the fields it can see instead of rebuilding the whole subtree
+ * from a partial descriptor.
  */
 
 import { useEffect, useMemo, useState } from 'react'
@@ -30,7 +30,7 @@ import {
 import { apiKeyFailure } from './apiKey.ts'
 import { EditorFooter } from './EditorFooter.tsx'
 import { ModelListEditor } from './ModelListEditor.tsx'
-import { deriveKeyRef, messageOf, protocolChoices } from './store.ts'
+import { deriveKeyRef, messageOf, protocolChoices, reasoningEffortChoices, reasoningEffortKey } from './store.ts'
 import type { SettingsSchemaOperations } from './schema-operations.ts'
 import type { en } from './locales.ts'
 import styles from './ModelsSection.module.css'
@@ -177,6 +177,12 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
   // it rehydrates the whole section schema, so the other layouts skip it.
   const protocols = useMemo(
     () => layout === 'pi-ai' ? protocolChoices(namespace, schema) : [],
+    [layout, namespace, schema],
+  )
+  // Same schema read as the protocols: the levels the adapter's own `Config`
+  // accepts for a route-level reasoning default.
+  const efforts = useMemo(
+    () => layout === 'pi-ai' ? reasoningEffortChoices(namespace, schema) : [],
     [layout, namespace, schema],
   )
 
@@ -454,6 +460,31 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
                         announced as a choice with no identity. */}
                     {probeApi === undefined ? <option value="">{t('customApiUnset')}</option> : null}
                     {protocols.map(choice => <option key={choice} value={choice}>{choice}</option>)}
+                  </select>
+                </div>
+              )
+              : null}
+            {/* The route-level reasoning default: every pi-ai route takes it,
+                shipped or hand-declared. Clearing removes the field so the
+                adapter falls back to the provider's own behavior, and a
+                session's model picker choice wins over whatever lands here. */}
+            {efforts.length > 0
+              ? (
+                <div className={styles['field']}>
+                  <span className={styles['fieldLabel']}>{t('reasoningEffort')}</span>
+                  <select
+                    className={`${styles['input']} ${styles['selectInput']}`}
+                    value={stringAt(draft, 'reasoning') ?? ''}
+                    aria-label={t('reasoningEffort')}
+                    title={t('reasoningEffortHint')}
+                    disabled={disabled}
+                    onChange={(event) => { setField('reasoning', event.target.value) }}
+                  >
+                    <option value="">{t('reasoningEffortDefault')}</option>
+                    {efforts.map((level) => {
+                      const key = reasoningEffortKey(level)
+                      return <option key={level} value={level}>{key === undefined ? level : t(key)}</option>
+                    })}
                   </select>
                 </div>
               )

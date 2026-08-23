@@ -12,6 +12,7 @@ import type {
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import type { SettingsDescribeFace } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { en } from './locales.ts'
 import type { SettingsSchemaOperations } from './schema-operations.ts'
 
 /**
@@ -89,6 +90,51 @@ export function protocolChoices(
   const list = (node as { type?: string; list?: readonly { value?: unknown }[] } | undefined)
   if (list?.type !== 'union' || list.list === undefined) return []
   return list.list.map(entry => entry.value).filter((value): value is string => typeof value === 'string')
+}
+
+/**
+ * The reasoning efforts a pi-ai profile may name as its route default, read out
+ * of the owning namespace's own schema — the same union the adapter's
+ * `Config.providers.*.reasoning` accepts. A schema read keeps the offered
+ * levels pinned to what the adapter validates, exactly like
+ * {@link protocolChoices}.
+ * @param namespace - the namespace view whose schema declares the profile shape.
+ * @param schema - settings schema operations.
+ * @returns the effort level names, or an empty list when the schema has none.
+ */
+export function reasoningEffortChoices(
+  namespace: SettingsNamespaceView | undefined,
+  schema: SettingsSchemaOperations,
+): string[] {
+  if (namespace === undefined) return []
+  const node = schema.nodeAtPath(schema.rehydrate(namespace.schema), ['providers', PROBE_ROUTE, 'reasoning'])
+  const list = (node as { type?: string; list?: readonly { value?: unknown }[] } | undefined)
+  if (list?.type !== 'union' || list.list === undefined) return []
+  return list.list.map(entry => entry.value).filter((value): value is string => typeof value === 'string')
+}
+
+/** Localized option labels this page ships for the known effort levels. */
+const EFFORT_LABEL_KEYS = {
+  off: 'effortOff',
+  minimal: 'effortMinimal',
+  low: 'effortLow',
+  medium: 'effortMedium',
+  high: 'effortHigh',
+  xhigh: 'effortXhigh',
+  max: 'effortMax',
+} as const satisfies Record<string, keyof typeof en>
+
+/**
+ * Localized option label for one schema-reported effort level. The list itself
+ * is a schema read, so an adapter that adds a level before this page learns it
+ * still renders — spelled with its raw wire name.
+ * @param level - the level name from the adapter's schema union.
+ * @returns its copy key, or undefined when this build has no label for it.
+ */
+export function reasoningEffortKey(level: string): keyof typeof en | undefined {
+  return level in EFFORT_LABEL_KEYS
+    ? EFFORT_LABEL_KEYS[level as keyof typeof EFFORT_LABEL_KEYS]
+    : undefined
 }
 
 /** The credential reference a resolved profile names (its `apiKeyEnv` field). */

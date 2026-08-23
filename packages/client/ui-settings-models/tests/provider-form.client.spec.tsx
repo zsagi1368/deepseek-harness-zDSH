@@ -19,6 +19,8 @@ afterEach(cleanup)
 const t: ModelsSectionInjected['t'] = key => en[key]
 
 const PROTOCOLS = ['openai-completions', 'openai-responses', 'anthropic-messages']
+/** The reasoning levels the test profile schema accepts (mirrors the adapter union). */
+const EFFORTS = ['off', 'low', 'medium', 'high']
 
 /** The pi-ai profile shape as the host serializes it, including the layer-1 fields. */
 const PiAiConfig = Schema.object({
@@ -34,7 +36,7 @@ const PiAiConfig = Schema.object({
       contextWindow: Schema.number(),
       maxTokens: Schema.number(),
     })),
-    reasoning: Schema.union(['off', 'high']),
+    reasoning: Schema.union(['off', 'low', 'medium', 'high']),
   })),
 })
 
@@ -540,7 +542,7 @@ describe('endpoint interrogation', () => {
     const scripted = scriptedFace()
     render(
       <CustomProviderCard
-        taken={[]} protocols={PROTOCOLS} revision={7} api={scripted.face as never}
+        taken={[]} protocols={PROTOCOLS} efforts={EFFORTS} revision={7} api={scripted.face as never}
         t={t} readOnly={false} onClose={vi.fn()}
       />,
     )
@@ -690,6 +692,7 @@ describe('hand-declared providers', () => {
       <CustomProviderCard
         taken={['openai']}
         protocols={PROTOCOLS}
+        efforts={EFFORTS}
         revision={7}
         api={scripted.face as never}
         t={t}
@@ -736,17 +739,15 @@ describe('hand-declared providers', () => {
   })
 
   it('scopes each card to fields a provider can actually own', async () => {
-    // Reasoning effort is a per-MODEL capability and the
-    // models under one provider disagree about it, so a provider-scoped
-    // control could only be set to a value some of them reject — which would
-    // take the whole provider out of the picker. The composer's model picker
-    // owns the choice, and a switch there records provider+model+effort together.
+    // Per-MODEL reasoning effort stays with the composer's model picker (a
+    // switch there records provider+model+effort together); the cards expose
+    // only the route-level default the adapter accepts for every model.
     const fields = () => [...document.querySelectorAll('input,select')]
       .map(el => el.getAttribute('aria-label')).filter(Boolean)
 
     mountCard()
     fireEvent.change(screen.getByLabelText(en.customRoute), { target: { value: 'acme' } })
-    expect(fields()).toEqual([en.customRoute, en.customDisplayName, en.baseUrl, en.customApi, en.keyInput])
+    expect(fields()).toEqual([en.customRoute, en.customDisplayName, en.baseUrl, en.customApi, en.reasoningEffort, en.keyInput])
     cleanup()
 
     // A shipped route's models each carry their own protocol, so its editor
@@ -754,7 +755,7 @@ describe('hand-declared providers', () => {
     await mountSection({ providers: { openai: { apiKeyEnv: 'OPENAI_API_KEY' } } })
     openEditor('openai')
     fireEvent.click(screen.getByText(en.customized))
-    expect(fields()).toEqual([en.keyInput, en.baseUrl])
+    expect(fields()).toEqual([en.keyInput, en.baseUrl, en.reasoningEffort])
     cleanup()
 
     // A hand-declared route named its own protocol at creation, so editing it
@@ -764,7 +765,67 @@ describe('hand-declared providers', () => {
       declaredRoutes: ['acme-gateway'],
     })
     openEditor('acme-gateway')
-    expect(fields()).toEqual([en.keyInput, en.customDisplayName, en.baseUrl, en.customApi])
+    expect(fields()).toEqual([en.keyInput, en.customDisplayName, en.baseUrl, en.customApi, en.reasoningEffort])
+  })
+
+  it('carries a chosen route-level reasoning default into the created profile', async () => {
+    const { mutate, onClose } = mountCard()
+
+    fireEvent.change(screen.getByLabelText(en.customRoute), { target: { value: 'acme-gateway' } })
+    fireEvent.change(screen.getByLabelText(en.baseUrl), { target: { value: 'https://gateway.acme.example/v1' } })
+    fireEvent.change(screen.getByLabelText(en.reasoningEffort), { target: { value: 'high' } })
+    fireEvent.click(screen.getByRole('button', { name: en.addModel }))
+    fireEvent.change(screen.getByLabelText(`${en.modelId} 1`), { target: { value: 'acme-large' } })
+    fireEvent.click(screen.getByText(en.create))
+
+    await waitFor(() => { expect(onClose).toHaveBeenCalledWith(true) })
+    const profile = firstMutate(mutate).ops[0].value as Record<string, unknown>
+    expect(profile['reasoning']).toBe('high')
+  })
+
+  it('writes and clears the route-level reasoning default as single path ops', async () => {
+    const { mutate } = await mountSection({
+      providers: { openai: { apiKeyEnv: 'OPENAI_API_KEY', baseURL: 'https://proxy.example/v1' } },
+    })
+    openEditor('openai')
+
+    const select = screen.getByLabelText<HTMLSelectElement>(en.reasoningEffort)
+    expect(select.value).toBe('')
+    fireEvent.change(select, { target: { value: 'medium' } })
+    fireEvent.click(screen.getByText(en.apply))
+    await waitFor(() => { expect(mutate).toHaveBeenCalledTimes(1) })
+    expect(firstMutate(mutate).ops)
+      .toEqual([{ op: 'set', path: ['providers', 'openai', 'reasoning'], value: 'medium' }])
+  })
+
+  it('clears a stored route-level reasoning default instead of storing an empty value', async () => {
+    // The apply closes the card, so the stored value is cleared on a fresh
+    // mount of the section — the same path a user takes.
+    const { mutate } = await mountSection({
+      providers: {
+        openai: {
+          apiKeyEnv: 'OPENAI_API_KEY',
+          baseURL: 'https://proxy.example/v1',
+          reasoning: 'medium',
+        },
+      },
+      userProviders: {
+        openai: {
+          apiKeyEnv: 'OPENAI_API_KEY',
+          baseURL: 'https://proxy.example/v1',
+          reasoning: 'medium',
+        },
+      },
+    })
+    openEditor('openai')
+
+    const select = screen.getByLabelText<HTMLSelectElement>(en.reasoningEffort)
+    expect(select.value).toBe('medium')
+    fireEvent.change(select, { target: { value: '' } })
+    fireEvent.click(screen.getByText(en.apply))
+    await waitFor(() => { expect(mutate).toHaveBeenCalledTimes(1) })
+    expect(firstMutate(mutate).ops)
+      .toEqual([{ op: 'unset', path: ['providers', 'openai', 'reasoning'] }])
   })
 
   it('renames a declared route and falls back to its id when the name is cleared', async () => {

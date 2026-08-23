@@ -14,11 +14,11 @@
  * and at least one model — are required here rather than at load, so the
  * failure names the field while the user is still looking at it.
  *
- * There is deliberately no reasoning-effort control, here or on the editor
- * card: effort is a per-MODEL capability, and the models under one provider
- * disagree about it, so a provider-scoped control can only be set to a value
- * some of them reject. The composer's model picker offers each model its own
- * levels instead.
+ * There is deliberately no per-MODEL reasoning-effort control on the model
+ * rows: the composer's model picker offers each model its own levels and
+ * records provider+model+effort together. The route-level default the adapter
+ * accepts (`reasoning`) is exposed below instead — it seeds requests to models
+ * that support the level, and a session's picker choice wins over it.
  */
 
 import { useState } from 'react'
@@ -29,7 +29,7 @@ import { EditorFooter } from './EditorFooter.tsx'
 import { validateDeepSeekModels } from './DeepSeekModelsEditor.tsx'
 import { ModelListEditor } from './ModelListEditor.tsx'
 import type { ModelDraft } from './ModelListEditor.tsx'
-import { deriveKeyRef, messageOf } from './store.ts'
+import { deriveKeyRef, messageOf, reasoningEffortKey } from './store.ts'
 import type { en } from './locales.ts'
 import styles from './ModelsSection.module.css'
 
@@ -53,6 +53,12 @@ export interface CustomProviderCardProps {
   /** Wire protocols the adapter can serve, in the order it reports them. */
   protocols: readonly string[]
   /**
+   * Reasoning efforts the adapter accepts as a route default (`reasoning`),
+   * in escalation order — a schema read like {@link protocols}, so the offer
+   * cannot drift from what the profile validates.
+   */
+  efforts: readonly string[]
+  /**
    * Revision of the `llm-pi-ai` user section this card opened at, sent with
    * the create so a route another tab declared meanwhile is a refusal rather
    * than a silent overwrite of its whole profile.
@@ -74,7 +80,7 @@ export interface CustomProviderCardProps {
  * @returns the creation card.
  */
 export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
-  const { taken, protocols, api, t } = props
+  const { taken, protocols, efforts, api, t } = props
   // Captured at mount, like the editor's: the write must be judged against the
   // section this card was drafted over, not whatever it grew into meanwhile.
   const [openedAt] = useState(() => props.revision)
@@ -82,6 +88,9 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
   const [displayName, setDisplayName] = useState('')
   const [baseURL, setBaseURL] = useState('')
   const [protocol, setProtocol] = useState(protocols[0] ?? '')
+  // The route-level reasoning default; unset keeps the profile without the
+  // field, which the adapter reads as the provider's own behavior.
+  const [reasoning, setReasoning] = useState('')
   const [keyDraft, setKeyDraft] = useState('')
   const [models, setModels] = useState<readonly ModelDraft[]>([])
   const [busy, setBusy] = useState(false)
@@ -142,6 +151,7 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
         ...storesKey ? { apiKeyEnv: keyRef } : {},
         api: protocol,
         baseURL,
+        ...reasoning.length === 0 ? {} : { reasoning },
         models: models.map(model => ({ ...model })),
       }
       const response = await api.settings.mutate({
@@ -245,6 +255,29 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
           {protocols.map(choice => <option key={choice} value={choice}>{choice}</option>)}
         </select>
       </div>
+      {/* The route-level reasoning default, the same field the official
+          DeepSeek route carries as `reasoningEffort` on its side: it seeds
+          requests to models that support the level, and a session's model
+          picker choice wins over it. */}
+      {efforts.length > 0 && (
+        <div className={styles['field']}>
+          <span className={styles['fieldLabel']}>{t('reasoningEffort')}</span>
+          <select
+            className={`${styles['input']} ${styles['selectInput']}`}
+            value={reasoning}
+            aria-label={t('reasoningEffort')}
+            title={t('reasoningEffortHint')}
+            disabled={profileDisabled}
+            onChange={(event) => { setReasoning(event.target.value) }}
+          >
+            <option value="">{t('reasoningEffortDefault')}</option>
+            {efforts.map((level) => {
+              const key = reasoningEffortKey(level)
+              return <option key={level} value={level}>{key === undefined ? level : t(key)}</option>
+            })}
+          </select>
+        </div>
+      )}
       <div className={styles['field']}>
         <span className={styles['fieldLabel']}>{t('keyInput')}</span>
         <input
