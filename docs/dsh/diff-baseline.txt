@@ -1,0 +1,144 @@
+base: upstream/master
+added: 46 | modified(excl. docs/dsh & lockfile): 21 | deleted: 0 (restored-to-official policy)
+
+--- added ---
+.agents/notes/implemented/feature/2026-08-23-plugin-governance-gateway.i18n.yaml
+.agents/notes/implemented/feature/2026-08-23-plugin-governance-gateway.md
+.agents/notes/implemented/feature/2026-08-23-plugin-governance-gateway.zh.md
+.github/workflows/plugin-governance.yml
+packages/client/ui-plugin-manager/package.json
+packages/client/ui-plugin-manager/src/client/PluginManagerSettingsTab.module.css
+packages/client/ui-plugin-manager/src/client/PluginManagerSettingsTab.tsx
+packages/client/ui-plugin-manager/src/client/index.ts
+packages/client/ui-plugin-manager/src/client/locales.ts
+packages/client/ui-plugin-manager/src/css-modules.d.ts
+packages/client/ui-plugin-manager/src/index.ts
+packages/client/ui-plugin-manager/src/invariant.ts
+packages/client/ui-plugin-manager/tsconfig.json
+packages/client/ui-plugin-manager/tsdown.config.ts
+packages/host/plugin-governance-host/package.json
+packages/host/plugin-governance-host/src/index.ts
+packages/host/plugin-governance-host/src/invariant.ts
+packages/host/plugin-governance-host/src/probe-check.ts
+packages/host/plugin-governance-host/src/types.ts
+packages/host/plugin-governance-host/tests/gateway.spec.ts
+packages/host/plugin-governance-host/tsconfig.json
+packages/plugins/plugin-governance/package.json
+packages/plugins/plugin-governance/src/base/base.ts
+packages/plugins/plugin-governance/src/compat/cordis-adapter.ts
+packages/plugins/plugin-governance/src/guards/health-guard.ts
+packages/plugins/plugin-governance/src/guards/load-guard.ts
+packages/plugins/plugin-governance/src/guards/run-guard.ts
+packages/plugins/plugin-governance/src/guards/watcher.ts
+packages/plugins/plugin-governance/src/index.ts
+packages/plugins/plugin-governance/src/persistence/index.ts
+packages/plugins/plugin-governance/src/persistence/plugin-persistence.ts
+packages/plugins/plugin-governance/src/registry/registry.ts
+packages/plugins/plugin-governance/src/sandbox/index.ts
+packages/plugins/plugin-governance/src/sandbox/inline-sandbox.ts
+packages/plugins/plugin-governance/src/sandbox/process-sandbox.ts
+packages/plugins/plugin-governance/src/sandbox/worker-sandbox.ts
+packages/plugins/plugin-governance/src/spec/index.ts
+packages/plugins/plugin-governance/tests/cordis-adapter.spec.ts
+packages/plugins/plugin-governance/tests/fixture/echo-worker.mjs
+packages/plugins/plugin-governance/tests/fixtures.ts
+packages/plugins/plugin-governance/tests/guards.spec.ts
+packages/plugins/plugin-governance/tests/integration.spec.ts
+packages/plugins/plugin-governance/tests/persistence.spec.ts
+packages/plugins/plugin-governance/tests/sandbox.spec.ts
+packages/plugins/plugin-governance/tests/spec.spec.ts
+packages/plugins/plugin-governance/tsconfig.json
+
+--- modified ---
+packages/api/remotes/package.json
+packages/api/remotes/src/client/index.ts
+packages/api/remotes/tsconfig.client.json
+packages/bundle/web-app/cordis.patch.yml
+packages/bundle/web-app/package.json
+packages/client/connection/src/client/fixture.ts
+packages/core/agent-loop/src/agent.ts
+packages/core/agent-loop/tests/loop.spec.ts
+packages/llm/llm/src/assembler.ts
+packages/llm/llm/src/error.ts
+packages/llm/llm/tests/assembler.spec.ts
+packages/llm/token-meter/src/estimate.ts
+packages/llm/token-meter/tests/context-breakdown-projection.spec.ts
+packages/session/session-persistence/src/coordinator.ts
+packages/session/session-persistence/tests/persistence.spec.ts
+packages/util/atomic-write/src/index.ts
+packages/util/atomic-write/tests/atomic-write.spec.ts
+tsconfig.base.json
+tsconfig.client.json
+tsconfig.host.json
+vitest.config.ts
+
+--- deleted ---
+
+ .../2026-08-23-plugin-governance-gateway.i18n.yaml |   6 +
+ .../2026-08-23-plugin-governance-gateway.md        |  25 +
+ .../2026-08-23-plugin-governance-gateway.zh.md     |  23 +
+ .github/workflows/plugin-governance.yml            |  93 +++
+ packages/api/remotes/package.json                  |   2 +
+ packages/api/remotes/src/client/index.ts           |  11 +-
+ packages/api/remotes/tsconfig.client.json          |   3 +
+ packages/bundle/web-app/cordis.patch.yml           |   7 +
+ packages/bundle/web-app/package.json               |   2 +
+ packages/client/connection/src/client/fixture.ts   |  31 +-
+ packages/client/ui-plugin-manager/package.json     |  74 +++
+ .../src/client/PluginManagerSettingsTab.module.css | 170 ++++++
+ .../src/client/PluginManagerSettingsTab.tsx        | 306 ++++++++++
+ .../client/ui-plugin-manager/src/client/index.ts   |  89 +++
+ .../client/ui-plugin-manager/src/client/locales.ts |  92 +++
+ .../client/ui-plugin-manager/src/css-modules.d.ts  |   6 +
+ packages/client/ui-plugin-manager/src/index.ts     |   4 +
+ packages/client/ui-plugin-manager/src/invariant.ts |  20 +
+ packages/client/ui-plugin-manager/tsconfig.json    |  36 ++
+ packages/client/ui-plugin-manager/tsdown.config.ts |   3 +
+ packages/core/agent-loop/src/agent.ts              |  18 +-
+ packages/core/agent-loop/tests/loop.spec.ts        |  43 +-
+ packages/host/plugin-governance-host/package.json  |  68 +++
+ packages/host/plugin-governance-host/src/index.ts  | 559 ++++++++++++++++++
+ .../host/plugin-governance-host/src/invariant.ts   |  25 +
+ .../host/plugin-governance-host/src/probe-check.ts |   3 +
+ packages/host/plugin-governance-host/src/types.ts  | 151 +++++
+ .../plugin-governance-host/tests/gateway.spec.ts   | 150 +++++
+ packages/host/plugin-governance-host/tsconfig.json |  30 +
+ packages/llm/llm/src/assembler.ts                  |  14 +
+ packages/llm/llm/src/error.ts                      |  11 +
+ packages/llm/llm/tests/assembler.spec.ts           |  46 ++
+ packages/llm/token-meter/src/estimate.ts           |  61 +-
+ .../tests/context-breakdown-projection.spec.ts     |  34 ++
+ packages/plugins/plugin-governance/package.json    |  31 +
+ .../plugins/plugin-governance/src/base/base.ts     | 150 +++++
+ .../plugin-governance/src/compat/cordis-adapter.ts | 400 +++++++++++++
+ .../plugin-governance/src/guards/health-guard.ts   | 147 +++++
+ .../plugin-governance/src/guards/load-guard.ts     | 217 +++++++
+ .../plugin-governance/src/guards/run-guard.ts      |  47 ++
+ .../plugin-governance/src/guards/watcher.ts        | 107 ++++
+ packages/plugins/plugin-governance/src/index.ts    |  29 +
+ .../plugin-governance/src/persistence/index.ts     |  16 +
+ .../src/persistence/plugin-persistence.ts          | 234 ++++++++
+ .../plugin-governance/src/registry/registry.ts     | 372 ++++++++++++
+ .../plugins/plugin-governance/src/sandbox/index.ts |  61 ++
+ .../src/sandbox/inline-sandbox.ts                  | 195 +++++++
+ .../src/sandbox/process-sandbox.ts                 | 421 ++++++++++++++
+ .../src/sandbox/worker-sandbox.ts                  | 213 +++++++
+ .../plugins/plugin-governance/src/spec/index.ts    | 643 +++++++++++++++++++++
+ .../plugin-governance/tests/cordis-adapter.spec.ts | 478 +++++++++++++++
+ .../tests/fixture/echo-worker.mjs                  |  37 ++
+ .../plugins/plugin-governance/tests/fixtures.ts    |  75 +++
+ .../plugins/plugin-governance/tests/guards.spec.ts | 419 ++++++++++++++
+ .../plugin-governance/tests/integration.spec.ts    | 539 +++++++++++++++++
+ .../plugin-governance/tests/persistence.spec.ts    | 180 ++++++
+ .../plugin-governance/tests/sandbox.spec.ts        | 595 +++++++++++++++++++
+ .../plugins/plugin-governance/tests/spec.spec.ts   | 137 +++++
+ packages/plugins/plugin-governance/tsconfig.json   |  11 +
+ .../session/session-persistence/src/coordinator.ts |  93 +++
+ .../session-persistence/tests/persistence.spec.ts  | 113 +++-
+ packages/util/atomic-write/src/index.ts            |  61 +-
+ .../util/atomic-write/tests/atomic-write.spec.ts   |  62 +-
+ tsconfig.base.json                                 |   1 +
+ tsconfig.client.json                               |   1 +
+ tsconfig.host.json                                 |   2 +
+ vitest.config.ts                                   |   3 +
+ 67 files changed, 8246 insertions(+), 60 deletions(-)
