@@ -80,6 +80,11 @@ export interface TreeView {
   expandedGroups: readonly string[]
   /** Browser-local order for Sessions without a backing Workspace account. */
   ungroupedOrder?: readonly string[]
+  /**
+   * Sessions pinned to the top of their group, in pin order; absent or empty
+   * keeps the account order untouched.
+   */
+  pinnedSessions?: readonly string[]
 }
 
 interface Group {
@@ -211,6 +216,30 @@ function groupByWorkspace(
   return groups
 }
 
+/**
+ * Stable partition putting pinned rows first, pins ordered by their position
+ * in the pin list (the persisted pin order) and every unpinned row keeping its
+ * incoming order.
+ * @param rows - rows in their base order.
+ * @param pinned - pinned row ids in pin order, or undefined/empty when nothing is pinned.
+ * @returns the reordered copy; `rows` is never mutated.
+ */
+export function pinnedFirst<T extends { id: string }>(
+  rows: readonly T[],
+  pinned: readonly string[] | undefined,
+): T[] {
+  if (pinned === undefined || pinned.length === 0) return [...rows]
+  const rank = new Map(pinned.map((id, index) => [id, index]))
+  return [...rows].sort((x, y) => {
+    const rx = rank.get(x.id)
+    const ry = rank.get(y.id)
+    if (rx === undefined && ry === undefined) return 0
+    if (rx === undefined) return 1
+    if (ry === undefined) return -1
+    return rx - ry
+  })
+}
+
 function sessionNode(
   s: SessionSummary,
   descendants: ReadonlyMap<SessionId, SubagentDescendantSummary>,
@@ -266,7 +295,9 @@ export function deriveGroups(
       sessionCount: g.sessions.length,
       expanded,
       containsCurrent: g.key === currentGroup,
-      sessions: expanded ? g.sessions.map(session => sessionNode(session, descendants)) : [],
+      sessions: expanded
+        ? pinnedFirst(g.sessions.map(session => sessionNode(session, descendants)), view.pinnedSessions)
+        : [],
     })
   }
   return groups
@@ -274,16 +305,18 @@ export function deriveGroups(
 
 /**
  * Derive the flat session list ("In one list" mode): every session — fork
- * children included — as a top-level row, strictly newest-first. No grouping,
- * no parent/child adjacency. Content search lives outside this derivation
- * (see {@link deriveSearchResults}).
+ * children included — as a top-level row, strictly newest-first, with pinned
+ * sessions leading. No grouping, no parent/child adjacency. Content search
+ * lives outside this derivation (see {@link deriveSearchResults}).
  * @param list - sessions list snapshot.
  * @param archivedSessionIds - registry-global archive set.
+ * @param pinned - pinned session ids; pins lead in pin order.
  * @returns flat rows in render order.
  */
 export function deriveFlat(
   list: SessionListState,
   archivedSessionIds: readonly SessionId[],
+  pinned?: readonly string[],
 ): SessionNode[] {
   const archived = new Set(archivedSessionIds)
   const descendants = indexSubagentDescendants(list.byId)
@@ -294,7 +327,7 @@ export function deriveFlat(
     rows.push(s)
   }
   rows.sort(byRecency)
-  return rows.map(session => sessionNode(session, descendants))
+  return pinnedFirst(rows, pinned).map(session => sessionNode(session, descendants))
 }
 
 /** Relative-time bucket of a session row's trailing label. */

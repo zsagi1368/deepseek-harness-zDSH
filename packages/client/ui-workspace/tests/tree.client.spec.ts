@@ -28,6 +28,7 @@ const view = (expandedGroups: readonly string[] = [], ungroupedOrder?: readonly 
   expandedGroups,
   ...(ungroupedOrder === undefined ? {} : { ungroupedOrder }),
 })
+const sid2str = (id: string) => id
 const noArchive: readonly SessionId[] = []
 const archived = (...ids: string[]): readonly SessionId[] => ids.map(sid)
 
@@ -46,6 +47,24 @@ describe('deriveGroups', () => {
     const grouped = deriveGroups(sessions, [workspace('project', ['awaiting'])], noArchive, view(['project']))
     expect(grouped[0]!.sessions[0]).toMatchObject({ pendingInteraction: 'plan-review', running: true })
     expect(deriveFlat(sessions, noArchive)[0]).toMatchObject({ pendingInteraction: 'plan-review', running: true })
+  })
+
+  it('leads pinned sessions in pin order within groups and the flat list', () => {
+    const sessions = list(summary('a', 30), summary('b', 20), summary('c', 10))
+    // Grouped: the account order is Host sessionIds; pins jump ahead of it.
+    const grouped = deriveGroups(
+      sessions,
+      [workspace('first', ['a', 'b', 'c'])],
+      noArchive,
+      { expandedGroups: ['first'], pinnedSessions: [sid2str('c'), sid2str('a')] },
+    )
+    expect(grouped[0]!.sessions.map(session => session.id)).toEqual([sid('c'), sid('a'), sid('b')])
+    // Flat: recency order with the same two pins leading, keeping pin order.
+    const flat = deriveFlat(sessions, noArchive, ['c', 'a'])
+    expect(flat.map(node => node.id)).toEqual([sid('c'), sid('a'), sid('b')])
+    // Unknown and unpinned ids change nothing.
+    const untouched = deriveFlat(sessions, noArchive, ['stale'])
+    expect(untouched.map(node => node.id)).toEqual([sid('a'), sid('b'), sid('c')])
   })
 
   it('puts only real unaccounted Sessions in the trailing Ungrouped group', () => {

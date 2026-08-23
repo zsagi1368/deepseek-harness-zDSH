@@ -25,6 +25,12 @@ type WorkspaceViewState = {
   sessionOrderByAccount: Record<string, string[]>
   /** Last observed update timestamps per order account for one-time promotion events. */
   sessionUpdatedAtByAccount: Record<string, Record<string, number>>
+  /**
+   * Sessions pinned to the top of their group/list, in pin order. Optional in
+   * the type because a view state persisted before pinning existed loads
+   * without the field; reads treat that exactly as an empty set.
+   */
+  pinnedSessions?: string[]
 }
 
 /**
@@ -43,6 +49,7 @@ type WorkspaceViewActions = {
     updatedAt: Record<string, number>,
   ) => void
   setSessionOrder: (draft: WorkspaceViewState, accountKey: string, order: string[]) => void
+  toggleSessionPin: (draft: WorkspaceViewState, sessionId: string) => void
 }
 
 /**
@@ -81,6 +88,14 @@ export function createWorkspaceViewStore(): EngineStoreHandle<WorkspaceViewState
       },
       setSessionOrder: (d, accountKey: string, order: string[]) => {
         d.sessionOrderByAccount[accountKey] = order
+      },
+      toggleSessionPin: (d, sessionId: string) => {
+        const pins = d.pinnedSessions ?? []
+        // Newest pin last, so a stable sort keeps pins in the order they were
+        // made; unpinning removes the id and leaves every other pin intact.
+        d.pinnedSessions = pins.includes(sessionId)
+          ? pins.filter(id => id !== sessionId)
+          : [...pins, sessionId]
       },
     },
   })

@@ -212,6 +212,19 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
+/* Pinned-row marker between title and time: a small filled pin in the same
+   tertiary grey, always visible (unlike the hover-only row actions). */
+.pinIcon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.pinIcon svg {
+  display: block;
+}
+
 .dot {
   flex: none;
 }

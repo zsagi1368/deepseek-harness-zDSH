@@ -128,6 +128,40 @@ describe('workspace browser rows', () => {
     expect(onToggle).toHaveBeenCalledOnce()
   })
 
+  it('toggles the pin from the session row menu and marks pinned rows', () => {
+    const node: SessionNode = {
+      id: sid('s1'), title: 'One', blank: false, running: false,
+      runningSubagentCount: 0, completed: false, updatedAt: 0,
+    }
+    const onTogglePin = vi.fn()
+    // Without a toggle callback the menu carries no pin row at all.
+    render(
+      <SessionNodeItem node={node} currentId={undefined} now={0} onOpen={vi.fn()}
+        onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} t={t} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '会话“One”的操作' }))
+    expect(screen.queryByRole('menuitem', { name: zh['menu.pin'] })).toBeNull()
+    cleanup()
+
+    render(
+      <SessionNodeItem node={node} currentId={undefined} now={0} onOpen={vi.fn()}
+        onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()}
+        onTogglePin={onTogglePin} t={t} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '会话“One”的操作' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: zh['menu.pin'] }))
+    expect(onTogglePin).toHaveBeenCalledWith(node.id)
+    cleanup()
+
+    // A pinned row shows the always-visible marker next to its title.
+    render(
+      <SessionNodeItem node={node} currentId={undefined} now={0} onOpen={vi.fn()}
+        onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()}
+        pinned onTogglePin={onTogglePin} t={t} />,
+    )
+    expect(screen.getByRole('img', { name: zh['pin.indicator'] })).toBeTruthy()
+  })
+
   it('renders and opens a selected running Session row', () => {
     const node: SessionNode = {
       id: sid('session'), title: 'Session', blank: false, running: true,
