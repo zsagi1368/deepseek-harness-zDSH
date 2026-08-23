@@ -2,8 +2,8 @@
  * Tests for Vision Bridge — with TTL and session isolation
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { VisionBridge } from '../../src/bridge/vision-bridge.ts'
-import type { VisionProvider, VisionResult } from '../../src/vision/provider.ts'
+import { VisionBridge } from '../../../src/bridge/vision-bridge.ts'
+import type { VisionProvider, VisionResult } from '../../../src/vision/provider.ts'
 
 const mockProvider: VisionProvider = {
   name: 'test-provider', defaultModel: 'test-model', category: 'api', speedClass: 'fast',

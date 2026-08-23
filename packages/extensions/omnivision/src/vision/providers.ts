@@ -2,14 +2,39 @@
  * Provider implementations for DSH Omnivision
  */
 import { readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import type { VisionExecuteOptions, VisionFailure, VisionResult } from '../config/types.js'
-import { assertSafeRemoteTarget } from '../security/index.js'
+import { assertSafeRemoteTarget, isPathWithinRoots, isPlainFileAt } from '../security/index.js'
 import type { VisionProvider } from './provider.js'
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024 // 25MB
-// Only allow /tmp and paths within the plugin's workspace (set by PathPolicy)
-const ALLOWED_PATHS = ['/tmp', '/private/tmp']
+// Local image reads are admitted only from temp locations or caller-declared
+// roots (the plugin's workspace), compared at path-segment boundaries.
+const BASE_ALLOWED_ROOTS = ['/tmp', '/private/tmp']
+
+/** Effective readable roots for one execute call: base temp roots + extras. */
+export function resolveAllowedRoots(allowedPaths?: readonly string[]): string[] {
+  return [...BASE_ALLOWED_ROOTS, tmpdir(), ...(allowedPaths ?? [])].map(root => resolve(root))
+}
+
+/**
+ * Validate one local image path against the allowed roots before reading.
+ *
+ * - segment-boundary containment (never a raw string prefix, so `/tmp` does
+ *   not admit `/tmpx`, and Windows paths resolve like any other);
+ * - best-effort TOCTOU re-check: `lstat` of the final component right before
+ *   the read; symlinks/directories/devices are rejected (residual race window
+ *   between check and open remains — see isPlainFileAt).
+ */
+export function assertReadableImagePath(path: string, allowedPaths?: readonly string[]): string {
+  const resolved = resolve(path)
+  if (!isPathWithinRoots(resolved, resolveAllowedRoots(allowedPaths))) {
+    throw new Error('PATH_DENIED')
+  }
+  if (!isPlainFileAt(resolved)) throw new Error('PATH_DENIED')
+  return resolved
+}
 
 function buildFailureResponse(status: number, message: string, retryable = true): VisionResult {
   const kind: VisionFailure['kind'] =
@@ -40,12 +65,8 @@ function detectMime(path: string): string {
   return mimeMap[ext] ?? 'image/png'
 }
 
-function readFileAsBase64(path: string, allowedPaths: string[] = ['/tmp']): string {
-  const resolved = resolve(path)
-  const isAllowed = [...ALLOWED_PATHS, ...allowedPaths].some(p => resolved.startsWith(p))
-  if (!isAllowed) {
-    throw new Error('PATH_DENIED')
-  }
+function readFileAsBase64(path: string, allowedPaths?: readonly string[]): string {
+  const resolved = assertReadableImagePath(path, allowedPaths)
   const buffer = readFileSync(resolved)
   if (buffer.length > MAX_FILE_SIZE) {
     throw new Error('FILE_TOO_LARGE')
@@ -68,7 +89,7 @@ export const openaiProvider: VisionProvider = {
       for (const img of options.images) {
         if (img.kind === 'local' && img.path) {
           const mime = img.mime || detectMime(img.path)
-          const base64 = readFileAsBase64(img.path)
+          const base64 = readFileAsBase64(img.path, options.allowedPaths)
           contents.push({ type: 'image_url', image_url: { url: `data:${mime};base64,${base64}` } })
         }
       }
@@ -125,7 +146,7 @@ export const anthropicProvider: VisionProvider = {
           const mime = img.mime || detectMime(img.path)
           content.push({
             type: 'image',
-            source: { type: 'base64', media_type: mime, data: readFileAsBase64(img.path) },
+            source: { type: 'base64', media_type: mime, data: readFileAsBase64(img.path, options.allowedPaths) },
           })
         }
       }
@@ -178,7 +199,7 @@ export const geminiProvider: VisionProvider = {
       for (const img of options.images) {
         if (img.kind === 'local' && img.path) {
           const mime = img.mime || detectMime(img.path)
-          parts.push({ inlineData: { mimeType: mime, data: readFileAsBase64(img.path) } })
+          parts.push({ inlineData: { mimeType: mime, data: readFileAsBase64(img.path, options.allowedPaths) } })
         }
       }
       const response = await fetch(
@@ -224,7 +245,7 @@ export const ovhProvider: VisionProvider = {
           const mime = img.mime || 'image/png'
           contents.push({
             type: 'image_url',
-            image_url: { url: `data:${mime};base64,${readFileAsBase64(img.path)}` },
+            image_url: { url: `data:${mime};base64,${readFileAsBase64(img.path, options.allowedPaths)}` },
           })
         }
       }
@@ -279,7 +300,7 @@ export const zhipuProvider: VisionProvider = {
           const mime = img.mime || 'image/png'
           contents.push({
             type: 'image_url',
-            image_url: { url: `data:${mime};base64,${readFileAsBase64(img.path)}` },
+            image_url: { url: `data:${mime};base64,${readFileAsBase64(img.path, options.allowedPaths)}` },
           })
         }
       }

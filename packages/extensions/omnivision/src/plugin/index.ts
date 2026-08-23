@@ -3,7 +3,6 @@
  */
 
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { createShadowReplacements } from '../bridge/shadow-history.js'
 import { VisionBridge } from '../bridge/vision-bridge.js'
 import type { OmniVisionConfig } from '../config/schema.js'
@@ -12,6 +11,7 @@ import { PathPolicy } from '../security/index.js'
 import { executeWithFailover } from '../vision/chain.js'
 import {
   anthropicProvider,
+  assertReadableImagePath,
   geminiProvider,
   openaiProvider,
   ovhProvider,
@@ -31,6 +31,8 @@ export class OmniVisionPlugin {
   private bridge: VisionBridge
   private circuitBreaker: VisionCircuitBreaker
   private providers: VisionProvider[]
+  /** One policy instance owns path admission for every entry of this plugin. */
+  private readonly pathPolicy: PathPolicy
 
   constructor(private ctx: PluginContext) {
     this.circuitBreaker = new VisionCircuitBreaker()
@@ -41,6 +43,7 @@ export class OmniVisionPlugin {
       ctx.sessionId,
       this.circuitBreaker,
     )
+    this.pathPolicy = new PathPolicy(ctx.workspace)
   }
 
   private composeProviders(): VisionProvider[] {
@@ -83,7 +86,7 @@ export class OmniVisionPlugin {
     hasErrors: boolean
   }> {
     // Validate attachment paths
-    const policy = new PathPolicy(this.ctx.workspace)
+    const policy = this.pathPolicy
     const validAttachments = attachments.filter((a): a is { path: string; contentHash: string; mime?: string; bytes?: number } => {
       if (typeof a !== 'object' || a === null || !('path' in a) || !('contentHash' in a)) return false
       const path = (a as { path: string }).path
@@ -147,9 +150,13 @@ export class OmniVisionPlugin {
   }
 
   async callTool(tool: string, args: Record<string, unknown>): Promise<unknown> {
-    // Extract images from args if provided
+    // PathPolicy gate: tool-supplied local image paths never reach a provider
+    // unless they sit inside the workspace or temp locations.
+    const allowed = this.pathPolicy.allowInput.bind(this.pathPolicy)
     const imagesArg = args.images as Array<{ path: string; contentHash: string; mime?: string; bytes?: number }> | undefined
-    const images = (imagesArg ?? []).map(img => ({
+    const images = (imagesArg ?? []).filter(img =>
+      typeof img === 'object' && img !== null && typeof img.path === 'string' && allowed(img.path),
+    ).map(img => ({
       kind: 'local' as const,
       path: img.path,
       contentHash: img.contentHash,
@@ -163,6 +170,8 @@ export class OmniVisionPlugin {
         query: args.query as string,
         tool,
         parameters: args,
+        // Providers re-check every local read against these roots.
+        allowedPaths: [this.ctx.workspace],
       },
       {
         totalTimeoutMs: this.ctx.config.timeoutMs,
@@ -221,7 +230,9 @@ function createDynamicProvider(
             const ext = img.path.toLowerCase().split('.').pop() ?? ''
             const mimeMap: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml' }
             const mime = img.mime || mimeMap[ext] || 'image/png'
-            const base64 = readFileSync(resolve(img.path)).toString('base64')
+            // Same gate as the fixed providers: temp roots plus the
+            // caller-declared workspace, segment-checked, lstat-verified.
+            const base64 = readFileSync(assertReadableImagePath(img.path, options.allowedPaths)).toString('base64')
             contents.push({ type: 'image_url', image_url: { url: `data:${mime};base64,${base64}` } })
           }
         }

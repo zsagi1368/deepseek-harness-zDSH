@@ -34,6 +34,12 @@ export interface VisionExecuteOptions {
   parameters?: Record<string, unknown>
   signal?: AbortSignal
   timeoutMs?: number
+  /**
+   * Additional readable roots (resolved, segment-checked) for local image
+   * reads on top of the built-in temp locations; providers reject anything
+   * outside these with PATH_DENIED.
+   */
+  allowedPaths?: readonly string[]
 }
 
 export interface ImageSource {

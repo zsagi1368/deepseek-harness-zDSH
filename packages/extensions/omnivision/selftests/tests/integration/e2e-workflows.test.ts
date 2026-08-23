@@ -2,8 +2,8 @@
  * Integration Tests: End-to-End Workflows
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { OmniVisionPlugin, createOmnivisionPlugin } from '../../src/plugin/index.ts'
-import type { VisionProvider, VisionResult } from '../../src/vision/provider.ts'
+import { OmniVisionPlugin, createOmnivisionPlugin } from '../../../src/plugin/index.ts'
+import type { VisionProvider, VisionResult } from '../../../src/vision/provider.ts'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -115,6 +115,36 @@ describe('Integration Tests: End-to-End Workflows', () => {
       expect(result.imageCount).toBe(0)
       expect(result.rewritten).toBe(false)
       expect(mockProvider.execute).not.toHaveBeenCalled()
+    })
+
+    it('callTool drops tool-supplied images outside the workspace before providers run', async () => {
+      const plugin = makePlugin()
+      mockProvider.execute.mockResolvedValue({
+        ok: true, data: { summary: 'desc' },
+        meta: { provider: 'mock', model: 'mock-model', durationMs: 1 },
+      } as VisionResult)
+
+      await plugin.callTool('vision_describe', {
+        query: 'describe',
+        images: [
+          { path: '/etc/passwd', contentHash: 'evil' },
+          { path: join(tmpdir(), '..', 'outside-every-root.png'), contentHash: 'outside' },
+        ],
+      })
+
+      // The provider still runs (failover semantics), but only with the
+      // sanitized image list — denied paths never reach it.
+      expect(mockProvider.execute).toHaveBeenCalledTimes(1)
+      const executedOptions = mockProvider.execute.mock.calls[0]?.[0] as unknown as { images: Array<{ path?: string }> }
+      expect(executedOptions.images).toHaveLength(0)
+
+      // An image inside the workspace passes the gate and reaches providers.
+      await plugin.callTool('vision_describe', {
+        query: 'describe',
+        images: [{ path: join(testWorkspace, 'img.png'), contentHash: 'inside' }],
+      })
+      const secondCall = mockProvider.execute.mock.calls[1]?.[0] as unknown as { images: Array<{ path?: string }> }
+      expect(secondCall.images).toHaveLength(1)
     })
   })
 

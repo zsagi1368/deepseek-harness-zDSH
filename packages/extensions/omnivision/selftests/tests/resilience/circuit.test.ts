@@ -2,8 +2,8 @@
  * Tests for Circuit Breaker
  */
 import { describe, it, expect, vi } from 'vitest'
-import { VisionCircuitBreaker } from '../../src/resilience/circuit.ts'
-import type { VisionFailure } from '../../src/config/types.ts'
+import { VisionCircuitBreaker } from '../../../src/resilience/circuit.ts'
+import type { VisionFailure } from '../../../src/config/types.ts'
 
 describe('VisionCircuitBreaker', () => {
   it('should not block by default', () => {

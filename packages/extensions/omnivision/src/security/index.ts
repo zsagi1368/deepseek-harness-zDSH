@@ -22,7 +22,8 @@ export function isPrivateOrReserved(ip: string): boolean {
     if (first === 127) return true
     if (first === 0) return true
     if (first === 169 && second === 254) return true
-    if (first === 100 && second === 64) return true
+    // CGNAT (100.64.0.0/10): the full /10 spans 100.64 through 100.127.
+    if (first === 100 && second >= 64 && second <= 127) return true
     if (first >= 224 && first <= 255) return true
   }
   if (
@@ -58,6 +59,39 @@ export async function assertSafeRemoteTarget(url: string): Promise<{ ip: string;
 }
 
 /**
+ * Whether `resolved` sits inside `root` (or is the root itself), compared at
+ * path-segment boundaries — never a raw string prefix, so `/tmp` does not
+ * admit `/tmpx`. Cross-drive and home-relative escapes read as outside.
+ */
+export function isPathWithinRoot(resolved: string, root: string): boolean {
+  const rel = relative(root, resolved)
+  return rel.length === 0 || (rel.length > 0 && !isAbsolute(rel) && !rel.startsWith('..') && !rel.startsWith('~'))
+}
+
+/**
+ * Whether `resolved` sits inside any of the allowed roots.
+ */
+export function isPathWithinRoots(resolved: string, roots: readonly string[]): boolean {
+  return roots.some(root => isPathWithinRoot(resolved, root))
+}
+
+/**
+ * Best-effort TOCTOU re-check of the final path component immediately before
+ * opening it. Only regular files pass; symlinks, directories, and devices are
+ * rejected. RESIDUAL RISK: the component can still be swapped between this
+ * check and the actual open — closing that window needs openat-style relative
+ * handles, which this codebase's provider layer does not use.
+ * @returns true when the final component exists and is a plain file.
+ */
+export function isPlainFileAt(path: string): boolean {
+  try {
+    return lstatSync(path).isFile()
+  } catch {
+    return false
+  }
+}
+
+/**
  * Path policy — whitelist-based access control
  */
 export class PathPolicy {
@@ -73,25 +107,23 @@ export class PathPolicy {
 
   allowInput(path: string): boolean {
     const resolved = resolve(path)
-    // Segment-level comparison: check each path component. isAbsolute guards
-    // the Windows cross-drive case where relative() returns an absolute path
-    // and would otherwise be misread as "inside" the allowed root.
-    const checkPath = (allowed: string): boolean => {
-      const rel = relative(allowed, resolved)
-      return rel.length > 0 && !isAbsolute(rel) && !rel.startsWith('..') && !rel.startsWith('~')
-    }
     return (
-      checkPath(this.workspace) || checkPath(this.tempDir) || [...this.allowedDirs].some(checkPath)
+      isPathWithinRoot(resolved, this.workspace)
+      || isPathWithinRoot(resolved, this.tempDir)
+      || [...this.allowedDirs].some(dir => isPathWithinRoot(resolved, dir))
     )
+  }
+
+  /** The resolved roots this policy admits inputs from (workspace + temp). */
+  inputRoots(): string[] {
+    return [this.workspace, this.tempDir]
   }
 
   allowOutput(path: string): boolean {
     const resolved = resolve(path)
-    const checkPath = (allowed: string): boolean => {
-      const rel = relative(allowed, resolved)
-      return rel.length > 0 && !isAbsolute(rel) && !rel.startsWith('..') && !rel.startsWith('~')
-    }
-    return checkPath(this.workspace) || checkPath(this.tempDir)
+    return (
+      isPathWithinRoot(resolved, this.workspace) || isPathWithinRoot(resolved, this.tempDir)
+    )
   }
 
   rejectSymlink(path: string): void {

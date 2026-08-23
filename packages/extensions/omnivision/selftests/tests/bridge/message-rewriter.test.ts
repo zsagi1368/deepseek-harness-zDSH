@@ -2,8 +2,8 @@
  * Tests for Message Rewriter
  */
 import { describe, it, expect } from 'vitest'
-import { rewriteMessage, createTextMarker, extractDescriptions, sanitizeForDeepSeek } from '../../src/bridge/message-rewriter.ts'
-import type { ImageAttachment, VisionDescription } from '../../src/config/types.ts'
+import { rewriteMessage, createTextMarker, extractDescriptions, sanitizeForDeepSeek } from '../../../src/bridge/message-rewriter.ts'
+import type { ImageAttachment, VisionDescription } from '../../../src/config/types.ts'
 
 describe('MessageRewriter', () => {
   const mockImage: ImageAttachment = {
