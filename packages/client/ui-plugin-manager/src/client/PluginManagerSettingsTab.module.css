@@ -62,7 +62,8 @@
 
 .pluginCell,
 .versionCell,
-.statusBadge {
+.statusBadge,
+.sourceBadge {
   white-space: nowrap;
 }
 
@@ -88,6 +89,7 @@
 
 .approvalBadge,
 .deferredTag,
+.sourceBadge,
 .warningTag {
   display: inline-block;
   border-radius: 999px;
@@ -98,6 +100,10 @@
 
 .warningTag {
   color: var(--dsw-alias-state-warning-primary);
+}
+
+.sourceBadge {
+  color: var(--dsw-alias-label-secondary);
 }
 
 .healthStrip {

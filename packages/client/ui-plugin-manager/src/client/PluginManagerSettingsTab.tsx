@@ -55,6 +55,12 @@ const STATUS_KEYS = {
   deprecated: 'statusDeprecated',
 } as const satisfies Record<GovernedPluginSummary['status'], PluginManagerLocaleKey>
 
+/** Locale copy for a roster row's provenance badge. */
+const SOURCE_KEYS = {
+  'loader-mirror': 'sourceMirror',
+  native: 'sourceNative',
+} as const satisfies Record<GovernedPluginSummary['source'], PluginManagerLocaleKey>
+
 /** Whether a roster row currently offers the enable action (rather than disable). */
 function isEnabled(row: GovernedPluginSummary): boolean {
   return row.status !== 'disabled'
@@ -182,6 +188,7 @@ export function PluginManagerSettingsTab({
                 <tr>
                   <th scope="col">{t('colPlugin')}</th>
                   <th scope="col">{t('colVersion')}</th>
+                  <th scope="col">{t('colSource')}</th>
                   <th scope="col">{t('colStatus')}</th>
                   <th scope="col">{t('colApproval')}</th>
                   <th scope="col">{t('colActions')}</th>
@@ -205,6 +212,11 @@ export function PluginManagerSettingsTab({
                         ) : null}
                       </td>
                       <td className={css.versionCell}>{row.version}</td>
+                      <td>
+                        <span className={css.sourceBadge} data-source={row.source}>
+                          {t(SOURCE_KEYS[row.source])}
+                        </span>
+                      </td>
                       <td>
                         <span className={css.statusBadge} data-status={row.status}>{status}</span>
                       </td>
