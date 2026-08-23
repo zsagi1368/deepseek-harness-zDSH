@@ -4318,6 +4318,12 @@ importers:
         specifier: workspace:^
         version: link:../../typert/protocol
 
+  packages/extensions/omnivision:
+    dependencies:
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+
   packages/extensions/tool-cordis:
     devDependencies:
       '@deepseek-ai/cordis':
