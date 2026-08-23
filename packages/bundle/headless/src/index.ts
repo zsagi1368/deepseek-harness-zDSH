@@ -11,11 +11,14 @@ import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
-import type { ModelSelectionRef } from '@deepseek-ai/dsh-agent'
+import type { Agent, ModelSelectionRef } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
+// Empty type import carries the sessionPersistence Context merge for the
+// optional resume existence probe.
+import type {} from '@deepseek-ai/dsh-session-persistence'
 // Empty type imports carry the loader Context merge for the settlement await
 // and the cmdline Context merge for the appExit host value.
 import type {} from '@deepseek-ai/cordis-plugin-loader'
@@ -31,10 +34,13 @@ export const inject = ['agentDefaultModel', 'agents', 'sessions']
 export interface Config {
   /** The prompt text for the single run. */
   task: string
+  /** Persisted session id to continue (`--resume`); omit to run a fresh session. */
+  resume?: string
 }
 
 export const Config: z<Config> = z.object({
   task: z.string().required(),
+  resume: z.string(),
 })
 
 /** Outcome of one owned run interval. */
@@ -87,13 +93,17 @@ function fail(io: HeadlessIo, error: unknown): void {
   io.exit(1)
 }
 
+/** Structured stdout line prefix so scripts can grep this run's session id. */
+const SESSION_ID_LINE_PREFIX = '[zdsh] session-id: '
+
 /**
- * Run one task through a freshly created Agent and request process exit.
+ * Run one task through a freshly created (or resumed) Agent and request process exit.
  * @param ctx - plugin context carrying the Agent, default model, Session, and launcher IO services.
  * @param task - one-shot task text.
+ * @param resume - persisted session id to continue, or `undefined` for a fresh session.
  * @param io - process-facing effects.
  */
-async function run(ctx: Context, task: string, io: HeadlessIo): Promise<void> {
+async function run(ctx: Context, task: string, resume: string | undefined, io: HeadlessIo): Promise<void> {
   // Loader siblings mount concurrently. Await the complete application before
   // creating an Agent so its scoped tools and adapters are not half-composed.
   await ctx.get('loader')?.await()
@@ -108,15 +118,37 @@ async function run(ctx: Context, task: string, io: HeadlessIo): Promise<void> {
   // host plane and the agent reads them from the global layer. A deployment
   // that DOES configure one has to join it here first
   // (@deepseek-ai/dsh-agent-presets README, "Composing a child agent").
-  const { agent } = await agents.create({
-    sessionId: SessionId(`session-${randomUUID()}`),
-    meta: { cwd: process.cwd() },
-    agentOptions: { provider: selection.provider, model: selection.model },
-    setup: (agentCtx) => {
-      const selected: ModelSelectionRef = { current: selection, assembled: undefined }
-      installModelSelection(agentCtx, selected)
-    },
-  })
+  const setup = (agentCtx: Context): void => {
+    const selected: ModelSelectionRef = { current: selection, assembled: undefined }
+    installModelSelection(agentCtx, selected)
+  }
+  const agentOptions = { provider: selection.provider, model: selection.model }
+
+  let sessionId: SessionId
+  let agent: Agent
+  if (resume === undefined) {
+    sessionId = SessionId(`session-${randomUUID()}`)
+    ;({ agent } = await agents.create({
+      sessionId,
+      meta: { cwd: process.cwd() },
+      agentOptions,
+      setup,
+    }))
+  } else {
+    const wanted = SessionId(resume)
+    // Existence is checked before the resume transaction so an unknown id is a
+    // clean non-zero usage failure rather than a persistence load error.
+    const persistence = ctx.get('sessionPersistence')
+    const known = persistence !== undefined
+      && (await persistence.list()).some(header => header.id === wanted)
+    if (!known) {
+      fail(io, new Error(`cannot resume "${resume}": no such persisted session`))
+      return
+    }
+    sessionId = wanted
+    ;({ agent } = await agents.resume({ resumeSessionId: wanted, agentOptions, setup }))
+  }
+  io.stdout.write(`${SESSION_ID_LINE_PREFIX}${sessionId}\n`)
   await agent.whenIdle()
   const firstSeq = agent.session.seq
   agent.followup(createUserMessage({
@@ -146,5 +178,5 @@ export function apply(ctx: Context, config: Config): void {
     throw new Error('headless-runner: the launcher must provide ctx.appExit before the tree mounts')
   }
   const io: HeadlessIo = { stdout: internals.stdout, stderr: internals.stderr, exit }
-  void run(ctx, config.task, io).catch((error: unknown) => { fail(io, error) })
+  void run(ctx, config.task, config.resume, io).catch((error: unknown) => { fail(io, error) })
 }

@@ -22,6 +22,8 @@ export const HEADLESS_STARTUP_SERVICE = 'headlessStartup'
 export interface HeadlessStartupValues {
   /** The task text this invocation asked for. */
   task: string
+  /** `--resume` value: the persisted session id to continue, when asked. */
+  resume?: string
 }
 
 /**
@@ -34,16 +36,19 @@ function headlessCommand(): Command {
     .description('Answer one task, print the final assistant message, and exit.')
     .helpOption('-h, --help', 'show this help')
     .argument('[task...]', 'the task text; multiple words are joined by spaces')
+    .option('--resume <session-id>', 'continue a previously persisted session instead of creating one')
     .addHelpText('after', `
 Examples:
   dsh --profile headless "run the tests"     answer one task and exit
+  dsh --profile headless --resume <id> "go on"  continue a persisted session
 `)
 }
 
 /**
  * Parse and provide the one-shot task as an ordinary Cordis service. The
- * command's action publishes the task; a missing or whitespace-only task is a
- * usage error, so on rejection (and on `--help`) nothing is provided.
+ * command's action publishes the task (and the optional `--resume` id); a
+ * missing or whitespace-only task is a usage error, so on rejection (and on
+ * `--help`) nothing is provided.
  * @param ctx - plugin context carrying the command line.
  */
 export function apply(ctx: Context): void {
@@ -51,7 +56,11 @@ export function apply(ctx: Context): void {
   program.action(() => {
     const task = program.args.join(' ')
     if (task.trim() === '') program.error('error: a task is required, for example: dsh --profile headless "run the tests"')
-    ctx.provide(HEADLESS_STARTUP_SERVICE, { task } satisfies HeadlessStartupValues)
+    const { resume } = program.opts<{ resume?: string }>()
+    ctx.provide(HEADLESS_STARTUP_SERVICE, {
+      task,
+      ...(resume === undefined ? {} : { resume }),
+    } satisfies HeadlessStartupValues)
   })
   parseCmdline(ctx, program)
 }

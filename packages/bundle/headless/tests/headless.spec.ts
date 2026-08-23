@@ -3,10 +3,10 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry, { Inbox } from '@deepseek-ai/dsh-agent'
-import type { Agent, AgentHandle, CreateAgentOptions } from '@deepseek-ai/dsh-agent'
+import type { Agent, AgentHandle, CreateAgentOptions, ResumeAgentOptions } from '@deepseek-ai/dsh-agent'
 import AgentDefaultModelConfig from '@deepseek-ai/dsh-agent-default-model'
 import { createAssistantMessage } from '@deepseek-ai/dsh-llm'
-import SessionStore from '@deepseek-ai/dsh-session'
+import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import type { Session, UserMessage } from '@deepseek-ai/dsh-session'
 import { apply, Config, internals } from '../src/index.ts'
 
@@ -50,48 +50,70 @@ function appendTurn(
 /** Mount the real registries around a small scripted Agent factory. */
 async function bench(script: Script): Promise<{
   ctx: Context
-  run(): Promise<{ code: number; out: string; err: string; order: string[] }>
+  /** Session ids the factory was asked to create or resume, in call order. */
+  ids: string[]
+  run(config?: { task?: string; resume?: string }): Promise<{ code: number; out: string; err: string; order: string[] }>
 }> {
   const ctx = new Context()
   await ctx.plugin(SessionStore)
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(AgentDefaultModelConfig, { provider: 'test-provider', model: 'test-model' })
+  const ids: string[] = []
+  /** Assemble and register one scripted agent on `session`, owned by `ownerCtx`. */
+  const attachAgent = async (
+    ownerCtx: Context,
+    session: Session,
+    options: Pick<CreateAgentOptions, 'agentOptions' | 'setup'>,
+  ): Promise<AgentHandle> => {
+    let idle = Promise.resolve()
+    const agent = {} as Agent
+    const agentCtx = ownerCtx.extend({ agent })
+    Object.assign(agent, {
+      id: session.id,
+      options: options.agentOptions ?? {},
+      session,
+      inbox: new Inbox(session, { inserted: () => {}, discarded: () => {}, claimed: () => {} }),
+      status: 'idle',
+      ctx: agentCtx,
+      cancel: () => {},
+      runMaintenance: () => Promise.reject(new Error('not used')),
+      send: () => {},
+      followup: (message: UserMessage) => {
+        agent.inbox.append('next-turn', message)
+        idle = Promise.resolve().then(() => script.afterPrompt(session, message))
+      },
+      steer: () => {},
+      inject: () => {},
+      whenIdle: () => idle,
+    } satisfies Partial<Agent>)
+    await options.setup?.(agentCtx)
+    script.before?.(session)
+    ctx.agents.register(agent)
+    return { agent, dispose: () => Promise.resolve() }
+  }
   ctx.agents.setFactory({
     async createAgent(ownerCtx: Context, options: CreateAgentOptions): Promise<AgentHandle> {
+      ids.push(options.sessionId)
       const session = ctx.sessions.create(options.sessionId, {
         ...options.meta === undefined ? {} : { meta: options.meta },
       })
-      let idle = Promise.resolve()
-      const agent = {} as Agent
-      const agentCtx = ownerCtx.extend({ agent })
-      Object.assign(agent, {
-        id: session.id,
-        options: options.agentOptions ?? {},
-        session,
-        inbox: new Inbox(session, { inserted: () => {}, discarded: () => {}, claimed: () => {} }),
-        status: 'idle',
-        ctx: agentCtx,
-        cancel: () => {},
-        runMaintenance: () => Promise.reject(new Error('not used')),
-        send: () => {},
-        followup: (message: UserMessage) => {
-          agent.inbox.append('next-turn', message)
-          idle = Promise.resolve().then(() => script.afterPrompt(session, message))
-        },
-        steer: () => {},
-        inject: () => {},
-        whenIdle: () => idle,
-      } satisfies Partial<Agent>)
-      await options.setup?.(agentCtx)
-      script.before?.(session)
-      ctx.agents.register(agent)
-      return { agent, dispose: () => Promise.resolve() }
+      return attachAgent(ownerCtx, session, options)
     },
-    resume: () => Promise.reject(new Error('not used')),
+    async resume(ownerCtx: Context, options: ResumeAgentOptions): Promise<AgentHandle> {
+      ids.push(options.resumeSessionId)
+      const session = ctx.sessions.create(options.resumeSessionId)
+      // A resumed session carries its persisted history: one completed earlier turn.
+      const earlier = {
+        role: 'user', content: [{ type: 'text', text: 'earlier' }], source: { kind: 'user' }, id: 'earlier',
+      } as UserMessage
+      appendTurn(session, 0, earlier, 'previous answer', true)
+      return attachAgent(ownerCtx, session, options)
+    },
   })
   return {
     ctx,
-    run: async () => {
+    ids,
+    run: async (config: { task?: string; resume?: string } = {}) => {
       let out = ''
       let err = ''
       const order: string[] = []
@@ -101,7 +123,7 @@ async function bench(script: Script): Promise<{
       const exited = new Promise<number>((resolve) => {
         ctx.provide('appExit', (code: number) => { order.push('exit'); resolve(code) })
       })
-      apply(ctx, { task: 'do the thing' })
+      apply(ctx, { task: 'do the thing', ...config })
       return { code: await exited, out, err, order }
     },
   }
@@ -123,12 +145,10 @@ describe('headless runner', () => {
       },
     })
     const result = await test.run()
-    expect(result).toEqual({
-      code: 0,
-      out: 'final answer\n',
-      err: '',
-      order: ['flush', 'exit'],
-    })
+    expect(result.code).toBe(0)
+    expect(result.err).toBe('')
+    expect(result.order).toEqual(['flush', 'exit'])
+    expect(result.out).toBe(`[zdsh] session-id: ${test.ids[0]}\nfinal answer\n`)
     await test.ctx.fiber.dispose()
   })
 
@@ -139,7 +159,7 @@ describe('headless runner', () => {
         appendTurn(session, 1, message, 'race-free answer', true)
       },
     })
-    expect(await test.run()).toMatchObject({ code: 0, out: 'race-free answer\n', err: '' })
+    expect(await test.run()).toMatchObject({ code: 0, out: `[zdsh] session-id: ${test.ids[0]}\nrace-free answer\n`, err: '' })
     await test.ctx.fiber.dispose()
   })
 
@@ -147,7 +167,7 @@ describe('headless runner', () => {
     const test = await bench({
       afterPrompt(session, message) { appendTurn(session, 1, message, undefined, false) },
     })
-    expect(await test.run()).toMatchObject({ code: 1, out: '\n', err: '' })
+    expect(await test.run()).toMatchObject({ code: 1, out: `[zdsh] session-id: ${test.ids[0]}\n\n`, err: '' })
     await test.ctx.fiber.dispose()
   })
 
@@ -166,7 +186,7 @@ describe('headless runner', () => {
     })
     expect(await test.run()).toMatchObject({
       code: 1,
-      out: '\n',
+      out: `[zdsh] session-id: ${test.ids[0]}\n\n`,
       err: 'dsh: SERVER: provider unavailable\n',
     })
     await test.ctx.fiber.dispose()
@@ -174,7 +194,47 @@ describe('headless runner', () => {
 
   it('exits 1 when the owned interval contains no turn', async () => {
     const test = await bench({ afterPrompt: () => {} })
-    expect(await test.run()).toMatchObject({ code: 1, out: '\n', err: '' })
+    expect(await test.run()).toMatchObject({ code: 1, out: `[zdsh] session-id: ${test.ids[0]}\n\n`, err: '' })
+    await test.ctx.fiber.dispose()
+  })
+
+  it('resumes a persisted session by id and prints that id instead of minting one', async () => {
+    const test = await bench({
+      async afterPrompt(session, message) {
+        appendTurn(session, 1, message, 'continued answer', true)
+      },
+    })
+    test.ctx.provide('sessionPersistence', {
+      list: () => Promise.resolve([{ id: SessionId('session-known') }]),
+    } as never)
+    const result = await test.run({ task: 'continue please', resume: 'session-known' })
+    expect(result.code).toBe(0)
+    expect(result.err).toBe('')
+    expect(result.out).toBe('[zdsh] session-id: session-known\ncontinued answer\n')
+    expect(test.ids).toEqual(['session-known'])
+    // The resumed session's own history stays out of this run's summary window.
+    expect(test.ctx.sessions.get(SessionId('session-known'))?.events.length).toBeGreaterThan(6)
+    await test.ctx.fiber.dispose()
+  })
+
+  it('fails with a non-zero exit when the resume target does not exist', async () => {
+    const test = await bench({ afterPrompt: () => {} })
+    test.ctx.provide('sessionPersistence', { list: () => Promise.resolve([]) } as never)
+    const result = await test.run({ task: 'x', resume: 'session-missing' })
+    expect(result.code).toBe(1)
+    expect(result.order).toEqual(['exit'])
+    expect(result.out).toBe('')
+    expect(result.err).toBe('dsh: cannot resume "session-missing": no such persisted session\n')
+    expect(test.ids).toEqual([])
+    await test.ctx.fiber.dispose()
+  })
+
+  it('fails with a non-zero exit when resuming without any persistence backend', async () => {
+    const test = await bench({ afterPrompt: () => {} })
+    const result = await test.run({ task: 'x', resume: 'session-orphan' })
+    expect(result.code).toBe(1)
+    expect(result.out).toBe('')
+    expect(result.err).toBe('dsh: cannot resume "session-orphan": no such persisted session\n')
     await test.ctx.fiber.dispose()
   })
 
@@ -248,5 +308,6 @@ describe('headless runner', () => {
   it('validates config: the task is required', () => {
     expect(() => new Config({} as never)).toThrow()
     expect(new Config({ task: 'x' })).toEqual({ task: 'x' })
+    expect(new Config({ task: 'x', resume: 'session-1' })).toEqual({ task: 'x', resume: 'session-1' })
   })
 })

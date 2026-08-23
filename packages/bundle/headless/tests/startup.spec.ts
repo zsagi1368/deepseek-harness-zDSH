@@ -53,6 +53,7 @@ export const apply = ctx => globalThis.__headlessStartupApply(ctx)
     `  inject: [${HEADLESS_STARTUP_SERVICE}]`,
     '  config:',
     '    task: !!js ctx.headlessStartup.task',
+    '    resume: !!js ctx.headlessStartup.resume',
     '- id: headless-startup',
     `  name: ${pathToFileURL(join(dir, 'startup.mjs')).href}`,
     '',
@@ -84,7 +85,14 @@ describe('headless command-line provider', () => {
   it('joins the task positional into the runner config', async () => {
     const { task, observed } = await bootStartup(['run', 'the', 'tests'])
     expect(task).toEqual({ task: 'run the tests' })
-    expect(observed.runnerConfig).toEqual({ task: 'run the tests' })
+    expect(observed.runnerConfig).toEqual({ task: 'run the tests', resume: undefined })
+    expect(observed.exits).toEqual([])
+  })
+
+  it('passes --resume through to the runner config next to the task', async () => {
+    const { task, observed } = await bootStartup(['--resume', 'session-abc', 'go', 'on'])
+    expect(task).toEqual({ task: 'go on', resume: 'session-abc' })
+    expect(observed.runnerConfig).toEqual({ task: 'go on', resume: 'session-abc' })
     expect(observed.exits).toEqual([])
   })
 
