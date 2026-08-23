@@ -6,7 +6,7 @@ export const NS = 'conversation'
 // The claimed /plan hint and the plan-mode textarea placeholder share one
 // string: both describe the same next action.
 const PLAN_NEXT_ACTION_ZH = '描述你的任务以生成计划'
-const PLAN_NEXT_ACTION_EN = 'describe your task to generate plan'
+const PLAN_NEXT_ACTION_EN = 'describe your task to generate a plan'
 
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh = {

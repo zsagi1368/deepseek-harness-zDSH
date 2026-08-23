@@ -84,7 +84,7 @@ describe('QuestionComposer', () => {
     const scrollRegion = detail.closest('[data-question-scroll]')
     expect(scrollRegion).toBeTruthy()
     expect(scrollRegion?.contains(screen.getByRole('radio', { name: /工程落地型/ }))).toBe(true)
-    expect(scrollRegion?.contains(screen.getByText('下一题').closest('button'))).toBe(false)
+    expect(scrollRegion?.contains(screen.getByText('下一个问题').closest('button'))).toBe(false)
     fireEvent.keyDown(screen.getByRole('radio', { name: /工程落地型/ }), { key: 'Enter' })
     expect(respond).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('radio', { name: /工程落地型/ }))
@@ -93,7 +93,7 @@ describe('QuestionComposer', () => {
     // detail is per-question: the second question carries none.
     expect(screen.queryByText('按当前空缺岗位的优先级选择。')).toBeNull()
     expect(screen.queryByRole('button', { name: '填写答案' })).toBeNull()
-    const custom = screen.getByPlaceholderText('输入你的答案')
+    const custom = screen.getByPlaceholderText('输入你的想法')
     fireEvent.change(custom, { target: { value: '要能独立排查线上问题' } })
     fireEvent.keyDown(custom, { key: 'Enter' })
 
@@ -104,7 +104,7 @@ describe('QuestionComposer', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: '系统设计' }))
     fireEvent.click(screen.getByRole('checkbox', { name: '系统设计' }))
     fireEvent.click(screen.getByRole('checkbox', { name: '代码质量' }))
-    const multiCustom = screen.getByPlaceholderText('输入你的答案')
+    const multiCustom = screen.getByPlaceholderText('输入你的想法')
     fireEvent.change(multiCustom, { target: { value: '沟通能力' } })
     fireEvent.click(screen.getByRole('checkbox', { name: '产品判断' }))
     expect(screen.getByRole('checkbox', { name: '系统设计' }).getAttribute('aria-checked')).toBe('true')
@@ -148,12 +148,12 @@ describe('QuestionComposer', () => {
     const { carrier, respond } = wait()
     render(<QuestionComposer matched={carrier} interactions={[carrier]} {...kit} />)
 
-    expect((screen.getByText('下一题').closest('button') as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByText('下一个问题').closest('button') as HTMLButtonElement).disabled).toBe(true)
     fireEvent.click(screen.getByRole('radio', { name: '研究潜力型' }))
     expect(screen.getByText('2 / 3')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: '跳过本题' }))
+    fireEvent.click(screen.getByRole('button', { name: '跳过此问题' }))
     expect(screen.getByText('3 / 3')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: '跳过本题' }))
+    fireEvent.click(screen.getByRole('button', { name: '跳过此问题' }))
 
     expect(respond).toHaveBeenCalledWith(answeredEnvelope('question-1', [
       { id: 'profile', selected: ['研究潜力型'] },
@@ -167,7 +167,7 @@ describe('QuestionComposer', () => {
     render(<QuestionComposer matched={carrier} interactions={[carrier]} {...kit} />)
 
     fireEvent.click(screen.getByRole('radio', { name: '研究潜力型' }))
-    const custom = screen.getByPlaceholderText('输入你的答案')
+    const custom = screen.getByPlaceholderText('输入你的想法')
     fireEvent.change(custom, { target: { value: '中文输入' } })
 
     fireEvent.keyDown(custom, { key: 'Enter', isComposing: true })
@@ -186,20 +186,20 @@ describe('QuestionComposer', () => {
     const { carrier, respond } = wait()
     render(<QuestionComposer matched={carrier} interactions={[carrier]} {...kit} />)
 
-    expect(screen.getByPlaceholderText('输入你的答案')).toBeTruthy()
+    expect(screen.getByPlaceholderText('输入你的想法')).toBeTruthy()
     fireEvent.click(screen.getByRole('radio', { name: '工程落地型' }))
-    const emptyCustom = screen.getByPlaceholderText('输入你的答案')
+    const emptyCustom = screen.getByPlaceholderText('输入你的想法')
     fireEvent.keyDown(emptyCustom, { key: 'Enter', shiftKey: true })
     expect(screen.getByText('2 / 3')).toBeTruthy()
     fireEvent.keyDown(emptyCustom, { key: 'Enter' })
     expect(screen.getByText('请选择一个选项或填写自定义答案。')).toBeTruthy()
 
-    fireEvent.click(screen.getByLabelText('下一题'))
+    fireEvent.click(screen.getByLabelText('下一个问题'))
     fireEvent.click(screen.getByRole('checkbox', { name: '产品判断' }))
     fireEvent.click(screen.getByRole('button', { name: '提交' }))
-    expect(screen.getByText('请先完成这道问题。')).toBeTruthy()
+    expect(screen.getByText('请先完成当前问题。')).toBeTruthy()
     expect(screen.getByText('2 / 3')).toBeTruthy()
-    fireEvent.click(screen.getByLabelText('上一题'))
+    fireEvent.click(screen.getByLabelText('上一个问题'))
     expect(screen.getByText('1 / 3')).toBeTruthy()
     expect(respond).not.toHaveBeenCalled()
   })
@@ -210,7 +210,7 @@ describe('QuestionComposer', () => {
 
     // Both question shapes answer into a textarea, so the engine soft-wraps a
     // long answer and Shift+Enter breaks the line natively.
-    const inline = screen.getByPlaceholderText('输入你的答案')
+    const inline = screen.getByPlaceholderText('输入你的想法')
     expect(inline.tagName).toBe('TEXTAREA')
 
     const multiline = '第一行\n第二行'
@@ -223,7 +223,7 @@ describe('QuestionComposer', () => {
     expect(screen.getByText('1 / 3')).toBeTruthy()
 
     fireEvent.keyDown(inline, { key: 'Enter' })
-    const optionless = screen.getByPlaceholderText('输入你的答案')
+    const optionless = screen.getByPlaceholderText('输入你的想法')
     expect(optionless.tagName).toBe('TEXTAREA')
     fireEvent.change(optionless, { target: { value: multiline } })
     expect(optionless.previousElementSibling?.textContent).toBe(`${multiline}\n`)
@@ -251,7 +251,7 @@ describe('QuestionComposer', () => {
     // Receipt rejection surfaces through the domain face's thrown message.
     fireEvent.click(screen.getByRole('button', { name: '放弃整组问题' }))
     expect(await screen.findByText('question cancellation rejected: bad-response')).toBeTruthy()
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: '跳过本题' }).disabled).toBe(false)
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: '跳过此问题' }).disabled).toBe(false)
 
     fireEvent.click(screen.getByRole('button', { name: '放弃整组问题' }))
     expect(await screen.findByText('第二次取消失败')).toBeTruthy()
@@ -271,7 +271,7 @@ describe('QuestionComposer', () => {
     expect(screen.getByRole('radio', { name: /研究潜力型/ }).getAttribute('aria-checked')).toBe('false')
 
     fireEvent.click(screen.getByRole('radio', { name: /工程落地型/ }))
-    const custom = screen.getByPlaceholderText('输入你的答案')
+    const custom = screen.getByPlaceholderText('输入你的想法')
     fireEvent.change(custom, { target: { value: 'x' } })
     fireEvent.keyDown(custom, { key: 'Enter' })
     fireEvent.click(screen.getByRole('checkbox', { name: '系统设计' }))
@@ -295,7 +295,7 @@ describe('QuestionComposer', () => {
     render(<QuestionComposer matched={carrier} interactions={[carrier]} {...kit} t={seatOver(en, commonEn)} />)
     expect(screen.getByLabelText('Dismiss all questions')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Skip this question' })).toBeTruthy()
-    expect(screen.getByPlaceholderText('Type your answer')).toBeTruthy()
+    expect(screen.getByPlaceholderText('Type your own answer')).toBeTruthy()
   })
 
   it('same-key carrier replacement (baseline replay) keeps drafts', () => {
@@ -373,7 +373,7 @@ describe('PendingQuestion domain face', () => {
     // Re-expanding must not steal focus back into the textarea: it was
     // autofocused on first presentation, so focus stays on the expand toggle.
     expect(document.activeElement).not.toBe(custom)
-    fireEvent.click(screen.getByLabelText('下一题'))
+    fireEvent.click(screen.getByLabelText('下一个问题'))
     fireEvent.click(screen.getByRole('checkbox', { name: '系统设计' }))
     fireEvent.click(screen.getByRole('button', { name: '提交' }))
     expect(respond).toHaveBeenCalledWith(answeredEnvelope('question-1', [

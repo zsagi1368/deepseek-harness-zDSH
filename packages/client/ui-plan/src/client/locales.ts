@@ -2,10 +2,10 @@
 
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh = {
-  'chip.on.aria': 'plan mode 已开启，按下关闭',
-  'chip.on.title': 'plan mode 已开启 — 点击关闭（/plan off）',
-  'chip.off.aria': 'plan mode 已关闭，按下开启',
-  'chip.off.title': 'plan mode 已关闭 — 点击开启（/plan）',
+  'chip.on.aria': '计划模式已开启，按下关闭',
+  'chip.on.title': '计划模式已开启 — 点击关闭（/plan off）',
+  'chip.off.aria': '计划模式已关闭，按下开启',
+  'chip.off.title': '计划模式已关闭 — 点击开启（/plan）',
 } satisfies Record<string, string>
 
 /** The plan namespace key union. */
