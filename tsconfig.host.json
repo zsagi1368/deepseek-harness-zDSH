@@ -134,6 +134,7 @@
     { "path": "./packages/attachment/attachment-local" },
     { "path": "./packages/plugins/plugin-governance" },
     { "path": "./packages/host/plugin-governance-host" },
+    { "path": "./packages/memory/zdsh-memory" },
     { "path": "./packages/llm/llm" },
     { "path": "./packages/llm/token-meter" },
     { "path": "./packages/core/session" },

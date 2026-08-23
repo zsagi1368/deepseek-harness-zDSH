@@ -102,6 +102,7 @@
     "@deepseek-ai/dsh-file-reference": "workspace:^",
     "@deepseek-ai/dsh-file-reference-local": "workspace:^",
     "@deepseek-ai/dsh-launch-environment": "workspace:^",
+    "@deepseek-ai/dsh-agent-memory": "workspace:^",
     "@deepseek-ai/dsh-message-feedback": "workspace:^",
     "@deepseek-ai/dsh-session-projection-cache": "workspace:^",
     "@deepseek-ai/dsh-session-reference": "workspace:^",

@@ -66,6 +66,14 @@
       config:
         maxNoteBytes: 8192
 
+    # Cross-session heuristic memory: extracts decisions/preferences/facts from
+    # session events into daily shards under the branch home and injects the
+    # keyword-overlap Top-K as the `agent:memory` prompt section. Host-plane
+    # because the service (`agentMemory`) outlives any single session, exactly
+    # like the goals/jobs registries.
+    - id: agent-memory
+      name: '@deepseek-ai/dsh-agent-memory'
+
     # Browser Session export: `/export` command plus the shared download dialog.
     - id: session-log-download
       name: '@deepseek-ai/dsh-session-log-export'
