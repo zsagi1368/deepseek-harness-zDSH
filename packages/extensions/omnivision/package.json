@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-omnivision",
   "description": "zDSH omnivision: pixel-faithful vision pipeline with provider failover, path policy, SSRF guards, and KV-safe shadow history",
-  "version": "0.1.1-rc.2-DSH20260823a",
+  "version": "0.1.1-rc.2-zDSH20260824a",
   "private": true,
   "type": "module",
   "main": "lib/types/index.js",
