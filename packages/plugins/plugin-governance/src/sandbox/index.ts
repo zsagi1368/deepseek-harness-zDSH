@@ -59,3 +59,5 @@ export function selectSandboxType(config: PluginSandboxConfig): PluginSandboxCon
 export { ProcessSandbox } from './process-sandbox.js'
 export { WorkerSandbox } from './worker-sandbox.js'
 export { InlineSandbox } from './inline-sandbox.js'
+export { checkPathAllowed } from './path-guard.js'
+export { deriveSandboxEnvironment } from './env.js'

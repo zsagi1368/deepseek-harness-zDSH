@@ -216,15 +216,19 @@ describe('ProcessSandbox environment filtering', () => {
     }
   }
 
-  it('filters sensitive variables by pattern blacklist', () => {
+  it('derives the default child env from runtime-required names only', () => {
     const sandbox = new ProcessSandbox('p-envfilter', baseConfig(), 'entry.js')
     withSensitiveEnv(() => {
       const filtered = sandbox.filterEnvironment()
+      // 敏感变量与普通业务变量都不再进入沙箱子进程。
       expect(filtered['API_KEY']).toBeUndefined()
       expect(filtered['SECRET_TOKEN']).toBeUndefined()
       expect(filtered['PASSWORD']).toBeUndefined()
       expect(filtered['AWS_SECRET_ACCESS_KEY']).toBeUndefined()
-      expect(filtered['NORMAL_VAR']).toBe('normal-value')
+      expect(filtered['NORMAL_VAR']).toBeUndefined()
+      // 运行必需项保留，注入标记最后落位。
+      expect(filtered['PATH']).toBeDefined()
+      expect(filtered['TEMP'] ?? filtered['TMP']).toBeDefined()
       expect(filtered['NODE_ENV']).toBe('production')
       expect(filtered['DSH_SANDBOX']).toBe('true')
     })
@@ -232,14 +236,16 @@ describe('ProcessSandbox environment filtering', () => {
 
   it('keeps only whitelisted variables when a whitelist is configured', () => {
     const config = baseConfig({
-      environment: { whitelist: ['PATH', 'HOME'], blacklist: [], clear: false },
+      environment: { whitelist: ['NORMAL_VAR'], blacklist: [], clear: false },
     })
     const sandbox = new ProcessSandbox('p-whitelist', config, 'entry.js')
     withSensitiveEnv(() => {
       const filtered = sandbox.filterEnvironment()
-      expect(filtered['PATH']).toBeDefined()
+      // 点名白名单可以从宿主提取额外变量。
+      expect(filtered['NORMAL_VAR']).toBe('normal-value')
       expect(filtered['API_KEY']).toBeUndefined()
-      expect(filtered['NORMAL_VAR']).toBeUndefined()
+      // 运行必需项仍在默认集合里。
+      expect(filtered['PATH']).toBeDefined()
     })
   })
 
@@ -254,14 +260,34 @@ describe('ProcessSandbox environment filtering', () => {
     })
   })
 
-  it('drops explicitly blacklisted names even when benign', () => {
+  it('drops explicitly blacklisted names even when they are runtime-required', () => {
     const config = baseConfig({
-      environment: { whitelist: [], blacklist: ['NORMAL_VAR'], clear: false },
+      environment: { whitelist: [], blacklist: ['PATH'], clear: false },
     })
     const sandbox = new ProcessSandbox('p-blacklist', config, 'entry.js')
-    withSensitiveEnv(() => {
-      expect(sandbox.filterEnvironment()['NORMAL_VAR']).toBeUndefined()
+    expect(sandbox.filterEnvironment()['PATH']).toBeUndefined()
+  })
+
+  it('does not leak caller-only environment variables into exec children', async () => {
+    const sandbox = new ProcessSandbox('p-env-leak', baseConfig(), 'entry.js')
+    await withSensitiveEnv(async () => {
+      // JSON.stringify renders undefined entries as null; no shell
+      // metacharacters appear in the probe so the allow list admits it.
+      const result = await sandbox.exec(
+        'node -e console.log(JSON.stringify([process.env.DSH_PROBE_SECRET,process.env.NORMAL_VAR]))',
+        { env: { PROBE_VAR: 'present' } },
+      )
+      expect(result.stdout).toContain('[null,null]')
     })
+  })
+
+  it('merges per-call env overrides on top of the sanitized base', async () => {
+    const sandbox = new ProcessSandbox('p-env-merge', baseConfig(), 'entry.js')
+    const result = await sandbox.exec(
+      'node -e console.log(process.env.PROBE_VAR+process.env.DSH_SANDBOX)',
+      { env: { PROBE_VAR: 'present' } },
+    )
+    expect(result.stdout).toContain('presenttrue')
   })
 })
 
@@ -434,12 +460,24 @@ describe('InlineSandbox', () => {
     expect(sandbox.isPathAllowed('~/secrets')).toBe(false)
   })
 
-  it('treats an empty allow list as unrestricted (inline semantics)', () => {
+  it('treats an empty allow list as fail-closed (shared PathGuard semantics)', () => {
     const config = baseConfig({
       filesystem: { access: 'readwrite', allowedPaths: [], deniedPatterns: [] },
     })
     const sandbox = new InlineSandbox('i-open', config)
-    expect(sandbox.isPathAllowed(join(tmpdir(), 'anything.txt'))).toBe(true)
+    // 与 ProcessSandbox 一致：空白名单拒绝一切，不再放行任意路径。
+    expect(sandbox.isPathAllowed(join(tmpdir(), 'anything.txt'))).toBe(false)
+    expect(sandbox.isPathAllowed(workRoot)).toBe(false)
+  })
+
+  it('routes normal-mode exec through the sanitized env and cwd overrides', async () => {
+    const sandbox = new InlineSandbox('i-normal-env', baseConfig())
+    const result = await sandbox.exec('node -e console.log(`${process.env.PROBE_VAR}:${process.env.NORMAL_VAR===undefined}`)', {
+      env: { PROBE_VAR: 'inline-present' },
+      cwd: tmpdir(),
+    })
+    // 覆盖项生效；宿主全量 env（如 NORMAL_VAR）不进入子进程。
+    expect(result.stdout).toContain('inline-present:true')
   })
 
   it('enforces readonly access for inline writes', async () => {

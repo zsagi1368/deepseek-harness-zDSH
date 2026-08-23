@@ -7,8 +7,9 @@
  */
 
 import { spawn, ChildProcess, execFile } from 'child_process'
-import { resolve } from 'path'
 import { PluginSandboxConfig, ExecResult, ExecOptions, SandboxContext } from '../spec/index.js'
+import { checkPathAllowed } from './path-guard.js'
+import { deriveSandboxEnvironment } from './env.js'
 
 /**
  * Strictly extract the base command (executable) from a command string.
@@ -157,7 +158,14 @@ export class ProcessSandbox implements SandboxContext {
    * 执行命令
    */
   async exec(command: string, options?: ExecOptions): Promise<ExecResult> {
-    // 完全授权模式：与 core 一致，无限制
+    // 两种模式的子进程环境都从白名单派生（见 deriveSandboxEnvironment），
+    // 再合并调用方显式传入的覆盖项，杜绝全量宿主 env 泄露。
+    const childEnv = {
+      ...deriveSandboxEnvironment(this.config),
+      ...(options?.env ?? {}),
+    }
+
+    // 完全授权模式：与 core 一致，无命令限制
     if (this.config.process.fullyAuthorized) {
       const timeout = options?.timeout || this.config.resources.timeoutMs
       const start = Date.now()
@@ -170,7 +178,7 @@ export class ProcessSandbox implements SandboxContext {
       return new Promise((resolve, reject) => {
         execFile(cmd, args, {
           cwd: options?.cwd || process.cwd(),
-          env: { ...process.env, ...(options?.env || {}) },
+          env: childEnv,
           timeout: timeout,
           maxBuffer: this.config.resources.maxOutputBytes * 2,
           windowsHide: true,
@@ -205,7 +213,7 @@ export class ProcessSandbox implements SandboxContext {
     return new Promise((resolve, reject) => {
       execFile(cmdBase, args, {
         cwd: options?.cwd || process.cwd(),
-        env: { ...process.env, ...(options?.env || {}) },
+        env: childEnv,
         timeout: timeout,
         maxBuffer: this.config.resources.maxOutputBytes * 2,
         windowsHide: true,
@@ -286,108 +294,18 @@ export class ProcessSandbox implements SandboxContext {
 
   /**
    * 过滤环境变量
-   * 安全修复：增加默认黑名单，过滤敏感环境变量
+   * 安全修复：默认从运行必需项白名单派生（PATH/SYSTEMROOT/TEMP/NODE_* 等），
+   * 不再下发全量宿主 env；显式白名单可点名提取，黑名单与敏感形状始终生效。
    */
   filterEnvironment(): NodeJS.ProcessEnv {
-    // 敏感环境变量黑名单 - 防止泄露
-    const SENSITIVE_PATTERNS = [
-      '.*PASSWORD.*',
-      '.*SECRET.*',
-      '.*TOKEN.*',
-      '.*API_KEY.*',
-      '.*PRIVATE.*',
-      '.*CREDENTIAL.*',
-      '.*AUTH.*',
-      '.*ACCESS_KEY.*',
-      '.*SESSION.*',
-      'AWS.*',
-      'AZURE.*',
-      'GCP.*',
-    ]
-
-    const entries = Object.entries({ ...process.env })
-
-    // 清除所有环境变量（如果配置要求）
-    let filtered = entries
-    if (this.config.environment.clear) {
-      filtered = []
-    } else if (this.config.environment.whitelist.length > 0) {
-      // 只保留白名单（白名单非空时）
-      filtered = entries.filter(([key]) => this.config.environment.whitelist.includes(key))
-    } else {
-      // 白名单为空时，使用黑名单过滤敏感变量
-      filtered = entries.filter(([key]) => {
-        if (this.config.environment.blacklist.includes(key)) return false
-        const isSensitive = SENSITIVE_PATTERNS.some(pattern =>
-          new RegExp(pattern, 'i').test(key),
-        )
-        return !isSensitive
-      })
-    }
-    const env: NodeJS.ProcessEnv = Object.fromEntries(filtered)
-
-    // 确保必要的环境变量存在
-    env['NODE_ENV'] = 'production'
-    env['DSH_SANDBOX'] = 'true'
-
-    return env
+    return deriveSandboxEnvironment(this.config)
   }
 
   /**
-   * 检查路径是否允许
-   * 安全修复：添加路径规范化防止遍历攻击
+   * 检查路径是否允许（与 InlineSandbox 共享同一 fail-closed 闸门）
    */
   isPathAllowed(path: string): boolean {
-    // 路径规范化：解析绝对路径并消除 .. 和 . 组件
-    let normalizedPath: string
-    try {
-      normalizedPath = resolve(path)
-      /* v8 ignore next 2 -- resolve() already collapses '..' and never emits '~'; this is defense-in-depth against exotic hosts. */
-      if (normalizedPath.includes('..') || normalizedPath.includes('~')) {
-        return false
-      }
-    } catch {
-      /* v8 ignore next -- path.resolve only rejects on hostile custom fs; unreachable over real paths. */
-      return false
-    }
-
-    // 检查拒绝模式
-    for (const pattern of this.config.filesystem.deniedPatterns) {
-      try {
-        const resolvedPattern = resolve(pattern)
-        if (normalizedPath.includes(resolvedPattern)) {
-          return false
-        }
-      } catch {
-        /* v8 ignore next 2 -- resolve() of a configured deny pattern cannot fail on real inputs. */
-        continue
-      }
-    }
-
-    // 检查白名单
-    if (this.config.filesystem.allowedPaths.length > 0) {
-      const allowedResolved = this.config.filesystem.allowedPaths.map((p) => {
-        try {
-          return resolve(p)
-        } catch {
-          /* v8 ignore next -- resolve() of a configured allow-list entry cannot fail on real inputs. */
-          return p
-        }
-      })
-      // 确保路径在白名单内（不是简单的前缀匹配，而是路径组件完整匹配）。
-      // 两种分隔符都参与比较，避免平台差异造成分支不可达。
-      return allowedResolved.some((p) => {
-        const posixPrefix = p + '/'
-        const win32Prefix = p + '\\'
-        return (
-          normalizedPath === p ||
-          normalizedPath.startsWith(posixPrefix) ||
-          normalizedPath.startsWith(win32Prefix)
-        )
-      })
-    }
-
-    return false
+    return checkPathAllowed(this.config.filesystem, path)
   }
 
   /**

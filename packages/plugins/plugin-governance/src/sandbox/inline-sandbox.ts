@@ -5,8 +5,9 @@
  * 通过守卫机制进行监控。
  */
 
-import { resolve } from 'path'
 import { PluginSandboxConfig, ExecResult, ExecOptions, SandboxContext } from '../spec/index.js'
+import { checkPathAllowed } from './path-guard.js'
+import { deriveSandboxEnvironment } from './env.js'
 
 export class InlineSandbox implements SandboxContext {
   private config: PluginSandboxConfig
@@ -19,9 +20,15 @@ export class InlineSandbox implements SandboxContext {
 
   /**
    * 执行命令
-   * 安全修复：统一使用execFile，避免shell注入
+   * 安全修复：统一使用execFile，避免shell注入；子进程环境从白名单派生
    */
   async exec(command: string, options?: ExecOptions): Promise<ExecResult> {
+    // 与 ProcessSandbox 相同的环境派生：必需项白名单 + 调用方覆盖项。
+    const childEnv = {
+      ...deriveSandboxEnvironment(this.config),
+      ...(options?.env ?? {}),
+    }
+
     // 完全授权模式：与 core 一致，但仍需安全执行
     if (this.config.process.fullyAuthorized) {
       const { execFile } = await import('child_process')
@@ -38,7 +45,7 @@ export class InlineSandbox implements SandboxContext {
           timeout,
           maxBuffer: this.config.resources.maxOutputBytes * 2,
           ...(options?.cwd ? { cwd: options.cwd } : {}),
-          ...(options?.env ? { env: options.env } : {}),
+          env: childEnv,
         }, (error, stdout, stderr) => {
           if (error) {
             reject(new Error(error.message))
@@ -76,6 +83,8 @@ export class InlineSandbox implements SandboxContext {
       execFile(cmdBase, args, {
         timeout,
         maxBuffer: this.config.resources.maxOutputBytes * 2,
+        ...(options?.cwd ? { cwd: options.cwd } : {}),
+        env: childEnv,
       }, (error, stdout, stderr) => {
         if (error) {
           reject(new Error(error.message))
@@ -137,59 +146,10 @@ export class InlineSandbox implements SandboxContext {
   }
 
   /**
-   * 检查路径是否允许
-   * 安全修复：添加路径规范化防止遍历攻击
+   * 检查路径是否允许（与 ProcessSandbox 共享同一 fail-closed 闸门：
+   * 白名单为空时一律拒绝，而不是放行任意路径）
    */
   isPathAllowed(path: string): boolean {
-    // 路径规范化：解析绝对路径并消除 .. 和 . 组件
-    let normalizedPath: string
-    try {
-      normalizedPath = resolve(path)
-      /* v8 ignore next 2 -- resolve() already collapses '..' and never emits '~'; this is defense-in-depth against exotic hosts. */
-      if (normalizedPath.includes('..') || normalizedPath.includes('~')) {
-        return false
-      }
-    } catch {
-      /* v8 ignore next -- path.resolve only rejects on hostile custom fs; unreachable over real paths. */
-      return false
-    }
-
-    // 检查拒绝模式
-    for (const pattern of this.config.filesystem.deniedPatterns) {
-      try {
-        const resolvedPattern = resolve(pattern)
-        if (normalizedPath.includes(resolvedPattern)) {
-          return false
-        }
-      } catch {
-        /* v8 ignore next 2 -- resolve() of a configured deny pattern cannot fail on real inputs. */
-        continue
-      }
-    }
-
-    // 检查白名单
-    if (this.config.filesystem.allowedPaths.length > 0) {
-      const allowedResolved = this.config.filesystem.allowedPaths.map((p) => {
-        try {
-          return resolve(p)
-        } catch {
-          /* v8 ignore next -- resolve() of a configured allow-list entry cannot fail on real inputs. */
-          return p
-        }
-      })
-      // 确保路径在白名单内（不是简单的前缀匹配，而是路径组件完整匹配）。
-      // 两种分隔符都参与比较，避免平台差异造成分支不可达。
-      return allowedResolved.some((p) => {
-        const posixPrefix = p + '/'
-        const win32Prefix = p + '\\'
-        return (
-          normalizedPath === p ||
-          normalizedPath.startsWith(posixPrefix) ||
-          normalizedPath.startsWith(win32Prefix)
-        )
-      })
-    }
-
-    return true
+    return checkPathAllowed(this.config.filesystem, path)
   }
 }
