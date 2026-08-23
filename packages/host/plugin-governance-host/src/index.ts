@@ -154,6 +154,14 @@ export class PluginGovernanceGateway extends TypertRemoteService {
   private readonly registry: PluginRegistry
   private readonly persistence: PluginPersistence
   private readonly approvals: Map<PluginGovernanceId, number> = new Map()
+  /**
+   * Enable/disable decisions read once at construction from the registry.json
+   * snapshot persistence.save writes, keyed canonically. Entries stay queued
+   * here until their plugin actually registers, so restarts re-apply them
+   * (R1-17) instead of letting every operator decision bounce back to the
+   * default status.
+   */
+  private readonly persistedDecisions = new Map<PluginGovernanceId, 'active' | 'disabled'>()
   /** Canonical ids already mirrored from the Loader, so re-syncs stay idempotent. */
   private readonly mirrored = new Set<PluginGovernanceId>()
   /** In-flight Loader sync; concurrent triggers reuse one pass. */
@@ -179,6 +187,10 @@ export class PluginGovernanceGateway extends TypertRemoteService {
       ...(config.storageRoot === undefined ? {} : { storageRoot: config.storageRoot }),
       autoSave: false,
     })
+    // Read the persisted decision snapshot up front (R1-17): every sync pass
+    // re-applies it to matching plugins once they register, whether they were
+    // injected directly or arrive later through the Loader mirror.
+    this.loadPersistedDecisions()
   }
 
   /** Create the storage directories up front so misconfiguration fails loud at load. */
@@ -509,50 +521,63 @@ export class PluginGovernanceGateway extends TypertRemoteService {
   /** One fail-soft pass over the Loader's active entries. */
   private async runSyncPass(): Promise<void> {
     const loader = this.resolveLoader()
-    if (loader === undefined) return
-    for (const entry of loader.entries()) {
-      try {
-        if (entry.options.group || entry.disabled) continue
-        const fiber = entry.fiber
-        if (fiber === undefined || fiber.state !== FIBER_ACTIVE) continue
-        const pluginId = canonicalId(entry.options.name)
-        if (this.mirrored.has(pluginId)) continue
-        if (this.registry.get(pluginId) !== null) {
-          // Registered by another path (e.g. a test-injected registry): still
-          // roster data, and re-registering would only fail as a duplicate.
-          this.mirrored.add(pluginId)
-          continue
+    try {
+      if (loader !== undefined) {
+        for (const entry of loader.entries()) {
+          try {
+            if (entry.options.group || entry.disabled) continue
+            const fiber = entry.fiber
+            if (fiber === undefined || fiber.state !== FIBER_ACTIVE) continue
+            const pluginId = canonicalId(entry.options.name)
+            if (this.mirrored.has(pluginId)) continue
+            if (this.registry.get(pluginId) !== null) {
+              // Registered by another path (e.g. a test-injected registry): still
+              // roster data, and re-registering would only fail as a duplicate.
+              this.mirrored.add(pluginId)
+              continue
+            }
+            const service = resolveMountedService(fiber)
+            // Entries that provide no object-valued service (plain function or
+            // config-only plugins) have no instance to govern; skip them.
+            if (service === undefined) continue
+            const result = await this.registry.register(wrapCordisPlugin(
+              service as CordisService,
+              mirrorPluginContext(String(pluginId)),
+              { id: String(pluginId), name: mountedDisplayName(entry.options.name), mirror: true },
+            ))
+            this.mirrored.add(pluginId)
+            if (!result.success) {
+              this.warn(`failed to register loader entry ${entry.options.name}: ${(result.errors ?? []).map(error => error.message).join('; ')}`)
+            }
+          } catch (cause) {
+            // Fail soft: one broken entry must not blank out the rest of the roster.
+            this.warn(`failed to mirror loader entry ${entry.options.name}: ${describe(cause)}`)
+          }
         }
-        const service = resolveMountedService(fiber)
-        // Entries that provide no object-valued service (plain function or
-        // config-only plugins) have no instance to govern; skip them.
-        if (service === undefined) continue
-        const result = await this.registry.register(wrapCordisPlugin(
-          service as CordisService,
-          mirrorPluginContext(String(pluginId)),
-          { id: String(pluginId), name: mountedDisplayName(entry.options.name), mirror: true },
-        ))
-        this.mirrored.add(pluginId)
-        if (!result.success) {
-          this.warn(`failed to register loader entry ${entry.options.name}: ${(result.errors ?? []).map(error => error.message).join('; ')}`)
-        }
-      } catch (cause) {
-        // Fail soft: one broken entry must not blank out the rest of the roster.
-        this.warn(`failed to mirror loader entry ${entry.options.name}: ${describe(cause)}`)
       }
+    } catch (cause) {
+      // Fail soft: the enumeration itself (entries() or a mid-pass next())
+      // throwing must not abort the pass or its persisted-decision sweep.
+      this.warn(`failed to enumerate loader entries: ${describe(cause)}`)
     }
+    // Every pass ends by re-applying persisted decisions, so entries that just
+    // registered through the Loader above come back with their operator
+    // decisions instead of a fresh default status.
+    await this.restorePersistedDecisions()
   }
 
   /** The Loader service when one is present on this context, else `undefined`. */
   private resolveLoader(): (LoaderLike & { entries: () => Iterable<MountedEntry> }) | undefined {
     // Context property access resolves through the reflection layer and THROWS
     // for names nothing provides, so contexts without a Loader must be probed,
-    // not read directly.
+    // not read directly. The untrusted-face cast keeps presence probing honest:
+    // the declared context face may claim a Loader the runtime never mounted.
     try {
-      const candidate = (this.ctx as Context & { loader?: LoaderLike }).loader
-      return candidate !== undefined && typeof candidate.entries === 'function'
-        ? candidate as LoaderLike & { entries: () => Iterable<MountedEntry> }
-        : undefined
+      const candidate = (this.ctx as unknown as Partial<Record<'loader', LoaderLike>>).loader
+      if (candidate === undefined) return undefined
+      const entries = candidate.entries
+      if (typeof entries !== 'function') return undefined
+      return candidate as LoaderLike & { entries: () => Iterable<MountedEntry> }
     } catch {
       return undefined
     }
@@ -560,7 +585,7 @@ export class PluginGovernanceGateway extends TypertRemoteService {
 
   /** Non-fatal sync diagnostics go through the host logger, never to callers. */
   private warn(message: string): void {
-    this.ctx.logger.warn?.('plugin-governance: %s', message)
+    this.ctx.logger.warn('plugin-governance: %s', message)
   }
 
   /** Fail unless the id names a registered plugin, returning its canonical form. */
@@ -580,6 +605,9 @@ export class PluginGovernanceGateway extends TypertRemoteService {
       displayName: manifest.name,
       version: manifest.version,
       status: STATUS_NAMES[this.registry.getStatus(pluginId)],
+      // Entries mirrored from the Loader are distinguishable from native
+      // registrations so the UI can badge their provenance.
+      source: this.mirrored.has(pluginId) ? 'loader-mirror' : 'native',
       approvalRequired: requiresAdmission(plugin),
       approved: this.approvals.has(pluginId),
       warnings: Object.freeze(this.registry.getPluginWarnings(pluginId) ?? []),
@@ -644,6 +672,57 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     for (const [id, at] of this.approvals) payload.approvedAt[String(id)] = at
     mkdirSync(this.persistence.dataDir, { recursive: true })
     writeFileSync(this.approvalsPath, JSON.stringify(payload, null, 2))
+  }
+
+  /**
+   * Read the persisted enable/disable decisions once at construction (R1-17).
+   * The registry.json snapshot that persistence.save writes carries each
+   * plugin's last acknowledged status; reading it here is what makes a restart
+   * honor those decisions instead of silently resetting them. The file layout
+   * and narrowing discipline mirror persistence.load's, extended with the
+   * per-entry `status` field that API leaves out. A missing or corrupt
+   * snapshot carries no decisions worth keeping: restore stays a no-op (fail
+   * closed to the registry's own defaults).
+   */
+  private loadPersistedDecisions(): void {
+    if (!existsSync(this.persistence.registryPath)) return
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(readFileSync(this.persistence.registryPath, 'utf8')) as unknown
+    } catch {
+      return
+    }
+    if (!isRecord(parsed) || !Array.isArray(parsed.plugins)) return
+    for (const entry of parsed.plugins) {
+      if (!isRecord(entry) || typeof entry.id !== 'string') continue
+      if (entry.status === 'active' || entry.status === 'disabled') {
+        this.persistedDecisions.set(canonicalId(entry.id), entry.status)
+      }
+    }
+  }
+
+  /**
+   * Re-apply persisted decisions to every registered plugin they name. Each id
+   * applies once and then leaves the queue, so later passes never clobber live
+   * operator decisions made during this session; ids whose plugin has not
+   * registered yet stay queued until a future pass sees them mount. Only
+   * disables are enforced: a fresh process registers everything active by
+   * default, and force-re-enabling here would bypass the server-side admission
+   * gate the `enable` remote enforces.
+   */
+  private async restorePersistedDecisions(): Promise<void> {
+    for (const [pluginId, decision] of [...this.persistedDecisions]) {
+      if (this.registry.get(pluginId) === null) continue
+      this.persistedDecisions.delete(pluginId)
+      if (decision !== 'disabled') continue
+      try {
+        if (this.registry.getStatus(pluginId) !== PluginStatus.DISABLED) {
+          await this.registry.disable(pluginId)
+        }
+      } catch (cause) {
+        this.warn(`failed to restore persisted disabled state for ${String(pluginId)}: ${describe(cause)}`)
+      }
+    }
   }
 
   /** Preset file path for one validated name. */
@@ -721,10 +800,10 @@ function mirrorPluginContext(pluginId: string): GovernedPluginContext {
     setWarnings: () => {},
     markDeprecated: () => {},
     sandbox: {
-      exec: async () => ({ exitCode: 0, stdout: '', stderr: '', duration: 0 }),
-      read: async () => '',
-      write: async () => {},
-      list: async () => [],
+      exec: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '', duration: 0 }),
+      read: () => Promise.resolve(''),
+      write: () => Promise.resolve(),
+      list: () => Promise.resolve([]),
     },
     registerCapability: () => {},
     unregisterCapability: () => {},

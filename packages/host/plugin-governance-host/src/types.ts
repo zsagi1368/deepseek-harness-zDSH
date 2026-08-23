@@ -23,6 +23,11 @@ export interface GovernedPluginSummary {
   readonly version: string
   readonly status: PluginGovernanceStatus
   /**
+   * Where this entry came from: mirrored from a Cordis Loader mount, or
+   * registered natively against the governance service itself.
+   */
+  readonly source: 'loader-mirror' | 'native'
+  /**
    * Whether the manifest requests a permission level that needs an explicit
    * user admission decision and has not been auto-approved.
    */

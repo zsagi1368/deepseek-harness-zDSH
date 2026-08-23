@@ -198,8 +198,8 @@ describe('PluginGovernanceGateway', () => {
     const persisted = JSON.parse(readFileSync(registryPathOf(gateway), 'utf8')) as {
       plugins: Array<{ id: string; status: string }>
     }
-    expect(persisted.plugins.find(p => p.id === 'test/alpha')?.status).toBe(String(PluginStatus.ACTIVE))
-    expect(persisted.plugins.find(p => p.id === 'test/beta')?.status).toBe(String(PluginStatus.DISABLED))
+    expect(persisted.plugins.find(p => p.id === 'test/alpha')?.status).toBe(PluginStatus.ACTIVE)
+    expect(persisted.plugins.find(p => p.id === 'test/beta')?.status).toBe(PluginStatus.DISABLED)
 
     // Force a snapshot failure by replacing the registry file with a directory;
     // the live statuses must roll back to their pre-presetLoad values.
@@ -217,6 +217,31 @@ describe('PluginGovernanceGateway', () => {
     } finally {
       rmSync(registryPath, { force: true, recursive: true })
     }
+  })
+
+  it('restores persisted disable decisions when a fresh instance starts', async () => {
+    const storageRoot = mkdtempSync(join(tmpdir(), 'gov-gw-restore-'))
+    storageRoots.push(storageRoot)
+
+    // First lifecycle: an operator disables beta through the gateway; the
+    // acknowledged receipt implies the registry.json snapshot landed on disk.
+    const firstRegistry = await seededRegistry()
+    const firstCtx = new Context()
+    contexts.push(firstCtx)
+    const first = new PluginGovernanceGateway(firstCtx, { storageRoot }, firstRegistry)
+    expect((await first.disable({ pluginId: gid('test/beta'), reason: null })).ok).toBe(true)
+
+    // Second lifecycle (the restart): a brand-new instance over the same
+    // storage root sees a freshly seeded all-active registry, yet beta must
+    // come back disabled instead of the decision bouncing to the default.
+    const secondRegistry = await seededRegistry()
+    const secondCtx = new Context()
+    contexts.push(secondCtx)
+    const second = new PluginGovernanceGateway(secondCtx, { storageRoot }, secondRegistry)
+    await second.syncMountedPlugins()
+    expect(secondRegistry.getStatus(normalizePluginId('test/beta'))).toBe(PluginStatus.DISABLED)
+    expect(secondRegistry.getStatus(normalizePluginId('test/alpha'))).toBe(PluginStatus.ACTIVE)
+    expect(second.list().plugins.find(p => p.pluginId === gid('test/beta'))?.status).toBe('disabled')
   })
 })
 
