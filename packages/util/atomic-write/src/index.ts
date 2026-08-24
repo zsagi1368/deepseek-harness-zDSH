@@ -42,8 +42,10 @@ export interface WriteFileAtomicOptions {
  * a reader resolves, the bytes behind it are fully on disk. The rename also
  * replaces a symlinked target itself instead of writing through to its
  * referent, and the same-directory sibling keeps the rename on one
- * filesystem. On any failure the temp file is removed and the failure
- * rethrown.
+ * filesystem. When the target path is an existing directory the call refuses
+ * up front with a plain `EISDIR` errno error instead of letting the rename
+ * fail opaquely on Windows (official #116). On any failure the temp file is
+ * removed and the failure rethrown.
  *
  * Platform difference (DSHV2-102): persisting the *rename* itself needs a
  * parent-directory fsync after it. POSIX exposes directory handles, so that
@@ -76,12 +78,59 @@ export async function writeFileAtomic(filename: string, content: string, options
     } finally {
       await handle.close()
     }
-    await rename(temp, filename)
+    // Official #116: refuse a directory target before handing the name over.
+    await assertReplaceableTarget(filename)
+    try {
+      await rename(temp, filename)
+    } catch (error) {
+      // The pre-check closes the common window; this covers the race where
+      // the path became a directory afterwards. POSIX reports EISDIR
+      // directly; Windows reports EPERM for the same condition, so the code
+      // is only translated once fresh lstat confirms a directory there.
+      const code = (error as NodeJS.ErrnoException | null)?.code
+      if (code === 'EISDIR' || (code === 'EPERM' && await isDirectoryAt(filename))) {
+        throw directoryTargetError(filename)
+      }
+      throw error
+    }
   } catch (error) {
     await rm(temp, { force: true })
     throw error
   }
   await syncDirectoryAfterRename(dir)
+}
+
+/** The friendly `EISDIR` failure for a directory sitting at the write target. */
+function directoryTargetError(filename: string): NodeJS.ErrnoException {
+  return Object.assign(
+    new Error(`atomic-write: cannot replace ${filename}: the target path is an existing directory (EISDIR); write to a file path or remove the directory first`),
+    { code: 'EISDIR' },
+  )
+}
+
+/**
+ * Refuse up front when the target path is an existing directory. A symlinked
+ * target stays replaceable regardless of its referent (lstat, not stat):
+ * the rename hands over the link itself, exactly as before. An absent target
+ * passes through — rename creates it.
+ */
+async function assertReplaceableTarget(filename: string): Promise<void> {
+  let stats: Awaited<ReturnType<typeof lstat>> | undefined
+  try {
+    stats = await lstat(filename)
+  } catch {
+    return
+  }
+  if (stats.isDirectory()) throw directoryTargetError(filename)
+}
+
+/** Whether fresh lstat currently finds a directory at `filename`. */
+async function isDirectoryAt(filename: string): Promise<boolean> {
+  try {
+    return (await lstat(filename)).isDirectory()
+  } catch {
+    return false
+  }
 }
 
 /**

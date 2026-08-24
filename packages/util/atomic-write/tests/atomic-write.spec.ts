@@ -88,6 +88,43 @@ describe('writeFileAtomic', () => {
     expect(await readFile(victim, 'utf8')).toBe('victim-content')
   })
 
+  it('refuses to replace an existing directory with a clear EISDIR failure (official #116)', async () => {
+    const dir = await scratch()
+    const target = join(dir, 'occupied')
+    await mkdir(target)
+    await writeFile(join(target, 'inner.txt'), 'keep me')
+    let caught: NodeJS.ErrnoException | undefined
+    try {
+      await writeFileAtomic(target, 'content', { mode: 0o600 })
+    } catch (error) {
+      caught = error as NodeJS.ErrnoException
+    }
+    // A plain errno-shaped failure with a self-explanatory message, not an
+    // obscure Windows link/rename artifact.
+    expect(caught?.code).toBe('EISDIR')
+    expect(caught?.message).toMatch(/target path is an existing directory/)
+    expect((await readdir(dir)).filter(entry => entry.includes('.tmp'))).toEqual([])
+    // The directory and its content are untouched by the refused write.
+    expect(await readFile(join(target, 'inner.txt'), 'utf8')).toBe('keep me')
+  })
+
+  it.runIf(process.platform !== 'win32')(
+    'still replaces a symlink that points at a directory (lstat, not stat)',
+    async () => {
+      // Platform note: win32 rename resolves the destination symlink itself
+      // and refuses to replace a directory referent with EPERM, so the
+      // link-replacement contract only holds where the platform allows it.
+      const dir = await scratch()
+      const referent = join(dir, 'referent')
+      await mkdir(referent)
+      const target = join(dir, 'doc.yaml')
+      await symlink(referent, target)
+      await writeFileAtomic(target, 'replaced', { mode: 0o600 })
+      expect((await lstat(target)).isSymbolicLink()).toBe(false)
+      expect(await readFile(target, 'utf8')).toBe('replaced')
+    },
+  )
+
   it('leaves no temp sibling and rethrows when the rename fails', async () => {
     const dir = await scratch()
     const target = join(dir, 'occupied')
