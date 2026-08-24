@@ -29,7 +29,10 @@ function ghEntry(overrides: Partial<CatalogEntry> = {}): CatalogEntry {
 
 describe('plan creation', () => {
   it('rejects github entries without a pinned commit', () => {
-    expect(() => createPlan(ghEntry({ pinnedCommit: undefined }), 'install', 'web')).toThrow(CpError)
+    // exactOptionalPropertyTypes forbids `pinnedCommit: undefined`; omit the
+    // key instead so the entry really lacks a pinned commit.
+    const { pinnedCommit: _omitted, ...withoutCommit } = ghEntry()
+    expect(() => createPlan(withoutCommit, 'install', 'web')).toThrow(CpError)
     try {
       createPlan(ghEntry({ pinnedCommit: 'main' }), 'install', 'web')
     } catch (error) {

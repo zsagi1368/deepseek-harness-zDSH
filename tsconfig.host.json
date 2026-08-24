@@ -136,6 +136,11 @@
     { "path": "./packages/host/plugin-governance-host" },
     { "path": "./packages/memory/zdsh-memory" },
     { "path": "./packages/extensions/webstack" },
+    // plugin-center tests (tests/host, tests/integration, tests/shared) are
+    // matched by this aggregate's broad test glob; registering the package
+    // keeps its src out of this program by redirecting those imports to its
+    // built declarations.
+    { "path": "./packages/extensions/plugin-center" },
     { "path": "./packages/llm/llm" },
     { "path": "./packages/llm/token-meter" },
     { "path": "./packages/core/session" },
@@ -307,6 +312,11 @@
     { "path": "./packages/host/frontend-static" },
     { "path": "./packages/host/plugin-inventory" },
     { "path": "./packages/host/webserver" },
+    // Workbench is a split-face client package; only its host face belongs to
+    // this graph. Its tests/*.host.spec.ts match this aggregate's test glob,
+    // and without this reference their relative `../src/*.ts` imports pull
+    // workbench sources straight into this composite program (TS6307).
+    { "path": "./packages/client/workbench/tsconfig.host.json" },
     { "path": "./packages/sdk/client" },
     { "path": "./packages/sdk/protocol" },
     { "path": "./packages/lsp/lsp" },

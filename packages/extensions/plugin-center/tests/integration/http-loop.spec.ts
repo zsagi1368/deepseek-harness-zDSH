@@ -149,7 +149,9 @@ async function api(
   path: string,
   body?: unknown,
 ): Promise<{ status: number; payload: unknown }> {
-  const response = await fetch(`${harness!.baseUrl}${path}`, {
+  // exactOptionalPropertyTypes forbids an explicit `body: undefined`, so the
+  // property is only assigned when a body exists.
+  const init: RequestInit = {
     method,
     headers: {
       'content-type': 'application/json',
@@ -157,8 +159,9 @@ async function api(
       origin: harness!.baseUrl,
       'x-zdsh-pc-intent': 'zdsh-plugin-center',
     },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  })
+  }
+  if (body !== undefined) init.body = JSON.stringify(body)
+  const response = await fetch(`${harness!.baseUrl}${path}`, init)
   return { status: response.status, payload: await response.json() }
 }
 

@@ -33,7 +33,12 @@ describe('catalog entry validation', () => {
 
   it('rejects github entries without a 40-hex pinned commit', () => {
     for (const bad of ['main', 'abc', 'a'.repeat(41), undefined]) {
-      const result = validateCatalogEntry(entry({ pinnedCommit: bad }))
+      // exactOptionalPropertyTypes forbids `pinnedCommit: undefined`; omit the
+      // key for the undefined case instead.
+      const { pinnedCommit: _omitted, ...withoutCommit } = entry({})
+      const result = validateCatalogEntry(
+        bad === undefined ? withoutCommit : { ...withoutCommit, pinnedCommit: bad },
+      )
       expect(result.ok).toBe(false)
       if (!result.ok) expect(result.error.code).toBe('untrusted_source')
     }
@@ -42,7 +47,8 @@ describe('catalog entry validation', () => {
   })
 
   it('rejects npm entries without packageName/version', () => {
-    const result = validateCatalogEntry(entry({ source: 'npm', pinnedCommit: undefined }))
+    const { pinnedCommit: _omitted, ...withoutCommit } = entry({ source: 'npm' })
+    const result = validateCatalogEntry(withoutCommit)
     expect(result.ok).toBe(false)
   })
 })
