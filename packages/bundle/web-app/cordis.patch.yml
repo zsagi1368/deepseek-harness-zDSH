@@ -120,6 +120,15 @@
     - id: cordis-host-runner
       name: '@deepseek-ai/dsh-cordis-host-runner'
 
+    # WebStack (网栈): integrated web search + fetch kernel. COEXIST mode: the
+    # plugin registers itself as an optional provider via
+    # ctx.web.registerSearchProvider/registerFetchProvider and never rewrites
+    # the upstream `web.searchProvider` / `web.fetchProvider` selectors unless a
+    # later overlay opts into takeover (upstream cordis.patch.yml ships an empty
+    # patch list by design; capability seams degrade gracefully when absent).
+    - id: webstack
+      name: '@deepseek-ai/dsh-webstack'
+
     # Ordinary provider for the parsed Web flags. Its plugin-level injection
     # waits for cmdlineArgs; no launcher metadata or special row kind is needed.
     - id: web-startup
