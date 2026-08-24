@@ -14,8 +14,5 @@
     "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
-  "license": "MIT",
-  "dependencies": {
-    "@deepseek-ai/schemastery": "workspace:^"
-  }
+  "license": "MIT"
 }

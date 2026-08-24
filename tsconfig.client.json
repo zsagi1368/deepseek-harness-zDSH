@@ -62,7 +62,9 @@
     { "path": "./packages/extensions/cordis-client-runner" },
     { "path": "./packages/extensions/ui-cordis" },
     { "path": "./packages/extensions/autopilot" },
-    { "path": "./packages/extensions/webstack" },
+    // webstack is a split-face package: reference the client face directly
+    // (the solution root has no composite flag, mirroring workbench below).
+    { "path": "./packages/extensions/webstack/tsconfig.client.json" },
     // plugin-center tests/client/*.client.spec.tsx match this aggregate's test
     // glob; registering the package redirects their src/client imports to its
     // built declarations instead of pulling sources into this program.

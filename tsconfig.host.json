@@ -135,7 +135,11 @@
     { "path": "./packages/plugins/plugin-governance" },
     { "path": "./packages/host/plugin-governance-host" },
     { "path": "./packages/memory/zdsh-memory" },
-    { "path": "./packages/extensions/webstack" },
+    // webstack is a split-face package: only its host face belongs here. The
+    // client face reaches remotes/tsconfig.client.json whose program consumes
+    // generated Typert artifacts, so a package-root reference would make a
+    // fresh-clone host build fail with TS2307 before the first tsdown pass.
+    { "path": "./packages/extensions/webstack/tsconfig.host.json" },
     // plugin-center tests (tests/host, tests/integration, tests/shared) are
     // matched by this aggregate's broad test glob; registering the package
     // keeps its src out of this program by redirecting those imports to its

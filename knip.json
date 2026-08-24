@@ -8,6 +8,7 @@
     "icacls",
     "musl-gcc",
     "python3",
+    "reg",
     "sandbox-exec",
     "tar",
     "taskkill",
@@ -83,6 +84,24 @@
       "ignoreDependencies": [
         "@deepseek-ai/dsh-client-ui-directory-picker-browse",
         "@deepseek-ai/dsh-client-ui-directory-picker-native"
+      ]
+    },
+    "packages/extensions/omnivision": {
+      "entry": [
+        "selftests/tests/**/*.test.ts"
+      ],
+      "project": [
+        "src/**/*.ts",
+        "selftests/**/*.ts"
+      ]
+    },
+    "packages/extensions/file-hub": {
+      // xlsx.ts loads read-excel-file/node through an indeterminate specifier
+      // on purpose: a literal would let esbuild resolve the entry and choke on
+      // its optional @aws-sdk/client-s3 require. Knip therefore cannot see the
+      // usage; keep the dependency exempt rather than "unused".
+      "ignoreDependencies": [
+        "read-excel-file"
       ]
     },
     "packages/extensions/cordis-host-runner": {
