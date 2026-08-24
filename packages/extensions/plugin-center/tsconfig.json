@@ -1,0 +1,13 @@
+{
+  // Client base because src/client carries React JSX; the host-side files need
+  // node ambient types on top (same shape as extensions/file-hub).
+  "extends": "../../../tsconfig.base.client.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types",
+    "types": ["node"]
+  },
+  "include": [
+    "src"
+  ]
+}
