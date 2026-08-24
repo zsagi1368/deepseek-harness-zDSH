@@ -3,7 +3,7 @@
  * direct-instantiation behavior against an in-memory governed registry.
  */
 
-import { mkdtempSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -23,10 +23,12 @@ import PluginGovernanceGateway, { type PluginGovernanceId } from '../src/index.t
 
 const contexts: Context[] = []
 const storageRoots: string[] = []
+const sourceDirs: string[] = []
 
 afterEach(async () => {
   await Promise.all(contexts.splice(0).map(ctx => ctx.fiber.dispose()))
   for (const root of storageRoots.splice(0)) rmSync(root, { recursive: true, force: true })
+  for (const dir of sourceDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
 })
 
 /** Brand a raw id for gateway calls. */
@@ -69,6 +71,19 @@ function gatewayWith(registry: DefaultPluginRegistry): PluginGovernanceGateway {
   const storageRoot = mkdtempSync(join(tmpdir(), 'gov-gw-'))
   storageRoots.push(storageRoot)
   return new PluginGovernanceGateway(ctx, { storageRoot }, registry)
+}
+
+/** One declared tool capability for install-source fixtures. */
+function toolCapability(name: string): Record<string, unknown> {
+  return { type: 'tool', tool: { name, description: `${name} tool`, schema: { type: 'object' } } }
+}
+
+/** A throwaway local plugin directory whose package.json carries `fields`. */
+function pluginSourceDir(fields: Record<string, unknown>): string {
+  const source = mkdtempSync(join(tmpdir(), 'gov-src-'))
+  sourceDirs.push(source)
+  writeFileSync(join(source, 'package.json'), JSON.stringify(fields))
+  return source
 }
 
 describe('PluginGovernanceGateway', () => {
@@ -175,14 +190,81 @@ describe('PluginGovernanceGateway', () => {
     if (!bad.ok) expect(bad.error.code).toBe('request-invalid')
   })
 
-  it('keeps install/uninstall explicitly not-implemented until admission lands', async () => {
+  it('installs a plugin from a local directory and persists the snapshot', async () => {
     const gateway = gatewayWith(await seededRegistry())
-    const install = gateway.install({ source: 'npm:some/package' })
-    expect(install.ok).toBe(false)
-    if (!install.ok) expect(install.error.code).toBe('not-implemented')
-    const uninstall = gateway.uninstall({ pluginId: gid('test/alpha') })
-    expect(uninstall.ok).toBe(false)
-    if (!uninstall.ok) expect(uninstall.error.code).toBe('not-implemented')
+    // A workspace-level manifest needs no admission decision, so it lands active.
+    const source = pluginSourceDir({
+      name: '@fixtures/local-plugin',
+      version: '1.2.3',
+      displayName: 'Local Plugin',
+      description: 'installed from disk',
+      dsh: { permissionLevel: PluginPermissionLevel.WORKSPACE, capabilities: [toolCapability('local_tool')] },
+    })
+    expect((await gateway.install({ source })).ok).toBe(true)
+    const row = gateway.list().plugins.find(p => p.pluginId === gid('fixtures/local-plugin'))
+    expect(row).toMatchObject({
+      displayName: 'Local Plugin',
+      version: '1.2.3',
+      status: 'active',
+      approvalRequired: false,
+      source: 'native',
+    })
+    // The acknowledged receipt implies the registry.json snapshot landed on disk.
+    const persisted = JSON.parse(readFileSync(registryPathOf(gateway), 'utf8')) as {
+      plugins: Array<{ id: string }>
+    }
+    expect(persisted.plugins.some(p => p.id === 'fixtures/local-plugin')).toBe(true)
+  })
+
+  it('installs admission-requesting plugins disabled until approve records a decision', async () => {
+    const gateway = gatewayWith(await seededRegistry())
+    // Capabilities but no permission posture: the fail-closed default
+    // requires an admission decision.
+    const source = pluginSourceDir({
+      name: '@fixtures/gated-plugin',
+      version: '0.1.0',
+      dsh: { capabilities: [toolCapability('gated_tool')] },
+    })
+    expect((await gateway.install({ source })).ok).toBe(true)
+    const row = gateway.list().plugins.find(p => p.pluginId === gid('fixtures/gated-plugin'))
+    expect(row?.status).toBe('disabled')
+    expect(row?.approvalRequired).toBe(true)
+    // Only approve + enable activate it; enable alone stays gated server-side.
+    expect((await gateway.enable({ pluginId: gid('fixtures/gated-plugin') })).ok).toBe(false)
+    expect(gateway.approve({ pluginId: gid('fixtures/gated-plugin') }).ok).toBe(true)
+    expect((await gateway.enable({ pluginId: gid('fixtures/gated-plugin') })).ok).toBe(true)
+    expect(gateway.health().plugins.find(p => p.pluginId === gid('fixtures/gated-plugin'))?.status).toBe('active')
+  })
+
+  it('rejects install sources that are missing or carry no package.json', async () => {
+    const gateway = gatewayWith(await seededRegistry())
+    for (const source of [join(tmpdir(), 'gov-src-does-not-exist-xyz'), pluginSourceDir({})]) {
+      const rejected = await gateway.install({ source })
+      expect(rejected.ok).toBe(false)
+      if (!rejected.ok) expect(rejected.error.code).toBe('request-invalid')
+    }
+    expect(existsSync(join(tmpdir(), 'gov-src-does-not-exist-xyz'))).toBe(false)
+  })
+
+  it('uninstalls a plugin, purges its approval state, and snapshots the roster', async () => {
+    const gateway = gatewayWith(await seededRegistry())
+    expect(gateway.approve({ pluginId: gid('test/alpha') }).ok).toBe(true)
+    expect((await gateway.uninstall({ pluginId: gid('test/alpha') })).ok).toBe(true)
+    expect(gateway.list().plugins.some(p => p.pluginId === gid('test/alpha'))).toBe(false)
+    // Durable admission state is purged, so a reinstall fails closed instead
+    // of inheriting the stale grant.
+    const approvals = JSON.parse(readFileSync(approvalsPathOf(gateway), 'utf8')) as {
+      approvedAt: Record<string, number>
+    }
+    expect(approvals.approvedAt['test/alpha']).toBeUndefined()
+    const persisted = JSON.parse(readFileSync(registryPathOf(gateway), 'utf8')) as {
+      plugins: Array<{ id: string }>
+    }
+    expect(persisted.plugins.some(p => p.id === 'test/alpha')).toBe(false)
+    // Removing an already-removed id reports plugin-not-found.
+    const missing = await gateway.uninstall({ pluginId: gid('test/alpha') })
+    expect(missing.ok).toBe(false)
+    if (!missing.ok) expect(missing.error.code).toBe('plugin-not-found')
   })
 
   it('persists presetLoad status changes and restores them when the snapshot fails', async () => {
@@ -248,6 +330,14 @@ describe('PluginGovernanceGateway', () => {
 /** The registry.json path behind one gateway's persistence (same derivation). */
 function registryPathOf(gateway: PluginGovernanceGateway): string {
   return (gateway as unknown as { persistence: { registryPath: string } }).persistence.registryPath
+}
+
+/** The approvals ledger path behind one gateway's persistence. */
+function approvalsPathOf(gateway: PluginGovernanceGateway): string {
+  return join(
+    (gateway as unknown as { persistence: { dataDir: string } }).persistence.dataDir,
+    'approvals.json',
+  )
 }
 
 describe('PluginGovernanceGateway Loader mirroring', () => {

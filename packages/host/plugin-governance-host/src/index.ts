@@ -6,7 +6,7 @@
  * @module @deepseek-ai/dsh-plugin-governance-host
  */
 
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync, type Stats } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { Context, Service, type Fiber, type FiberState } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
@@ -18,10 +18,12 @@ import {
   PluginPersistence,
   PluginPermissionLevel,
   PluginStatus,
+  validatePluginId,
   wrapCordisPlugin,
   type CordisService,
   type Plugin as GovernedPlugin,
   type PluginContext as GovernedPluginContext,
+  type PluginManifest as GovernedManifest,
   type PluginRegistry,
 } from '@deepseek-ai/dsh-plugin-governance'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
@@ -258,29 +260,90 @@ export class PluginGovernanceGateway extends TypertRemoteService {
   }
 
   /**
-   * Deferred: installing a plugin fetches and admits third-party code, which
-   * needs the guarded download-and-admit pipeline before it can run for real.
-   * @param request - source locator of the plugin to install.
-   * @returns always `not-implemented`.
+   * Install a plugin from an existing local directory (L3 admission pipeline).
+   * The directory must hold a readable `package.json`, from which the
+   * governance manifest is constructed — no npm or network download is
+   * involved. The constructed manifest is admitted through the governance
+   * registry and the roster snapshot persists before the receipt returns.
+   *
+   * Fail closed: a manifest whose permission posture requests an admission
+   * decision (`requiresAdmission`) registers **disabled** unless the approvals
+   * ledger already holds a decision, so installed code never runs before the
+   * operator approves it; `approve` + `enable` then activate it.
+   * @param request - local source directory of the plugin to install.
+   * @returns a receipt, or `request-invalid` / `persistence-failed`.
    */
   @Remote('install')
-  install(_request: InstallPluginRequest): GovernanceResult<GovernanceAcknowledgement> {
-    return failed('not-implemented', 'install awaits the guarded download-and-admit pipeline; mount plugins through the Loader for now')
+  async install(request: InstallPluginRequest): Promise<GovernanceResult<GovernanceAcknowledgement>> {
+    const manifest = manifestFromLocalSource(request.source)
+    if (!manifest.ok) return manifest
+    const pluginId = canonicalId(manifest.value.id)
+    if (this.registry.get(pluginId) !== null) {
+      return failed(
+        'request-invalid',
+        `plugin ${JSON.stringify(String(pluginId))} is already registered; uninstall it first`,
+      )
+    }
+    const plugin: GovernedPlugin = {
+      manifest: manifest.value,
+      install: () => {},
+      uninstall: () => {},
+    }
+    const registration = await this.registry.register(plugin)
+    if (!registration.success) {
+      const reasons = (registration.errors ?? []).map(error => `${error.path}: ${error.message}`).join('; ')
+      return failed('request-invalid', `the manifest built from package.json was rejected: ${reasons || 'unknown validation failure'}`)
+    }
+    // Fail-closed admission gate (server-side, mirroring the `enable` remote):
+    // registered but disabled until an approval decision exists.
+    if (requiresAdmission(plugin) && !this.approvals.has(pluginId)) {
+      await this.registry.disable(pluginId, 'installed without a recorded admission decision')
+    }
+    try {
+      this.persistence.save()
+    } catch (cause) {
+      // Compensate so memory and disk never disagree behind a failed call.
+      await this.registry.unregister(pluginId)
+      return failed('persistence-failed', `the registry snapshot could not be written: ${describe(cause)}`)
+    }
+    return succeeded(Object.freeze({ acknowledged: true }))
   }
 
   /**
-   * Deferred: uninstalling removes registered code and its durable state and
-   * shares the missing pipeline with `install`.
+   * Uninstall a plugin: unregister it from the governance registry, purge its
+   * durable admission state (approvals-ledger entry and queued persisted
+   * decision — a later reinstall fails closed instead of inheriting stale
+   * grants), and snapshot the registry before the receipt returns. Entries
+   * mirrored from the Cordis Loader reappear on the next sync while their
+   * module stays mounted in the loader configuration.
    * @param request - the plugin to remove.
-   * @returns always `not-implemented`, or `plugin-not-found`.
+   * @returns a receipt, or `plugin-not-found` / `persistence-failed`.
    */
   @Remote('uninstall')
-  uninstall(request: PluginIdRequest): GovernanceResult<GovernanceAcknowledgement> {
+  async uninstall(request: PluginIdRequest): Promise<GovernanceResult<GovernanceAcknowledgement>> {
     const pluginId = canonicalId(request.pluginId)
-    if (this.registry.get(pluginId) === null) {
+    const plugin = this.registry.get(pluginId)
+    if (plugin === null) {
       return failed('plugin-not-found', noSuchPlugin(pluginId))
     }
-    return failed('not-implemented', 'uninstall awaits the guarded download-and-admit pipeline; remove plugins through the Loader for now')
+    const previousStatus = this.registry.getStatus(pluginId)
+    const previousApproval = this.approvals.get(pluginId)
+    const previousDecision = this.persistedDecisions.get(pluginId)
+    await this.registry.unregister(pluginId)
+    this.approvals.delete(pluginId)
+    this.persistedDecisions.delete(pluginId)
+    try {
+      if (previousApproval !== undefined) this.saveApprovals()
+      this.persistence.save()
+    } catch (cause) {
+      // Compensate both maps and the registry, restoring the pre-call status.
+      restoreMapEntry(this.approvals, pluginId, previousApproval)
+      restoreMapEntry(this.persistedDecisions, pluginId, previousDecision)
+      await this.registry.register({ ...plugin })
+      if (previousStatus === PluginStatus.DISABLED) await this.registry.disable(pluginId)
+      return failed('persistence-failed', `the registry snapshot could not be written: ${describe(cause)}`)
+    }
+    return succeeded(Object.freeze({ acknowledged: true }))
   }
 
   /**
@@ -733,6 +796,100 @@ export class PluginGovernanceGateway extends TypertRemoteService {
 /** Canonical not-found message for one plugin id. */
 function noSuchPlugin(pluginId: PluginGovernanceId): string {
   return `no registered plugin ${JSON.stringify(String(pluginId))}`
+}
+
+/**
+ * Deny-all sandbox defaults behind a manifest built from a plain package.json:
+ * until the plugin's own `dsh.sandbox` section declares otherwise it gets no
+ * network, no process rights, and read-only filesystem access.
+ */
+function denyAllSandbox(): GovernedManifest['sandbox'] {
+  return {
+    type: 'inline',
+    resources: { memoryLimitMb: 256, cpuLimit: 50, timeoutMs: 30000, maxOutputBytes: 10_000 },
+    filesystem: { access: 'readonly', allowedPaths: [], deniedPatterns: [] },
+    network: { access: 'none', allowedHosts: [], deniedHosts: [], allowLocal: false },
+    environment: { whitelist: [], blacklist: [], clear: false },
+    process: { spawn: false, exec: false, allowedCommands: [] },
+  }
+}
+
+/**
+ * Read one local plugin directory and construct a governance manifest from
+ * its package.json (L3 admission pipeline). Identity comes from the standard
+ * npm fields (`name` normalized into the canonical `namespace/name` key space,
+ * `version`); an optional embedded `dsh` section may declare compatibility,
+ * permission posture, capabilities, and sandbox; everything undeclared falls
+ * back to fail-closed defaults. Every unreadable or under-specified source
+ * surfaces as `request-invalid`.
+ */
+function manifestFromLocalSource(source: unknown): GovernanceResult<GovernedManifest> {
+  if (typeof source !== 'string' || source.trim().length === 0) {
+    return failed('request-invalid', 'install requires the local plugin directory path in source')
+  }
+  let stats: Stats | undefined
+  try {
+    stats = statSync(source, { throwIfNoEntry: false })
+  } catch {
+    stats = undefined
+  }
+  if (stats === undefined || !stats.isDirectory()) {
+    return failed(
+      'request-invalid',
+      `the install source ${JSON.stringify(source)} is not an existing local directory`,
+    )
+  }
+  const packagePath = join(source, 'package.json')
+  if (!existsSync(packagePath)) {
+    return failed('request-invalid', 'the install source carries no package.json; a readable plugin manifest is required')
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(readFileSync(packagePath, 'utf8')) as unknown
+  } catch (cause) {
+    return failed('request-invalid', `package.json could not be parsed: ${describe(cause)}`)
+  }
+  if (!isRecord(parsed)) {
+    return failed('request-invalid', 'package.json is not a JSON object')
+  }
+  const rawName = typeof parsed.name === 'string' ? parsed.name.trim() : ''
+  const id = normalizePluginId(rawName)
+  if (!validatePluginId(id)) {
+    return failed(
+      'request-invalid',
+      `package.json name ${JSON.stringify(rawName)} does not normalize to a valid governance plugin id (namespace/name)`,
+    )
+  }
+  const version = typeof parsed.version === 'string' ? parsed.version.trim() : ''
+  if (!/^\d+\.\d+\.\d+/.test(version)) {
+    return failed('request-invalid', `package.json version ${JSON.stringify(version)} is not a semver string`)
+  }
+  // Optional embedded governance section; unrecognized content stays out.
+  const dsh = isRecord(parsed.dsh) ? parsed.dsh : {}
+  const capabilities: GovernedManifest['capabilities'] = Array.isArray(dsh.capabilities)
+    ? (dsh.capabilities.filter(entry => isRecord(entry)) as unknown as GovernedManifest['capabilities'])
+    : []
+  const manifest: GovernedManifest = {
+    id,
+    version,
+    name: typeof parsed.displayName === 'string' && parsed.displayName.trim().length > 0
+      ? parsed.displayName
+      : rawName,
+    ...(typeof parsed.description === 'string' ? { description: parsed.description } : {}),
+    ...(typeof parsed.author === 'string' ? { author: parsed.author } : {}),
+    dsh: {
+      compatible: typeof dsh.compatible === 'string' && dsh.compatible.trim().length > 0
+        ? dsh.compatible
+        : '>=0.0.0',
+    },
+    capabilities,
+    ...(typeof dsh.permissionLevel === 'string'
+      ? { permissionLevel: dsh.permissionLevel as PluginPermissionLevel }
+      : {}),
+    ...(typeof dsh.autoApprove === 'boolean' ? { autoApprove: dsh.autoApprove } : {}),
+    sandbox: isRecord(dsh.sandbox) ? (dsh.sandbox as unknown as GovernedManifest['sandbox']) : denyAllSandbox(),
+  }
+  return succeeded(manifest)
 }
 
 /**

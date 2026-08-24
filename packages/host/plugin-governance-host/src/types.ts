@@ -144,9 +144,13 @@ export interface DisablePluginRequest {
   readonly reason: string | null
 }
 
-/** Named arguments of the deferred `install` endpoint. */
+/** Named arguments of `install`. */
 export interface InstallPluginRequest {
-  /** Source locator of the plugin to install; interpreted by a later build. */
+  /**
+   * Local directory path holding the plugin to install; the directory must
+   * exist and contain a readable `package.json` from which the governance
+   * manifest is constructed. No network or registry download happens.
+   */
   readonly source: string
 }
 
