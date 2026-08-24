@@ -1,4 +1,4 @@
-# zDSH
+# zDSH (Not finished, to be online soon)
 
 [English](README.md) | [中文](README.zh.md)
 
