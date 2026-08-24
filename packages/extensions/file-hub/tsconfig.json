@@ -1,0 +1,25 @@
+{
+  "extends": "../../../tsconfig.base.client.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types",
+    "types": ["node"]
+  },
+  "include": [
+    "src"
+  ],
+  "references": [
+    {
+      "path": "../../client/runtime"
+    },
+    {
+      "path": "../../client/ui-conversation"
+    },
+    {
+      "path": "../../client/ui-input-trigger"
+    },
+    {
+      "path": "../../client/ui-settings"
+    }
+  ]
+}
