@@ -2,7 +2,7 @@
  * Security utilities — SSRF protection, path policy, credential redaction
  */
 import { lookup } from 'node:dns/promises'
-import { lstatSync } from 'node:fs'
+import { lstatSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { isAbsolute, relative, resolve } from 'node:path'
 
@@ -114,24 +114,35 @@ export class PathPolicy {
   private tempDir: string
 
   constructor(workspace: string, options: { allowedDirs?: string[]; tempDir?: string } = {}) {
-    this.workspace = resolve(workspace)
-    this.allowedDirs = new Set((options.allowedDirs ?? []).map(d => resolve(d)))
-    // os.tmpdir() resolves TEMP/TMP/TMPDIR for the running platform instead of
-    // a hard-coded '/tmp' that is meaningless on Windows.
-    this.tempDir = options.tempDir ?? tmpdir()
+    // Normalize all roots through realpathSync so symlink components in the
+    // root paths are dereferenced before any containment check runs. This
+    // makes both sides of every comparison live in canonical real-path space.
+    this.workspace = this.canonicalize(resolve(workspace))
+    this.allowedDirs = new Set((options.allowedDirs ?? []).map(d => this.canonicalize(resolve(d))))
+    this.tempDir = this.canonicalize(options.tempDir ?? tmpdir())
+  }
+
+  /** realpathSync with ENOENT/EPERM fallback to the input path. */
+  private canonicalize(p: string): string {
+    try { return realpathSync(p) } catch { return p }
+  }
+
+  /** Canonicalize a candidate path before containment checks. */
+  private canonical(path: string): string {
+    return this.canonicalize(resolve(path))
   }
 
   /**
-   * Whether `resolved` passes containment AND its final component is not a
-   * symbolic link (R1-06 best effort): a symlink planted inside an allowed
-   * root must not pivot the read elsewhere. RESIDUAL RISK: interior path
-   * segments are not resolved here, so a symlinked directory component can
-   * still traverse outside the root between this check and the actual open;
-   * closing that window needs O_NOFOLLOW/openat-style relative handles, which
-   * this layer does not perform (see also isPlainFileAt).
+   * Whether `resolved` passes containment AND its fully-resolved real path
+   * still sits inside an allowed root (R1-06 closed: both the candidate and
+   * all roots are canonicalized through realpathSync in the constructor, so
+   * symlink components are dereferenced before comparison). The final
+   * component is additionally lstat-probed to reject a symlink planted at
+   * the leaf. RESIDUAL RISK: TOCTOU between this check and open — closing
+   * that needs O_NOFOLLOW/openat-style handles.
    */
   allowInput(path: string): boolean {
-    const resolved = resolve(path)
+    const resolved = this.canonical(path)
     return (
       (
         isPathWithinRoot(resolved, this.workspace)
@@ -146,9 +157,9 @@ export class PathPolicy {
     return [this.workspace, this.tempDir]
   }
 
-  /** Same containment-plus-final-symlink discipline as {@link allowInput}. */
+  /** Same canonical containment-plus-final-symlink discipline as {@link allowInput}. */
   allowOutput(path: string): boolean {
-    const resolved = resolve(path)
+    const resolved = this.canonical(path)
     return (
       (
         isPathWithinRoot(resolved, this.workspace) || isPathWithinRoot(resolved, this.tempDir)

@@ -193,14 +193,13 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     this.loadPersistedDecisions()
   }
 
-  /** Create the storage directories up front so misconfiguration fails loud at load. */
-  protected [Service.init](): void {
+  /** Create storage dirs and run the initial Loader mirror synchronously so the roster holds real data before any Remote read. */
+  protected async [Service.init](): Promise<void> {
     this.persistence.ensureDirectories()
     this.loadApprovals()
-    // Mirror the Loader's mounted plugins into the governance roster so the
-    // roster and the plugin-manager UI hold real data in production, not just
-    // an empty registry. Individual entries fail soft (see syncMountedPlugins).
-    void this.syncMountedPlugins()
+    // Await the first mirror pass (L2: no async micro-window between service
+    // ready and populated roster). Subsequent syncs remain lazy via list().
+    await this.syncMountedPlugins()
     this.ctx.effect(() => () => {
       void this.registry.dispose()
     }, 'plugin-governance.registryDispose')
