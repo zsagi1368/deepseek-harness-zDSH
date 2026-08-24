@@ -106,6 +106,7 @@ export type GovernanceErrorCode =
   | 'not-implemented'
   | 'persistence-failed'
   | 'request-invalid'
+  | 'registry-unavailable'
 
 /** One failed governance call, carrying its category and remedy hint. */
 export interface GovernanceFailure {
@@ -147,9 +148,18 @@ export interface DisablePluginRequest {
 /** Named arguments of `install`. */
 export interface InstallPluginRequest {
   /**
-   * Local directory path holding the plugin to install; the directory must
-   * exist and contain a readable `package.json` from which the governance
-   * manifest is constructed. No network or registry download happens.
+   * Where the plugin to install comes from, in one of two forms:
+   *
+   * - a local directory path holding a readable `package.json`, from which
+   *   the governance manifest is constructed; or
+   * - an npm registry spec `npm:<name>[@<exact-version>]` — the package is
+   *   resolved against the configured registry, its publish tarball is
+   *   downloaded and integrity-verified, extracted into the governance
+   *   storage area (path-traversal and link entries rejected), and the same
+   *   manifest construction runs over the extracted `package.json`.
+   *
+   * Registry installs accept exact versions only (no ranges); omitting the
+   * version picks the registry's latest stable release.
    */
   readonly source: string
 }

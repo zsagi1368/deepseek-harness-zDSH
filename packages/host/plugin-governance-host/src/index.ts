@@ -29,6 +29,17 @@ import {
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 // Typert-generated ./typert and ./remote artifacts import Zod at runtime.
 import type {} from 'zod'
+import {
+  DEFAULT_REGISTRY_URL,
+  NpmSourceError,
+  downloadVerifiedTarball,
+  parseNpmSpec,
+  registryOriginFromConfig,
+  resolveRegistryVersion,
+  type HttpLike,
+  type NpmSpec,
+} from './install/registry-source.ts'
+import { TarExtractionError, extractNpmPackageTarball } from './install/tarball.ts'
 import type {
   DisablePluginRequest,
   GovernedCapabilityView,
@@ -108,14 +119,42 @@ interface PersistedPreset {
   entries: Array<{ pluginId: string; status: 'active' | 'disabled' }>
 }
 
+/** One registry-sourced install recorded in the provenance ledger. */
+interface PersistedInstalledSource {
+  kind: 'npm'
+  /** The exact `npm:` source string the operator installed from. */
+  spec: string
+  /** The registry version that was resolved and verified. */
+  version: string
+  installedAt: number
+  /** Directory under the governance storage area holding the extracted files. */
+  dir: string
+}
+
+/** Durable installed-source ledger format under the persistence data directory. */
+interface PersistedInstalledSources {
+  version: 1
+  sources: Record<string, PersistedInstalledSource>
+}
+
+/** Hard cap on one publish tarball; plugin packages are far smaller. */
+const MAX_TARBALL_BYTES = 20 * 1024 * 1024
+
 /** Deployment configuration of the governance service. */
 export interface Config {
   /**
-   * Persistence root for the registry snapshot, approvals ledger, and
-   * presets; defaults to the governance package's own root (`~/.dsh-zdsh`,
-   * overridden by `DSH_BRANCH_HOME`).
+   * Persistence root for the registry snapshot, approvals ledger, presets,
+   * and npm-installed plugin trees; defaults to the governance package's own
+   * root (`~/.dsh-zdsh`, overridden by `DSH_BRANCH_HOME`).
    */
   storageRoot?: string
+  /**
+   * HTTPS origin of the npm registry `npm:` install sources resolve against;
+   * defaults to https://registry.npmjs.org. Mirrors behind a firewall point
+   * this at their proxy — every request and redirect hop is pinned to this
+   * single origin.
+   */
+  registryUrl?: string
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -151,11 +190,18 @@ export class PluginGovernanceGateway extends TypertRemoteService {
   /** Loader validation for the persistence root override. */
   static Config: z<Config> = z.object({
     storageRoot: z.string(),
+    registryUrl: z.string(),
   })
 
   private readonly registry: PluginRegistry
   private readonly persistence: PluginPersistence
+  /** Single HTTPS origin every `npm:` install request and redirect stays on. */
+  private readonly registryOrigin: string
+  /** Transport for registry interactions (injected in tests, fetch otherwise). */
+  private readonly http: HttpLike
   private readonly approvals: Map<PluginGovernanceId, number> = new Map()
+  /** Registry-sourced installs, so a later uninstall can remove their files. */
+  private readonly installedSources = new Map<PluginGovernanceId, PersistedInstalledSource>()
   /**
    * Enable/disable decisions read once at construction from the registry.json
    * snapshot persistence.save writes, keyed canonically. Entries stay queued
@@ -174,16 +220,23 @@ export class PluginGovernanceGateway extends TypertRemoteService {
    * @param config - validated deployment configuration.
    * @param registry - registry backing this service; injection exists for
    * tests, the loader always receives the default in-memory implementation.
+   * @param deps - injected transport for `npm:` installs (tests); production
+   * uses global fetch pinned to the configured origin.
    */
   constructor(
     ctx: Context,
     config: Config = {},
     registry: PluginRegistry = new DefaultPluginRegistry(),
+    deps: { http?: HttpLike } = {},
   ) {
     super(ctx, 'pluginGovernance')
     if (config.storageRoot !== undefined && config.storageRoot.trim().length === 0) {
       throw new TypeError('plugin-governance: storageRoot must not be blank when provided')
     }
+    this.registryOrigin = config.registryUrl === undefined
+      ? DEFAULT_REGISTRY_URL
+      : registryOriginFromConfig(config.registryUrl)
+    this.http = deps.http ?? ((globalThis as { fetch: HttpLike }).fetch)
     this.registry = registry
     this.persistence = new PluginPersistence(registry, {
       ...(config.storageRoot === undefined ? {} : { storageRoot: config.storageRoot }),
@@ -199,6 +252,7 @@ export class PluginGovernanceGateway extends TypertRemoteService {
   protected async [Service.init](): Promise<void> {
     this.persistence.ensureDirectories()
     this.loadApprovals()
+    this.loadInstalledSources()
     // Await the first mirror pass (L2: no async micro-window between service
     // ready and populated roster). Subsequent syncs remain lazy via list().
     await this.syncMountedPlugins()
@@ -260,22 +314,39 @@ export class PluginGovernanceGateway extends TypertRemoteService {
   }
 
   /**
-   * Install a plugin from an existing local directory (L3 admission pipeline).
-   * The directory must hold a readable `package.json`, from which the
-   * governance manifest is constructed — no npm or network download is
-   * involved. The constructed manifest is admitted through the governance
-   * registry and the roster snapshot persists before the receipt returns.
+   * Install a plugin from a local directory or an npm registry source (L3
+   * admission pipeline). Local sources must be existing directories with a
+   * readable `package.json`; `npm:<name>[@<exact-version>]` sources are
+   * resolved against the configured registry, integrity-checked, and
+   * extracted into the governance storage area before the same manifest
+   * construction runs over them. The constructed manifest is admitted
+   * through the governance registry and the roster snapshot persists before
+   * the receipt returns.
    *
    * Fail closed: a manifest whose permission posture requests an admission
    * decision (`requiresAdmission`) registers **disabled** unless the approvals
    * ledger already holds a decision, so installed code never runs before the
    * operator approves it; `approve` + `enable` then activate it.
-   * @param request - local source directory of the plugin to install.
-   * @returns a receipt, or `request-invalid` / `persistence-failed`.
+   * @param request - local source directory or `npm:` spec of the plugin.
+   * @returns a receipt, or `request-invalid` / `registry-unavailable` /
+   * `persistence-failed`.
    */
   @Remote('install')
   async install(request: InstallPluginRequest): Promise<GovernanceResult<GovernanceAcknowledgement>> {
-    const manifest = manifestFromLocalSource(request.source)
+    if (request.source.startsWith('npm:')) return this.installFromNpm(request.source)
+    return this.admitManifest(manifestFromLocalSource(request.source))
+  }
+
+  /**
+   * Shared admission tail for both install sources: duplicate check, registry
+   * registration, server-side fail-closed gate, durable snapshot — plus, for
+   * registry installs, the provenance ledger entry that lets a later
+   * uninstall remove the extracted tree.
+   */
+  private async admitManifest(
+    manifest: GovernanceResult<GovernedManifest>,
+    provenance?: PersistedInstalledSource,
+  ): Promise<GovernanceResult<GovernanceAcknowledgement>> {
     if (!manifest.ok) return manifest
     const pluginId = canonicalId(manifest.value.id)
     if (this.registry.get(pluginId) !== null) {
@@ -299,14 +370,74 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     if (requiresAdmission(plugin) && !this.approvals.has(pluginId)) {
       await this.registry.disable(pluginId, 'installed without a recorded admission decision')
     }
+    if (provenance !== undefined) this.installedSources.set(pluginId, provenance)
     try {
       this.persistence.save()
+      if (provenance !== undefined) this.saveInstalledSources()
     } catch (cause) {
       // Compensate so memory and disk never disagree behind a failed call.
       await this.registry.unregister(pluginId)
+      if (provenance !== undefined) this.installedSources.delete(pluginId)
       return failed('persistence-failed', `the registry snapshot could not be written: ${describe(cause)}`)
     }
     return succeeded(Object.freeze({ acknowledged: true }))
+  }
+
+  /** Resolve, verify, extract, and admit one `npm:` install source. */
+  private async installFromNpm(source: string): Promise<GovernanceResult<GovernanceAcknowledgement>> {
+    const spec: NpmSpec | null = parseNpmSpec(source)
+    if (spec === null) {
+      return failed(
+        'request-invalid',
+        'npm install sources take the form npm:<name>[@<exact-version>]; version ranges are not accepted',
+      )
+    }
+    // Cheap pre-check so an already-registered id never triggers a download.
+    const expectedId = canonicalId(normalizePluginId(spec.name))
+    if (this.registry.get(expectedId) !== null) {
+      return failed(
+        'request-invalid',
+        `plugin ${JSON.stringify(String(expectedId))} is already registered; uninstall it first`,
+      )
+    }
+    let tarball: Buffer
+    let resolvedVersion: string
+    try {
+      const resolved = await resolveRegistryVersion(this.registryOrigin, spec, this.http)
+      resolvedVersion = resolved.version
+      tarball = await downloadVerifiedTarball(this.registryOrigin, resolved, MAX_TARBALL_BYTES, this.http)
+    } catch (cause) {
+      if (cause instanceof NpmSourceError && cause.kind === 'invalid') return failed('request-invalid', cause.message)
+      if (cause instanceof NpmSourceError && cause.kind === 'not-found') return failed('request-invalid', cause.message)
+      return failed('registry-unavailable', cause instanceof Error ? cause.message : describe(cause))
+    }
+    const destination = this.npmInstallDir(expectedId)
+    try {
+      rmSync(destination, { recursive: true, force: true })
+      extractNpmPackageTarball(tarball, destination)
+    } catch (cause) {
+      rmSync(destination, { recursive: true, force: true })
+      if (cause instanceof TarExtractionError) {
+        return failed('request-invalid', ['the publish tarball was rejected:', cause.message].join(' '))
+      }
+      return failed('persistence-failed', `the extracted package could not be written: ${describe(cause)}`)
+    }
+    const manifest = manifestFromLocalSource(destination)
+    if (!manifest.ok) {
+      rmSync(destination, { recursive: true, force: true })
+      return manifest
+    }
+    if (canonicalId(manifest.value.id) !== expectedId) {
+      rmSync(destination, { recursive: true, force: true })
+      return failed('request-invalid', 'the extracted package.json declares a different plugin id than the requested package name')
+    }
+    return this.admitManifest(manifest, {
+      kind: 'npm',
+      spec: source,
+      version: resolvedVersion,
+      installedAt: Date.now(),
+      dir: destination,
+    })
   }
 
   /**
@@ -342,6 +473,22 @@ export class PluginGovernanceGateway extends TypertRemoteService {
       await this.registry.register({ ...plugin })
       if (previousStatus === PluginStatus.DISABLED) await this.registry.disable(pluginId)
       return failed('persistence-failed', `the registry snapshot could not be written: ${describe(cause)}`)
+    }
+    // Registry installs leave an extracted tree under the storage area; its
+    // removal is hygiene rather than admission state, so a failure here is
+    // logged and the ledger entry restored instead of failing the receipt —
+    // the plugin is unregistered either way and a reinstall overwrites the
+    // stale directory.
+    const installed = this.installedSources.get(pluginId)
+    if (installed !== undefined) {
+      this.installedSources.delete(pluginId)
+      try {
+        rmSync(installed.dir, { recursive: true, force: true })
+        this.saveInstalledSources()
+      } catch (cause) {
+        restoreMapEntry(this.installedSources, pluginId, installed)
+        this.warn(['failed to remove the installed files of', String(pluginId) + ':', describe(cause)].join(' '))
+      }
     }
     return succeeded(Object.freeze({ acknowledged: true }))
   }
@@ -709,6 +856,62 @@ export class PluginGovernanceGateway extends TypertRemoteService {
   /** Approvals ledger path inside the persistence data directory. */
   private get approvalsPath(): string {
     return join(this.persistence.dataDir, 'approvals.json')
+  }
+
+  /** Installed-source ledger path inside the persistence data directory. */
+  private get installedSourcesPath(): string {
+    return join(this.persistence.dataDir, 'installed-sources.json')
+  }
+
+  /**
+   * Destination for one registry install's extracted files: a fixed
+   * two-level layout under the governance storage area, built only from
+   * validated npm name segments so the path stays inside storage by
+   * construction.
+   */
+  private npmInstallDir(pluginId: PluginGovernanceId): string {
+    const [namespace = '', name = ''] = String(pluginId).split('/')
+    return join(this.persistence.storagePath, 'installed', namespace, name)
+  }
+
+  /** Hydrate the installed-source ledger once at init. */
+  private loadInstalledSources(): void {
+    if (!existsSync(this.installedSourcesPath)) return
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(readFileSync(this.installedSourcesPath, 'utf8')) as unknown
+    } catch {
+      // A corrupt ledger loses only uninstall hygiene: entries without it are
+      // treated like local installs and their directories stay in place.
+      return
+    }
+    if (!isRecord(parsed) || !isRecord(parsed.sources)) return
+    for (const [id, entry] of Object.entries(parsed.sources)) {
+      if (
+        isRecord(entry)
+        && entry.kind === 'npm'
+        && typeof entry.spec === 'string'
+        && typeof entry.version === 'string'
+        && typeof entry.installedAt === 'number'
+        && typeof entry.dir === 'string'
+      ) {
+        this.installedSources.set(canonicalId(id), {
+          kind: 'npm',
+          spec: entry.spec,
+          version: entry.version,
+          installedAt: entry.installedAt,
+          dir: entry.dir,
+        })
+      }
+    }
+  }
+
+  /** Write the installed-source ledger; throws so the caller can compensate. */
+  private saveInstalledSources(): void {
+    const payload: PersistedInstalledSources = { version: 1, sources: {} }
+    for (const [id, entry] of this.installedSources) payload.sources[String(id)] = entry
+    mkdirSync(this.persistence.dataDir, { recursive: true })
+    writeFileSync(this.installedSourcesPath, JSON.stringify(payload, null, 2))
   }
 
   /** Hydrate the approvals ledger once at init. */
