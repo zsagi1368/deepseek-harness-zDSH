@@ -40,6 +40,44 @@ const SUPPORTED_AGENT_OPTIONS = new Set(['label', 'phase', 'schema', 'provider',
 /** Deferred Claude Code options we name explicitly in the rejection message. */
 const DEFERRED_AGENT_OPTIONS = new Set(['effort', 'isolation', 'agentType'])
 
+/**
+ * Properties a script must never read off an injected hook: reading
+ * constructor twice reaches the worker realm Function, and call / apply /
+ * bind would hand out the raw callable under a receiver of the script's
+ * choosing (#243).
+ */
+const SHIELDED_PROPS = new Set(['constructor', '__proto__', 'call', 'apply', 'bind', 'prototype'])
+
+/**
+ * Wrap one host hook implementation in a Proxy that severs every reflective
+ * path back into the worker realm. Direct calls land on the implementation;
+ * ANY property read (constructor, apply, bind, symbols included) returns
+ * undefined.
+ */
+/**
+ * Module-private mark on realm-local copies of FATAL errors. The combinators
+ * trust ONLY this symbol (unconstructable from the script realm - a plain
+ * Symbol() from this module never reaches script scope), so a forged
+ * \`{ fatal: true }\` shape still dissolves to null while real fatals and our
+ * realm copies propagate.
+ */
+const FATAL_MARK = Symbol('dsh.workflow.fatal-mark')
+
+function shieldHook(fn: (...args: unknown[]) => unknown): unknown {
+  return new Proxy(fn, {
+    get(_target) {
+      void SHIELDED_PROPS
+      return undefined
+    },
+    apply(target, _thisArg, argArray) {
+      // argArray is the script's argument tuple; every hook re-validates its
+      // own inputs (materialize/typeof guards), so the spread is safe here.
+      const args = argArray as unknown[]
+      return target(...args)
+    },
+  })
+}
+
 /** Flatten a child's final output blocks to text (the non-schema `agent()` result). */
 function outputText(blocks: ContentBlock[]): string {
   return blocks
@@ -71,6 +109,9 @@ export class WorkflowExecution {
   private currentPhase: string | undefined
   private readonly context: vm.Context
   private readonly compiled: vm.Script
+  /** The script realm's own Error: errors thrown INTO the script are rebuilt
+   *  with this constructor so their prototype chain stays realm-local (#243). */
+  private readonly realmErrorCtor
 
   constructor(
     meta: WorkflowMeta,
@@ -92,25 +133,39 @@ export class WorkflowExecution {
         lineOffset: -1,
       })
     } catch (error: unknown) {
+      console.error('WORKER_BODY_DUMP:', JSON.stringify(body))
       throw new WorkflowError(`workflow script does not parse: ${String(error)}`, 'SCRIPT_PARSE', { cause: error })
     }
 
-    this.context = vm.createContext({}, { name: `workflow:${meta.name}` })
+    // A NULL-prototype sandbox: a plain {} would chain globalThis lookups
+    // (constructor included) into the worker realm's intrinsics, handing the
+    // script worker Function access (#243 companion vector).
+    const sandbox = Object.create(null) as Record<string, unknown>
+    this.context = vm.createContext(sandbox, { name: `workflow:${meta.name}` })
+    this.realmErrorCtor = vm.runInContext('Error', this.context) as new (message: string) => Error
 
     const globals: Record<string, unknown> = {
-      agent: (prompt: unknown, opts?: unknown) => this.contain(this.agent(prompt, opts)),
-      parallel: (thunks: unknown) => this.contain(this.parallel(thunks)),
-      pipeline: (items: unknown, ...stages: unknown[]) => this.contain(this.pipeline(items, stages)),
-      phase: (title: unknown) => { this.phase(title) },
-      log: (message: unknown) => { this.log(message) },
-      // workerData already performed the real cross-thread structured clone.
-      args,
+      agent: shieldHook((prompt: unknown, opts: unknown) => this.contain(this.agent(prompt, opts))),
+      parallel: shieldHook((thunks: unknown) => this.contain(this.parallel(thunks))),
+      pipeline: shieldHook((items: unknown, ...stages: unknown[]) => this.contain(this.pipeline(items, stages))),
+      phase: shieldHook((title: unknown) => { this.phase(title) }),
+      log: shieldHook((message: unknown) => { this.log(message) }),
     }
     for (const [key, value] of Object.entries(globals)) {
-      // Data properties on the contextified global; frozen shape not required —
-      // a script overwriting its own hooks only sabotages itself.
-      ;(this.context as Record<string, unknown>)[key] = typeof value === 'function' ? Object.freeze(value) : value
+      ;(this.context as Record<string, unknown>)[key] = value
     }
+    // Relocate args into the script realm through JSON text: the structured
+    // clone that crossed the worker boundary still carries worker-realm
+    // prototypes, and ANY object handed in chains constructor back to the
+    // worker's Function (#243 companion vector).
+    let argsJson
+    try {
+      argsJson = JSON.stringify(args ?? null)
+    } catch (error) {
+      throw this.realmThrow(new WorkflowError(`args must be JSON data — ${String(error)}`, 'INVALID_ARGUMENT', { cause: error }))
+    }
+    ;(this.context as Record<string, unknown>).__dshArgsJson = argsJson
+    vm.runInContext('args = JSON.parse(globalThis.__dshArgsJson); delete globalThis.__dshArgsJson', this.context)
   }
 
   /**
@@ -131,7 +186,7 @@ export class WorkflowExecution {
    * combinator.
    */
   private throwIfCancelled(): void {
-    if (this.isCancelled()) throw this.cancelledError()
+    if (this.isCancelled()) throw this.realmThrow(this.cancelledError())
   }
 
   /**
@@ -147,7 +202,7 @@ export class WorkflowExecution {
     if (this.cancelReason !== undefined) return
     this.cancelReason = reason
     this.cancelError = new WorkflowError(`workflow run cancelled: ${this.cancelReason}`, 'CANCELLED')
-    for (const waiter of this.slotWaiters.splice(0)) waiter.reject(this.cancelledError())
+    for (const waiter of this.slotWaiters.splice(0)) waiter.reject(this.realmThrow(this.cancelledError()))
   }
 
   /**
@@ -195,6 +250,21 @@ export class WorkflowExecution {
   private contain<T>(promise: Promise<T>): Promise<T> {
     promise.catch(() => { /* consumed: see method contract — a dropped hook promise must not surface an unhandled rejection */ })
     return promise
+  }
+
+  /**
+   * Rebuild a host WorkflowError as a REALM-local error for delivery into the
+   * script: same message/code/fatality, but the prototype chain belongs to the
+   * script realm, so a caught failure cannot reach the worker Function.
+   */
+  private realmThrow(error: WorkflowError): Error {
+    const realmError = new this.realmErrorCtor(error.message)
+    realmError.name = 'WorkflowError'
+    // Public contract fields scripts read back off the caught value...
+    Object.assign(realmError, { code: error.code, fatal: error.fatal })
+    // ...plus the private trust mark only this module can attach.
+    ;(realmError as unknown as Record<symbol, unknown>)[FATAL_MARK] = true
+    return realmError
   }
 
   private cancelledError(): WorkflowError {
@@ -250,14 +320,14 @@ export class WorkflowExecution {
   private async agent(rawPrompt: unknown, rawOpts: unknown): Promise<unknown> {
     this.throwIfCancelled()
     if (typeof rawPrompt !== 'string' || rawPrompt.length === 0) {
-      throw new WorkflowError('agent() requires a non-empty prompt string', 'INVALID_ARGUMENT')
+      throw this.realmThrow(new WorkflowError('agent() requires a non-empty prompt string', 'INVALID_ARGUMENT'))
     }
     const opts = this.readAgentOptions(rawOpts)
     if (this.started >= this.limits.maxTotalAgents) {
-      throw new WorkflowError(
+      throw this.realmThrow(new WorkflowError(
         `this run reached its total agent cap (${this.limits.maxTotalAgents}) — a runaway-loop backstop; raise the applicable maxTotalAgents limit if the scale is intentional`,
         'AGENT_CAP',
-      )
+      ))
     }
     this.started += 1
     const seq = this.started
@@ -285,7 +355,7 @@ export class WorkflowExecution {
         // races our own cancel state must read as the cancellation it is,
         // not as a broken contract.
         if (this.isCancelled()) throw this.cancelledError()
-        throw new WorkflowError(`agent() could not start a child: ${renderThrown(error)}`, 'AGENT_START', { cause: error })
+        throw this.realmThrow(new WorkflowError(`agent() could not start a child: ${renderThrown(error)}`, 'AGENT_START', { cause: error }))
       }
       // The start round-trip yields to the event loop, so a cancel CAN land
       // between the host starting the child and this continuation running —
@@ -312,7 +382,7 @@ export class WorkflowExecution {
             throw this.cancelledError()
           }
           this.observer.agentEnd({ ...info, outcome: 'failed' })
-          throw new WorkflowError(`child agent run failed: ${renderThrown(error)}`, 'AGENT_RESULT', { cause: error })
+          throw this.realmThrow(new WorkflowError(`child agent run failed: ${renderThrown(error)}`, 'AGENT_RESULT', { cause: error }))
         }
         if (result.stopReason === 'completed') {
           if (opts.schema !== undefined) {
@@ -359,22 +429,22 @@ export class WorkflowExecution {
     } catch (error: unknown) {
       /* v8 ignore next -- defensive rethrow arm: materializeFromRealm only throws MaterializeError */
       if (!(error instanceof MaterializeError)) throw error
-      throw new WorkflowError(`agent() options must be plain JSON data — ${error.message}`, 'INVALID_ARGUMENT', { cause: error })
+      throw this.realmThrow(new WorkflowError(`agent() options must be plain JSON data — ${error.message}`, 'INVALID_ARGUMENT', { cause: error }))
     }
     if (typeof opts !== 'object' || opts === null || Array.isArray(opts)) {
-      throw new WorkflowError('agent() options must be an object', 'INVALID_ARGUMENT')
+      throw this.realmThrow(new WorkflowError('agent() options must be an object', 'INVALID_ARGUMENT'))
     }
     const record = opts as Record<string, unknown>
     for (const key of Object.keys(record)) {
       if (SUPPORTED_AGENT_OPTIONS.has(key)) continue
       if (DEFERRED_AGENT_OPTIONS.has(key)) {
-        throw new WorkflowError(`agent() option "${key}" is deferred and not supported by this engine (supported: label, phase, schema, provider, model)`, 'UNSUPPORTED_OPTION')
+        throw this.realmThrow(new WorkflowError(`agent() option "${key}" is deferred and not supported by this engine (supported: label, phase, schema, provider, model)`, 'UNSUPPORTED_OPTION'))
       }
-      throw new WorkflowError(`agent() option "${key}" is not recognized (supported: label, phase, schema, provider, model)`, 'UNSUPPORTED_OPTION')
+      throw this.realmThrow(new WorkflowError(`agent() option "${key}" is not recognized (supported: label, phase, schema, provider, model)`, 'UNSUPPORTED_OPTION'))
     }
     for (const key of ['label', 'phase', 'provider', 'model'] as const) {
       if (record[key] !== undefined && typeof record[key] !== 'string') {
-        throw new WorkflowError(`agent() option "${key}" must be a string`, 'INVALID_ARGUMENT')
+        throw this.realmThrow(new WorkflowError(`agent() option "${key}" must be a string`, 'INVALID_ARGUMENT'))
       }
     }
     let schema: ObjectJsonSchema | undefined
@@ -385,7 +455,7 @@ export class WorkflowExecution {
       } catch (error: unknown) {
         /* v8 ignore next -- defensive rethrow arm: assertObjectJsonSchema only throws JsonSchemaError */
         if (!(error instanceof JsonSchemaError)) throw error
-        throw new WorkflowError(`agent() schema is outside the supported subset — ${error.message}`, 'UNSUPPORTED_SCHEMA', { cause: error })
+        throw this.realmThrow(new WorkflowError(`agent() schema is outside the supported subset — ${error.message}`, 'UNSUPPORTED_SCHEMA', { cause: error }))
       }
     }
     return {
@@ -401,12 +471,12 @@ export class WorkflowExecution {
   private async parallel(rawThunks: unknown): Promise<unknown[]> {
     this.throwIfCancelled()
     if (!Array.isArray(rawThunks)) {
-      throw new WorkflowError('parallel() requires an array of zero-argument functions', 'INVALID_ARGUMENT')
+      throw this.realmThrow(new WorkflowError('parallel() requires an array of zero-argument functions', 'INVALID_ARGUMENT'))
     }
     this.assertItemCap(rawThunks.length, 'parallel()')
     const thunks = rawThunks.map((thunk, index) => {
       if (typeof thunk !== 'function') {
-        throw new WorkflowError(`parallel() item ${index} is not a function`, 'INVALID_ARGUMENT')
+        throw this.realmThrow(new WorkflowError(`parallel() item ${index} is not a function`, 'INVALID_ARGUMENT'))
       }
       return thunk as () => unknown
     })
@@ -414,11 +484,11 @@ export class WorkflowExecution {
       try {
         return await thunk()
       } catch (error: unknown) {
-        // Hook failures are WorkflowErrors built OUTSIDE the script's realm;
-        // fatality is recognized by `instanceof` against this realm's class —
-        // a script-built object can never pass it, so fatality cannot be
-        // forged (nor accidentally dissolved).
-        if (isFatalWorkflowError(error)) throw error
+        // Fatality rides an explicit `fatal` field: host WorkflowErrors carry
+        // it, and realm-local copies we throw INTO the script re-attach it —
+        // a script-fabricated object cannot set it without also being the
+        // error this module produced (plain data has no such field).
+        if ((error as Record<symbol, unknown>)[FATAL_MARK] === true || isFatalWorkflowError(error)) throw error
         return null
       }
     }))
@@ -428,15 +498,15 @@ export class WorkflowExecution {
   private async pipeline(rawItems: unknown, rawStages: unknown[]): Promise<unknown[]> {
     this.throwIfCancelled()
     if (!Array.isArray(rawItems)) {
-      throw new WorkflowError('pipeline() requires an items array', 'INVALID_ARGUMENT')
+      throw this.realmThrow(new WorkflowError('pipeline() requires an items array', 'INVALID_ARGUMENT'))
     }
     this.assertItemCap(rawItems.length, 'pipeline()')
     if (rawStages.length === 0) {
-      throw new WorkflowError('pipeline() requires at least one stage function', 'INVALID_ARGUMENT')
+      throw this.realmThrow(new WorkflowError('pipeline() requires at least one stage function', 'INVALID_ARGUMENT'))
     }
     const stages = rawStages.map((stage, index) => {
       if (typeof stage !== 'function') {
-        throw new WorkflowError(`pipeline() stage ${index} is not a function`, 'INVALID_ARGUMENT')
+        throw this.realmThrow(new WorkflowError(`pipeline() stage ${index} is not a function`, 'INVALID_ARGUMENT'))
       }
       return stage as (previous: unknown, item: unknown, index: number) => unknown
     })
@@ -451,7 +521,7 @@ export class WorkflowExecution {
         // An ordinary stage throw drops the ITEM to null and skips its
         // remaining stages; a fatal WorkflowError (see parallel()) kills the
         // whole script.
-        if (isFatalWorkflowError(error)) throw error
+        if ((error as Record<symbol, unknown>)[FATAL_MARK] === true || isFatalWorkflowError(error)) throw error
         return null
       }
     }))
@@ -459,10 +529,10 @@ export class WorkflowExecution {
 
   private assertItemCap(length: number, hook: string): void {
     if (length > this.limits.maxItemsPerCall) {
-      throw new WorkflowError(
+      throw this.realmThrow(new WorkflowError(
         `${hook} received ${length} items — over the per-call cap (${this.limits.maxItemsPerCall}); split the work or raise maxItemsPerCall in the engine config`,
         'ITEM_CAP',
-      )
+      ))
     }
   }
 
@@ -470,7 +540,7 @@ export class WorkflowExecution {
   private phase(title: unknown): void {
     this.throwIfCancelled()
     if (typeof title !== 'string' || title.length === 0) {
-      throw new WorkflowError('phase() requires a non-empty title string', 'INVALID_ARGUMENT')
+      throw this.realmThrow(new WorkflowError('phase() requires a non-empty title string', 'INVALID_ARGUMENT'))
     }
     this.currentPhase = title
     this.observer.phase(title)
@@ -480,7 +550,7 @@ export class WorkflowExecution {
   private log(message: unknown): void {
     this.throwIfCancelled()
     if (typeof message !== 'string') {
-      throw new WorkflowError('log() requires a message string', 'INVALID_ARGUMENT')
+      throw this.realmThrow(new WorkflowError('log() requires a message string', 'INVALID_ARGUMENT'))
     }
     this.observer.log(message)
   }

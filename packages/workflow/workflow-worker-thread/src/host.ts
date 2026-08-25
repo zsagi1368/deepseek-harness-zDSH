@@ -64,7 +64,7 @@ export function workerSpawnEnv(
  * @param init - the run payload, passed as `workerData`.
  * @returns the entry path or URL and the Worker options to spawn it with.
  */
-function resolveWorkerSpawn(init: WorkerInit): { entry: string | URL; options: WorkerOptions } {
+export function resolveWorkerSpawn(init: WorkerInit): { entry: string | URL; options: WorkerOptions } {
   /* v8 ignore next 3 -- the built-output arm: tests always run unbuilt (src/); the built-worker e2e exercises this shape for real */
   if (!import.meta.url.endsWith('.ts')) {
     return { entry: fileURLToPath(new URL('./worker.cjs', import.meta.url)), options: { workerData: init, env: workerSpawnEnv(), execArgv: [] } }

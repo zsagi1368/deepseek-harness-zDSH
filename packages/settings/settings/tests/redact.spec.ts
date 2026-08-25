@@ -103,6 +103,60 @@ describe('redactSecrets', () => {
   })
 })
 
+describe('redactSecrets: union / intersect / transform fail-closed (#226)', () => {
+  const UnionShape = z.union([
+    z.object({ mode: z.const('token'), token: z.string().role('secret') }),
+    z.object({ mode: z.const('open'), baseURL: z.string() }),
+  ])
+
+  const IntersectShape = z.intersect([
+    z.object({ endpoint: z.string() }),
+    z.object({ apiKey: z.string().role('secret') }),
+  ])
+
+  const TransformShape = z.transform(
+    z.object({ apiKey: z.string().role('secret'), region: z.string() }),
+    value => value,
+  )
+
+  it('strips a secret declared on any union branch, whichever branch the value matches', () => {
+    const matching = redactSecrets(UnionShape as z<never>, { mode: 'token', token: 'sk-live' })
+    expect(matching.value).toEqual({ mode: 'token' })
+    expect(matching.secrets.some(s => s.path.join('.') === 'token' && s.set)).toBe(true)
+
+    // Fail closed: even a value on the non-secret branch records the secret
+    // slot the other branch declares at that path (only secret-declared paths
+    // are stripped; non-secret fields pass through).
+    const other = redactSecrets(UnionShape as z<never>, { mode: 'open', baseURL: 'https://x' })
+    expect(other.value).toEqual({ mode: 'open', baseURL: 'https://x' })
+    expect(other.secrets.some(s => s.path.join('.') === 'token' && !s.set)).toBe(true)
+  })
+
+  it('strips secrets through intersect: every member walks the same value', () => {
+    const { value, secrets } = redactSecrets(IntersectShape as z<never>, {
+      endpoint: 'https://api.example',
+      apiKey: 'sk-live',
+    })
+    expect(value).toEqual({ endpoint: 'https://api.example' })
+    expect(secrets).toEqual([{ path: ['apiKey'], set: true }])
+  })
+
+  it('strips secrets wrapped in a transform via its inner schema', () => {
+    const { value, secrets } = redactSecrets(TransformShape as z<never>, {
+      apiKey: 'sk-live',
+      region: 'cn-north',
+    })
+    expect(value).toEqual({ region: 'cn-north' })
+    expect(secrets).toEqual([{ path: ['apiKey'], set: true }])
+  })
+
+  it('records transform-wrapped secret slots as unset when value is absent', () => {
+    const { value, secrets } = redactSecrets(TransformShape as z<never>, undefined)
+    expect(secrets).toEqual([{ path: ['apiKey'], set: false }])
+    expect(value).toBeUndefined()
+  })
+})
+
 describe('describe() layers and redaction', () => {
   const NS = settingsNamespace('adapter')
 

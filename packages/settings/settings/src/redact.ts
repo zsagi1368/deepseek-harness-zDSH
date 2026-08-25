@@ -18,8 +18,10 @@ interface SchemaNode {
   meta?: { role?: unknown }
   /** `object` properties, keyed by property name. */
   dict?: Record<string, SchemaNode>
-  /** `dict`/`array` element schema. */
+  /** `dict`/`array` element schema, or `transform` wrapped schema. */
   inner?: SchemaNode
+  /** `union`/`intersect` member schemas. */
+  list?: readonly SchemaNode[]
 }
 
 /** One schema-declared secret position inside a redacted value. */
@@ -45,6 +47,70 @@ export interface RedactedValue {
 /** Whether a value is a plain data object the walker may recurse into. */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** Internal join key so multi-segment paths can be compared inside one walk. */
+function pathKey(path: readonly string[]): string {
+  return path.join('\u0000')
+}
+
+/**
+ * Copy `value` omitting every path recorded in `removed` (joined relative to
+ * the same base the sets were built from). Objects prune per key; arrays drop
+ * the whole element whose index was stripped (element-level secrets strip the
+ * element, matching the walker's own array semantics).
+ */
+function omitPaths(value: unknown, prefix: string[], removed: Set<string>): unknown {
+  if (removed.size === 0) return value
+  if (isRecord(value)) {
+    const out: Record<string, unknown> = {}
+    for (const [key, entry] of Object.entries(value)) {
+      const joined = pathKey([...prefix, key])
+      if (removed.has(joined)) continue
+      out[key] = omitPaths(entry, [...prefix, key], removed)
+    }
+    return out
+  }
+  if (Array.isArray(value)) {
+    const out: unknown[] = []
+    for (let index = 0; index < value.length; index += 1) {
+      const joined = pathKey([...prefix, String(index)])
+      if (removed.has(joined)) continue
+      out.push(omitPaths(value[index], [...prefix, String(index)], removed))
+    }
+    return out
+  }
+  return value
+}
+
+/**
+ * Fail-closed traversal for `union` and `intersect`: the redactor cannot know
+ * which union branch a runtime value resolved to, so it walks EVERY member
+ * against the same value and strips a field when any member declares it a
+ * secret at that path. For an intersect this is exactly the composed schema's
+ * own semantics; for a union it deliberately over-strips rather than leak.
+ */
+function walkAlternation(
+  node: SchemaNode,
+  value: unknown,
+  path: string[],
+  secrets: RedactedSecret[],
+  seen: Set<string>,
+): unknown {
+  const removed = new Set<string>()
+  for (const member of node.list ?? []) {
+    const local: RedactedSecret[] = []
+    walk(member, value, path, local)
+    for (const entry of local) {
+      const key = pathKey(entry.path)
+      removed.add(pathKey(entry.path.slice(path.length)))
+      if (!seen.has(key)) {
+        seen.add(key)
+        secrets.push(entry)
+      }
+    }
+  }
+  return omitPaths(value, path, removed)
 }
 
 function walk(node: SchemaNode | undefined, value: unknown, path: string[], secrets: RedactedSecret[]): unknown {
@@ -83,20 +149,25 @@ function walk(node: SchemaNode | undefined, value: unknown, path: string[], secr
       if (!Array.isArray(value)) return value
       return value.map((entry, index) => walk(node.inner, entry, [...path, String(index)], secrets))
     }
+    case 'intersect':
+    case 'union':
+      return walkAlternation(node, value, path, secrets, new Set())
+    case 'transform':
+      // The inner schema describes what the transform consumes; redaction runs
+      // against that shape so a secret wrapped in a transform still strips.
+      return walk(node.inner, value, path, secrets)
     default:
-      // TODO(settings-wire-redaction): Fail closed instead — a secret reachable
-      // only through a union, intersection, or transform is returned verbatim
-      // here, with nothing recording that it was missed.
+      // Leaf types (string, number, boolean, any, ...) hold no nested schema.
       return value
   }
 }
 
 /**
  * Remove every `role('secret')` field a schema declares from a value. The
- * walker follows `object`, `dict`, and `array` containers; a secret must be
- * declared directly on a field reachable through those containers (a secret
- * buried inside a union branch or transform is not reachable and must not be
- * modeled that way). The input is never mutated.
+ * walker follows `object`, `dict`, and `array` containers, descends through
+ * `transform` wrappers, and treats `union`/`intersect` fail-closed: every
+ * member branch is walked against the same value and a field declared secret
+ * by any branch is stripped at that path. The input is never mutated.
  * @param schema - live schemastery schema describing the value.
  * @param value - the value to strip; `undefined` yields an empty record with
  *   object-property secret slots still enumerated.

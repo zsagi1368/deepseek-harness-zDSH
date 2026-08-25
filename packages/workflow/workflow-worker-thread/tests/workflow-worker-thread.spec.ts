@@ -10,7 +10,7 @@ import type { SubagentCapabilities, SubagentProvider, SubagentResult, SubagentRu
 import type { WorkflowMeta, WorkflowResult, WorkflowResultInfo, WorkflowRun, WorkflowRunInfo } from '@deepseek-ai/dsh-workflow'
 import * as workerEngineModule from '../src/index.ts'
 import WorkerThreadWorkflowEngine, { type Config } from '../src/index.ts'
-import { workerSpawnEnv } from '../src/host.ts'
+import { resolveWorkerSpawn, workerSpawnEnv } from '../src/host.ts'
 import { HostToWorkerType, WorkerToHostType } from '../src/protocol.ts'
 import { SessionId } from '@deepseek-ai/dsh-session'
 
@@ -30,9 +30,6 @@ vi.setConfig({ testTimeout: 30_000 })
 function waitFor(assertion: () => void, timeout = 10_000): Promise<void> {
   return vi.waitFor(assertion, { timeout, interval: 50 })
 }
-
-/** The vm-context escape hatch, spelled once: real Worker tests use it to make the WORKER misbehave. */
-const ESCAPE = "globalThis.constructor.constructor('return process')()"
 
 /** One controllable child run: the test (or auto mode) settles it. */
 interface ControlledRun {
@@ -561,31 +558,64 @@ describe('dsh-workflow-worker-thread', () => {
       expect(result.value).toBe('fine')
     })
 
-    it('the worker spawns with a scrubbed environment: an escaped script finds no ambient credentials', async () => {
-      const { ctx, parent } = await setup()
-      // A canary in the HARNESS process's env: with an inherited environment
-      // the escape below would read it back (exactly how DEEPSEEK_API_KEY
-      // would leak); the worker env keeps every ambient variable out. Windows
-      // additionally receives the host temp path (TMP/TEMP) so `os.tmpdir()`
-      // inside the worker resolves instead of degrading to a cwd-relative
-      // `undefined\temp` (tsx writes its transform cache there).
+    it('#243 containment: the constructor chain, injected hooks, and args give no worker-realm access', async () => {
+      const { ctx } = await setup()
+      const result = await run(ctx, fakeParent(), scripted(`
+        const attempts = []
+        const probe = (label, getCtor) => {
+          try {
+            // The getter runs HERE (script scope): a shielded hook makes its
+            // constructor property itself undefined, landing in blocked below.
+            const ctor = getCtor()
+            // Two steps, both reported as STRINGS only: a realm value must
+            // never cross back (materialization rejects it by design).
+            const compiled2 = ctor('return typeof process')
+            const invoked = compiled2()
+            attempts.push({ step: label, invokedValue: JSON.stringify(invoked ?? null) })
+          } catch (cause) {
+            attempts.push({ step: label, blocked: String(cause) })
+          }
+        }
+        // 1. globalThis prototype chain (null-prototype sandbox severs it)
+        probe('globalThis', () => globalThis.constructor.constructor)
+        // 2. an injected host hook's reflective path (shielded proxy)
+        probe('hook', () => agent.constructor.constructor)
+        // 3. args crossing in (relocated through JSON inside the realm)
+        probe('args', () => args.constructor.constructor)
+        return attempts.map(a => a.step + ':' + (a.invokedType ?? a.blocked))
+      `))
+      expect(result.stopReason, JSON.stringify(result.error ?? null)).toBe('completed')
+      // Decisive: every chain terminated in a realm where `process` does not
+      // exist (invokedType undefined) or was rejected outright.
+      // Decisive: every chain terminated in a realm where `process` does not
+      // exist, or was rejected outright by a shield.
+      expect(result.value).toEqual([
+        'globalThis:undefined',
+        expect.stringMatching(/^hook:TypeError: Cannot read properties of undefined/),
+        expect.stringMatching(/^args:TypeError: Cannot read properties of null/),
+      ])
+    })
+
+    it('the worker spawns with a scrubbed environment (host-side spawn contract)', async () => {
+      // With #243 containment, scripts cannot read worker env to verify the
+      // scrub; the contract is asserted on the resolved spawn options instead.
+      // Windows additionally receives the host temp path (TMP/TEMP) so
+      // `os.tmpdir()` inside the worker resolves instead of degrading to a
+      // cwd-relative `undefined\temp` (tsx writes its transform cache there).
+      await setup()
       process.env.WORKFLOW_ENV_CANARY = 'leak me'
       // The unbuilt worker forwards TSX_TSCONFIG_PATH (a path pin, not a
       // credential); clear it so this test observes the empty ambient case
       // regardless of the parent's environment.
-      const tsconfigPath = process.env.TSX_TSCONFIG_PATH
       delete process.env.TSX_TSCONFIG_PATH
       try {
-        const result = await run(ctx, parent, scripted(`
-          const proc = ${ESCAPE}
-          return { canary: proc.env.WORKFLOW_ENV_CANARY ?? null, keys: Object.keys(proc.env).sort() }
-        `))
-        expect(result.stopReason).toBe('completed')
-        const expectedKeys = process.platform === 'win32' ? ['TEMP', 'TMP'] : []
-        expect(result.value).toEqual({ canary: null, keys: expectedKeys })
+        const spawned = resolveWorkerSpawn({
+          name: 'env-canary', description: 'd',
+          body: 'return 1', parent: fakeParent(),
+        } as never)
+        expect(spawned.options.env).toEqual(process.platform === 'win32' ? { TMP: tmpdir(), TEMP: tmpdir() } : {})
       } finally {
-        if (tsconfigPath === undefined) delete process.env.TSX_TSCONFIG_PATH
-        else process.env.TSX_TSCONFIG_PATH = tsconfigPath
+        delete process.env.TSX_TSCONFIG_PATH
         delete process.env.WORKFLOW_ENV_CANARY
       }
     })
@@ -607,27 +637,26 @@ describe('dsh-workflow-worker-thread', () => {
     })
 
     it('the unbuilt worker forwards exactly TSX_TSCONFIG_PATH through the scrub: the paths-map pin survives, secrets do not', async () => {
-      const { ctx, parent } = await setup()
       // The ACP snapshot harness runs the parent with its cwd OUTSIDE the
       // repo and pins the repo tsconfig through this variable; the worker
       // must inherit the pin (or its dsh-* imports silently resolve to
       // unbuilt lib/ bundles) while every other variable stays scrubbed.
+      // Scripts cannot read worker env anymore (no process access), so the
+      // contract is asserted on the resolved spawn options.
       const tsconfig = fileURLToPath(new URL('../../../../tsconfig.json', import.meta.url))
       process.env.TSX_TSCONFIG_PATH = tsconfig
-      process.env.WORKFLOW_ENV_CANARY = 'leak me'
       try {
-        const result = await run(ctx, parent, scripted(`
-          const proc = ${ESCAPE}
-          return { keys: Object.keys(proc.env).sort(), tsconfig: proc.env.TSX_TSCONFIG_PATH }
-        `))
-        expect(result.stopReason).toBe('completed')
+        const spawned = resolveWorkerSpawn({
+          name: 'tsx-pin', description: 'd',
+          body: 'return 1', parent: fakeParent(),
+        } as never)
         const expectedKeys = process.platform === 'win32'
           ? ['TEMP', 'TMP', 'TSX_TSCONFIG_PATH']
           : ['TSX_TSCONFIG_PATH']
-        expect(result.value).toEqual({ keys: expectedKeys, tsconfig })
+        expect(Object.keys(spawned.options.env ?? {}).sort()).toEqual(expectedKeys)
+        expect((spawned.options.env as Record<string, string>).TSX_TSCONFIG_PATH).toBe(tsconfig)
       } finally {
         delete process.env.TSX_TSCONFIG_PATH
-        delete process.env.WORKFLOW_ENV_CANARY
       }
     })
   })
@@ -1302,14 +1331,17 @@ describe('dsh-workflow-worker-thread', () => {
       const handle = ctx.workflowEngine.start({
         ...scripted(`
           agent('in flight when the worker dies')
-          const proc = ${ESCAPE}
-          const st = globalThis.constructor.constructor('return setTimeout')()
-          await new Promise(resolve => st(resolve, 200))
-          proc.nextTick(() => { throw new Error('worker blew up') })
           await new Promise(() => {})
         `),
         parent,
       })
+      // Wait for the child to cross into the host before killing the worker:
+      // the reap assertions below count exactly this stranded run.
+      await waitFor(() => { expect(provider.runs.length).toBe(1) })
+      // An uncaught exception in the worker surfaces as the Worker 'error'
+      // event; scripts cannot raise it themselves anymore (no process access),
+      // so the event boundary is exercised directly.
+      ;(handle as unknown as { worker: Worker }).worker.emit('error', new Error('worker blew up'))
       const result = await handle.result
       expect(result.stopReason).toBe('error')
       expect(result.error).toContain('worker blew up')
