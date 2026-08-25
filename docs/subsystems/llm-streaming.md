@@ -317,6 +317,8 @@ declare class BlockAssembler {
    * metadata must describe stored content), but callers no longer have to infer
    * the loss: an agent loop can turn "intent without execution" into an
    * explicit failure instead of silently ending the turn.
+   * @returns the dropped tool-call blocks in stream order, or an empty array
+   *   when the finish kind is not `max-tokens`.
    */
   truncatedToolCalls(): ContentBlock[];
   /**
