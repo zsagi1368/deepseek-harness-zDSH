@@ -3,10 +3,36 @@
  * narrow RpcRequest<P> and echoes request.rpcId on the RpcResponse<T>.
  */
 
+import { readFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { mkdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+/** The distribution version, read once from this package's own manifest and
+ *  cached for the process lifetime (the #191 contract: report what actually
+ *  ships instead of a hardcoded placeholder). */
+let cachedDistributionVersion: string | undefined
+
+function distributionVersion(): string {
+  if (cachedDistributionVersion !== undefined) return cachedDistributionVersion
+  let dir = dirname(fileURLToPath(import.meta.url))
+  for (let depth = 0; depth < 8; depth += 1) {
+    try {
+      const manifest = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as { name?: unknown; version?: unknown }
+      if (typeof manifest.name === 'string' && manifest.name.startsWith('@deepseek-ai/') && typeof manifest.version === 'string') {
+        cachedDistributionVersion = manifest.version
+        return cachedDistributionVersion
+      }
+    } catch { /* keep climbing */ }
+    const parentDir = dirname(dir)
+    if (parentDir === dir) break
+    dir = parentDir
+  }
+  cachedDistributionVersion = '0.0.0'
+  return cachedDistributionVersion
+}
 import { z as zod } from 'zod'
 import type { Context } from '@deepseek-ai/cordis'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
@@ -2851,10 +2877,9 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
 
     host: {
       describe(request) {
-        // TODO: version should read apps/cli's package.json; placeholder for now.
         const selection = defaults.defaultModelSelection()
         return Promise.resolve(ok(request, {
-          version: '0.0.1',
+          version: distributionVersion(),
           // Same source as session.create's fallback: the UI's default project
           // must match where an unspecified-cwd session actually lands.
           cwd: defaults.cwd,
