@@ -25,7 +25,11 @@ export class NpmSourceError extends Error {
 /** Default upstream; overridable per gateway config for mirrors/proxies. */
 export const DEFAULT_REGISTRY_URL = 'https://registry.npmjs.org'
 
-/** Parse and validate a configured registry URL down to its HTTPS origin. */
+/**
+ * Parse and validate a configured registry URL down to its HTTPS origin.
+ * @param raw - the configured registry URL to validate.
+ * @returns the normalized bare HTTPS origin of the registry.
+ */
 export function registryOriginFromConfig(raw: string): string {
   let parsed: URL
   try {
@@ -57,6 +61,9 @@ const EXACT_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/
  * Split an `npm:` install source into package name and optional exact
  * version. Range specifiers are rejected: an admission decision should pin
  * what it admits.
+ * @param source - the install source string to parse.
+ * @returns the parsed name and optional exact version, or `null` when the
+ * source is not a valid exact `npm:` reference.
  */
 export function parseNpmSpec(source: string): NpmSpec | null {
   if (!source.startsWith('npm:')) return null
@@ -162,6 +169,10 @@ function highestStableVersion(versions: Record<string, unknown>): string | undef
 /**
  * Resolve one spec against the registry packument and return the chosen
  * version's tarball location and expected sha512 digest.
+ * @param origin - the allow-listed HTTPS registry origin to query.
+ * @param spec - the exact `npm:` spec to resolve.
+ * @param http - the fetch-like HTTP surface to use; defaults to global fetch.
+ * @returns the chosen version with its tarball URL and sha512 integrity digest.
  */
 export async function resolveRegistryVersion(
   origin: string,
@@ -220,6 +231,11 @@ function pickVersion(
  * Download the publish tarball with size caps and verify it against the
  * registry's declared sha512 digest. The buffer is only returned when
  * verification passed.
+ * @param origin - the allow-listed HTTPS registry origin to download from.
+ * @param resolved - the resolved release to download.
+ * @param maxBytes - hard cap on the accepted tarball size.
+ * @param http - the fetch-like HTTP surface to use; defaults to global fetch.
+ * @returns the downloaded tarball buffer, verified against the declared digest.
  */
 export async function downloadVerifiedTarball(
   origin: string,

@@ -7,7 +7,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync, type Stats } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve, sep } from 'node:path'
 import { Context, Service, type Fiber, type FiberState } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/cordis-plugin-loader'
@@ -372,8 +372,12 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     }
     if (provenance !== undefined) this.installedSources.set(pluginId, provenance)
     try {
-      this.persistence.save()
+      // Ledger first: if the registry snapshot then fails, compensation drops
+      // the ledger entry (a stale ledger row for an unregistered id is inert —
+      // the next install overwrites it), whereas the reverse order could leave
+      // the snapshot advertising a plugin this process no longer has in memory.
       if (provenance !== undefined) this.saveInstalledSources()
+      this.persistence.save()
     } catch (cause) {
       // Compensate so memory and disk never disagree behind a failed call.
       await this.registry.unregister(pluginId)
@@ -483,6 +487,12 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     if (installed !== undefined) {
       this.installedSources.delete(pluginId)
       try {
+        // Defense in depth against a tampered ledger: only remove trees that
+        // still live inside the governance storage area.
+        const storageRoot = resolve(this.persistence.storagePath)
+        if (!resolve(installed.dir).startsWith(storageRoot + sep)) {
+          throw new Error('recorded install directory is outside the governance storage area')
+        }
         rmSync(installed.dir, { recursive: true, force: true })
         this.saveInstalledSources()
       } catch (cause) {

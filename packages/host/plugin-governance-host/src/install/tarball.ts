@@ -93,6 +93,7 @@ function parsePaxRecords(payload: Buffer): Map<string, string> {
   return records
 }
 
+/** Summary of one successfully extracted tarball. */
 export interface ExtractedPackage {
   /** Number of regular files written under `destinationDir`. */
   readonly fileCount: number
@@ -102,6 +103,11 @@ export interface ExtractedPackage {
  * Extract an npm package tarball into `destinationDir`, creating it on
  * demand. Throws {@link TarExtractionError} on any structure outside the
  * npm-publish profile or any entry that would land outside the destination.
+ * @param tarball - the raw tarball bytes to extract.
+ * @param destinationDir - the directory to write files into, created if missing.
+ * @param limits - resource caps applied during extraction; defaults to
+ * {@link DEFAULT_TARBALL_LIMITS}.
+ * @returns a summary of the extracted archive contents.
  */
 export function extractNpmPackageTarball(
   tarball: Buffer,
@@ -143,6 +149,11 @@ export function extractNpmPackageTarball(
       if (prefix.length > 0) header_.path = `${prefix}/${header_.path}`
       applyPaxOverrides(paxOverrides ?? new Map<string, string>(), header_)
       paxOverrides = undefined
+      // A pax size override changes this entry's data extent: recompute the
+      // slice bounds from the effective size before touching the payload.
+      const dataStart = offset + BLOCK
+      const dataEnd = dataStart + header_.size
+      if (dataEnd > tarball.length) throw new TarExtractionError('tar entry extends past the archive end')
       const segments = safeSegments(header_.path)
       if (segments === null) throw new TarExtractionError(`unsafe entry path ${JSON.stringify(header_.path)}`)
       // npm publish tarballs wrap everything in a single root directory
@@ -150,7 +161,7 @@ export function extractNpmPackageTarball(
       // land directly in the destination, matching `npm install` layout.
       if (segments[0] === 'package') {
         if (segments.length === 1) {
-          offset = dataStart + Math.ceil(rawSize / BLOCK) * BLOCK
+          offset = dataStart + Math.ceil(header_.size / BLOCK) * BLOCK
           continue
         }
         segments.shift()
@@ -171,6 +182,8 @@ export function extractNpmPackageTarball(
         writeFileSync(target, tarball.subarray(dataStart, dataEnd))
         fileCount += 1
       }
+      offset = dataStart + Math.ceil(header_.size / BLOCK) * BLOCK
+      continue
     } else {
       throw new TarExtractionError(`unsupported tar entry type ${JSON.stringify(typeflag)}`)
     }
