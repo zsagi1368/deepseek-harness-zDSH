@@ -140,6 +140,29 @@
   overflow-y: auto;
 }
 
+/* Model-pane search field (mirrors PopupSelectView.module.css .search, the
+ * sibling entry's filter input): a quiet transparent inset above the list,
+ * radius matching this card's 10px row family; the menu card is
+ * width:max-content, so the field sizes itself like .cell/.option do. */
+.search {
+  box-sizing: border-box;
+  width: auto;
+  min-width: 100%;
+  margin: 2px 0 4px;
+  padding: 6px 8px;
+  border: 1px solid var(--dsw-alias-border-inverted);
+  border-radius: 10px;
+  outline: none;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.search::placeholder {
+  color: var(--dsw-alias-label-caption);
+}
+
 .group + .group {
   margin-top: 4px;
 }

@@ -182,3 +182,56 @@ describe('ModelSelect reasoning effort', () => {
     expect(load).not.toHaveBeenCalled()
   })
 })
+
+describe('ModelSelect local search', () => {
+  it('filters the drilled model list locally, keeps arrow navigation, and lets Escape clear before drilling out', () => {
+    const groups = [{
+      id: 'deepseek-official',
+      name: 'DeepSeek',
+      models: [
+        { id: 'deepseek-v4-flash', name: 'DeepSeek-V4-Flash', reasoning },
+        { id: 'deepseek-v4-pro', name: 'DeepSeek-V4-Pro' },
+      ],
+    }]
+    render(<ModelSelect
+      locked={false}
+      available
+      directory={createSnapshotStore(state({ groups }))}
+      load={vi.fn()}
+      select={vi.fn().mockResolvedValue(true)}
+      t={t}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: /选择模型|当前/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
+    const search = screen.getByRole('textbox')
+    expect(document.activeElement).toBe(search)
+
+    // Case-insensitive substring over the loaded groups; unmatched rows drop.
+    fireEvent.change(search, { target: { value: 'PRO' } })
+    expect(screen.getByRole('menuitemradio', { name: 'DeepSeek-V4-Pro' })).toBeTruthy()
+    expect(screen.queryByRole('menuitemradio', { name: /Flash/ })).toBeNull()
+
+    // Arrows keep driving the roving focus while a query narrows the list.
+    fireEvent.change(search, { target: { value: 'v4' } })
+    fireEvent.keyDown(search, { key: 'ArrowDown' })
+    expect(document.activeElement).toBe(screen.getByRole('menuitemradio', { name: 'DeepSeek-V4-Flash' }))
+
+    // Escape with an active query clears it; the pane stays drilled in.
+    fireEvent.keyDown(document.activeElement as Element, { key: 'Escape' })
+    expect((search as HTMLInputElement).value).toBe('')
+    expect(screen.getByRole('menuitemradio', { name: 'DeepSeek-V4-Flash' })).toBeTruthy()
+    expect(screen.getByRole('menuitemradio', { name: 'DeepSeek-V4-Pro' })).toBeTruthy()
+
+    // A query matching nothing renders the localized empty state.
+    fireEvent.change(search, { target: { value: 'nomatch' } })
+    expect(screen.getByText('没有匹配「nomatch」的模型。')).toBeTruthy()
+    expect(screen.queryByRole('menuitemradio')).toBeNull()
+
+    // With the query settled, Escape resumes the drill-out binding.
+    fireEvent.keyDown(search, { key: 'Escape' })
+    fireEvent.keyDown(search, { key: 'Escape' })
+    expect(screen.getByRole('menuitem', { name: /模型/ })).toBeTruthy()
+    expect(screen.queryByRole('textbox')).toBeNull()
+  })
+})

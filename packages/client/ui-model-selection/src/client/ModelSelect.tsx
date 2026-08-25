@@ -7,7 +7,10 @@
  * ToggleButton) shows both: model name + effort in the caption tone.
  * Data and submission ride the SAME per-session ModelDirectory as the
  * /model popup; exact-model reasoning metadata and the selected effort come
- * from the Host rather than a client-owned vocabulary. A rejected selection
+ * from the Host rather than a client-owned vocabulary. The drilled model
+ * list carries a local substring search (W2 #347): pure display-layer
+ * filtering over the loaded groups — no RPC sees the query; Escape clears
+ * it before engaging the drill-out/close bindings. A rejected selection
  * announces through the shared transient Toast anchored to the composer
  * card; the in-menu strip with Retry remains the catalog-load surface.
  */
@@ -52,6 +55,12 @@ export function ModelSelect(
   )
   const [open, setOpen] = useState(false)
   const [pane, setPane] = useState<Pane>('root')
+  // The model pane's local search text. Display-layer only: it filters the
+  // already-loaded groups for rendering and never reaches a RPC; it resets
+  // whenever the menu opens or closes so a stale query can't hide rows from
+  // the next visit.
+  const [query, setQuery] = useState('')
+  const searchRef = useRef<HTMLInputElement | null>(null)
   // The in-menu error strip serves catalog loads (its Retry re-runs the
   // load); a rejected SELECTION announces through the transient toast
   // instead, so the strip renders only while the latest failure-capable
@@ -61,7 +70,9 @@ export function ModelSelect(
   const toastSeq = useRef(0)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
-  const itemRefs = useRef<(HTMLButtonElement | null)[]>([])
+  // Roving-focus registry over the menu's focusable rows (the search input
+  // included, so ArrowUp from the first option lands back in the field).
+  const itemRefs = useRef<(HTMLElement | null)[]>([])
   const id = useId()
 
   const choices = useMemo(() => state.groups.flatMap(group =>
@@ -76,6 +87,23 @@ export function ModelSelect(
           : { reasoningEffort: model.reasoning.defaultEffort },
       } satisfies ModelSelection,
     }))), [state.groups])
+  // Case-insensitive substring filter over the loaded groups (same match
+  // surface as the /model popup's filterOptions: name, description, and the
+  // provider display name); empty query renders the groups untouched. Groups
+  // left with no matching rows drop out whole, headings included.
+  const visibleGroups = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    if (needle === '') return state.groups
+    return state.groups
+      .map(group => ({
+        ...group,
+        models: group.models.filter(model =>
+          model.name.toLowerCase().includes(needle)
+          || (model.description ?? '').toLowerCase().includes(needle)
+          || group.name.toLowerCase().includes(needle)),
+      }))
+      .filter(group => group.models.length > 0)
+  }, [state.groups, query])
   const selectedIndex = state.current === null
     ? -1
     : choices.findIndex(c => c.selection.provider === state.current?.provider && c.selection.model === state.current.model)
@@ -115,6 +143,12 @@ export function ModelSelect(
     }
   }, [available, load])
 
+  // The drilled model pane's search grabs focus when it mounts, so typing
+  // starts immediately (same focus-ownership rule as the popupSelect shell).
+  useEffect(() => {
+    if (open && pane === 'model') searchRef.current?.focus()
+  }, [open, pane])
+
   useEffect(() => {
     if (!open) return
     const closeOutside = (event: MouseEvent): void => {
@@ -128,6 +162,7 @@ export function ModelSelect(
 
   const show = (): void => {
     setPane('root')
+    setQuery('')
     setOpen(true)
     reload()
   }
@@ -135,6 +170,7 @@ export function ModelSelect(
   const close = (restoreFocus = false): void => {
     setOpen(false)
     setPane('root')
+    setQuery('')
     if (restoreFocus) queueMicrotask(() => { triggerRef.current?.focus() })
   }
 
@@ -149,7 +185,12 @@ export function ModelSelect(
   const onRootKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     if (event.key === 'Escape' && open) {
       event.preventDefault()
-      // Escape backs out of a drilled pane first, then closes.
+      // An active search clears first; the drill-out/close bindings stay one
+      // Escape behind it. Then Escape backs out of a drilled pane, then closes.
+      if (pane === 'model' && query !== '') {
+        setQuery('')
+        return
+      }
       if (pane !== 'root') setPane('root')
       else close(true)
       return
@@ -213,7 +254,7 @@ export function ModelSelect(
   let itemIndex = 0
   const itemRef = () => {
     const at = itemIndex++
-    return (node: HTMLButtonElement | null) => { itemRefs.current[at] = node }
+    return (node: HTMLElement | null) => { itemRefs.current[at] = node }
   }
 
   return (
@@ -268,6 +309,18 @@ export function ModelSelect(
 
           {pane === 'model' && (
             <>
+              <input
+                ref={(node) => {
+                  searchRef.current = node
+                  itemRef()(node)
+                }}
+                className={css.search}
+                type="text"
+                placeholder={t('menu.searchPlaceholder')}
+                aria-label={t('menu.searchAria')}
+                value={query}
+                onChange={(event) => { setQuery(event.currentTarget.value) }}
+              />
               {state.status === 'loading' && (
                 <div className={css.status}>{t('status.loading')}</div>
               )}
@@ -284,7 +337,7 @@ export function ModelSelect(
                 </div>
               ))}
               <div className={clsx(css.groups, 'scrollable')}>
-                {state.groups.map((group) => {
+                {visibleGroups.map((group) => {
                   const headingId = `${id}-${group.id}`
                   return (
                     <section role="group" aria-labelledby={headingId} className={css.group} key={group.id}>
@@ -321,6 +374,9 @@ export function ModelSelect(
               </div>
               {state.status === 'ready' && choices.length === 0 && (
                 <div className={css.empty}>{t('empty.models')}</div>
+              )}
+              {state.status === 'ready' && choices.length > 0 && visibleGroups.length === 0 && (
+                <div className={css.empty}>{t('empty.search', { query: query.trim() })}</div>
               )}
             </>
           )}
