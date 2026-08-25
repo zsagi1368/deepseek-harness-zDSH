@@ -79,6 +79,7 @@ export { UrlPolicyError }
 /** Extension deny list served as the default value of `upload.dangerousExtensions`. */
 export { DEFAULT_DANGEROUS_EXTENSIONS }
 
+/** M1 upload domain knobs: byte ceiling, concurrency, quota, deny list. */
 export interface UploadDomainConfig {
   /** Per-file byte ceiling. Default 50 MiB. */
   maxBytes: number
@@ -90,6 +91,7 @@ export interface UploadDomainConfig {
   dangerousExtensions?: readonly string[]
 }
 
+/** M1 lifecycle domain knobs: upload expiry age and sweep cadence. */
 export interface LifecycleDomainConfig {
   /** Upload expiry age. Default 7 days. */
   ttlMs: number
@@ -105,6 +107,36 @@ export interface MentionDomainConfig {
   indexTtlMs: number
   /** Search response page cap. Default 50. */
   searchLimit: number
+}
+
+/**
+ * Operator-facing mention overrides: every field optional, defaults applied
+ * per knob by the mention domain (catalog-friendly explicit shape).
+ */
+export interface MentionDomainOverrides {
+  /** See {@link MentionDomainConfig.indexMaxFiles}. */
+  indexMaxFiles?: number
+  /** See {@link MentionDomainConfig.indexTtlMs}. */
+  indexTtlMs?: number
+  /** See {@link MentionDomainConfig.searchLimit}. */
+  searchLimit?: number
+}
+
+/**
+ * Per-format reading budget overrides; every field optional, defaults from
+ * {@link DEFAULT_BUDGETS} (catalog-friendly explicit shape).
+ */
+export interface ReadingBudgetsOverrides {
+  /** Plain-text character budget. Default 8000. */
+  text?: number
+  /** XLSX cell-stream character budget. Default 6000. */
+  xlsx?: number
+  /** PDF extracted-text character budget. Default 4000. */
+  pdf?: number
+  /** DOCX extracted-text character budget. Default 6000. */
+  docx?: number
+  /** Binary placeholder character budget. Default 512. */
+  binary?: number
 }
 
 /**
@@ -139,23 +171,29 @@ export interface VisionDomainConfig {
    * face for inputModalities. Absent/faceless = non-native (waterfall runs).
    * TODO(integration): replace with the host session-route seam once exposed.
    */
-  nativeRoute?: { readonly provider: string; readonly model: string }
+  nativeRoute?: {
+    /** Provider id interrogated on the host llm face (e.g. `openai`). */
+    readonly provider: string
+    /** Model id alongside the provider for the inputModalities probe. */
+    readonly model: string
+  }
 }
 
+/** Full FileHub plugin configuration across every domain (defaults apply per knob). */
 export interface FileHubConfig {
   /** Session-workspace subdirectory name created under the session cwd. */
   storageDirName: string
   upload: UploadDomainConfig
   lifecycle: LifecycleDomainConfig
   /** M2 mention domain; defaults apply when omitted (additive, M1-safe). */
-  mention?: Partial<MentionDomainConfig>
+  mention?: MentionDomainOverrides
   /**
    * M3 document-reading domain; defaults apply when omitted (additive,
    * M1/M2-safe). `budgets` overrides per-format character budgets,
    * `cacheEntries`/`cacheBytes` the parse-cache LRU bounds.
    */
   reading?: {
-    budgets?: Partial<ReadingBudgets>
+    budgets?: ReadingBudgetsOverrides
     cacheEntries?: number
     cacheBytes?: number
   }
@@ -170,8 +208,47 @@ export interface FileHubConfig {
   vision?: VisionDomainConfig
 }
 
+/**
+ * Init-time override shape: every top-level group optional, applied over
+ * {@link filehubConfigDefaults} by the deep merge in `resolveConfig`.
+ * Catalog-friendly explicit shape (no mapped/utility types).
+ */
+export interface FileHubConfigInit {
+  /** See {@link FileHubConfig.storageDirName}. */
+  storageDirName?: string
+  /** Upload domain knobs; defaults from {@link filehubConfigDefaults.upload}. */
+  upload?: UploadDomainConfig
+  /** Lifecycle sweep knobs; defaults from {@link filehubConfigDefaults.lifecycle}. */
+  lifecycle?: LifecycleDomainConfig
+  /** Mention domain overrides; defaults apply per knob. */
+  mention?: MentionDomainOverrides
+  /**
+   * M3 document-reading domain; defaults apply when omitted.
+   * `budgets` overrides per-format character budgets,
+   * `cacheEntries`/`cacheBytes` the parse-cache LRU bounds.
+   */
+  reading?: {
+    /** Per-format character budget overrides; defaults from DEFAULT_BUDGETS. */
+    budgets?: ReadingBudgetsOverrides
+    /** Parse-cache LRU entry count. Default 256. */
+    cacheEntries?: number
+    /** Parse-cache LRU byte ceiling. Default 64 MiB. */
+    cacheBytes?: number
+  }
+  /**
+   * M5 console domain; `maxEntries` bounds one library/usage aggregation page.
+   */
+  console?: {
+    /** One library/usage aggregation page bound. Default 200. */
+    maxEntries?: number
+  }
+  /** M4 vision waterfall; defaults apply when omitted. */
+  vision?: VisionDomainConfig
+}
+
 const MIB = 1024 * 1024
 
+/** The built-in configuration every unset knob falls back to. */
 export const filehubConfigDefaults: FileHubConfig = {
   storageDirName: '.filehub',
   upload: {
@@ -191,7 +268,7 @@ export const filehubConfigDefaults: FileHubConfig = {
 }
 
 /** Deep-enough merge for the nested config groups. */
-function resolveConfig(overrides?: Partial<FileHubConfig>): FileHubConfig & {
+function resolveConfig(overrides?: FileHubConfigInit): FileHubConfig & {
   upload: Required<Omit<UploadDomainConfig, 'dangerousExtensions'>> &
     Pick<UploadDomainConfig, 'dangerousExtensions'>
   mention: MentionDomainConfig
@@ -231,16 +308,19 @@ export interface LoggerLike {
   error?(message: string): void
 }
 
+/** One host webserver route: kind, path, and the handler to register. */
 export interface WebServerRouteLike {
   kind: 'exact' | 'prefix'
   path: string
   handler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>
 }
 
+/** Structural subset of the host webserver: register returns a disposer. */
 export interface WebServerLike {
   register(route: WebServerRouteLike): () => void
 }
 
+/** The host context FileHub composes against: logger plus optional service faces. */
 export interface HostContext {
   readonly logger: LoggerLike
   readonly sessions?: SessionsLike
@@ -303,8 +383,11 @@ export interface FileHubDomain {
  * TODO(integration): wrap route registration + the sweeper timer in
  * `ctx.effect(...)` once the loader contract for plugin-provided disposers is
  * pinned down; for now callers own disposal through the returned handle.
+ * @param ctx - the host context to compose onto.
+ * @param overrides - partial configuration merged over the defaults.
+ * @returns the composed FileHub domain handle.
  */
-export function createFileHubDomain(ctx: HostContext, overrides?: Partial<FileHubConfig>): FileHubDomain {
+export function createFileHubDomain(ctx: HostContext, overrides?: FileHubConfigInit): FileHubDomain {
   const resolved = resolveConfig(overrides)
   const logInfo = (message: string): void =>{  ctx.logger.info(message) }
   const logWarn = (message: string): void => ctx.logger.warn?.(message)
@@ -615,7 +698,7 @@ export function createFileHubDomain(ctx: HostContext, overrides?: Partial<FileHu
  * stays stable — smoke tests assert the `[filehub]` prefix plus the effective
  * storageDirName.
  */
-export function apply(ctx: HostContext, config?: Partial<FileHubConfig>): FileHubDomain {
+export function apply(ctx: HostContext, config?: FileHubConfigInit): FileHubDomain {
   const resolved = resolveConfig(config)
   ctx.logger.info(`[filehub] ready (storageDirName=${resolved.storageDirName})`)
   return createFileHubDomain(ctx, config)

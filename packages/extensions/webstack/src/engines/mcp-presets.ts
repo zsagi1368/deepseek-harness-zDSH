@@ -81,7 +81,11 @@ export const MCP_PRESETS: readonly McpPreset[] = Object.freeze([
   },
 ])
 
-/** 把一条预设实例化为可校验的 McpServerEntry（stdio 形态）。 */
+/**
+ * 把一条预设实例化为可校验的 McpServerEntry（stdio 形态）。
+ * @param preset - 预设条目。
+ * @returns 可过 validateMcpEntry 的服务器条目。
+ */
 export function presetToEntry(preset: McpPreset): McpServerEntry {
   return {
     id: preset.id,

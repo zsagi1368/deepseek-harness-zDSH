@@ -14,7 +14,11 @@ import { KEYED_ENGINE_IDS } from '../engines/engine.js'
 import type { ComplexityBand, SearchHints, SearchLayer } from './types.js'
 import { SEARCH_LAYERS } from './types.js'
 
-/** 层词汇守卫：未知配置值安全回落 `free`（开箱默认层）。 */
+/**
+ * 层词汇守卫：未知配置值安全回落 `free`（开箱默认层）。
+ * @param value - 原始层配置值。
+ * @returns 归一化后的合法层。
+ */
 export function normalizeLayer(value: string | undefined): SearchLayer {
   return (SEARCH_LAYERS as readonly string[]).includes(value ?? '')
     ? (value as SearchLayer)
@@ -42,6 +46,8 @@ const VERTICAL_X_PATTERN =
  * - `site:` 限域落在 x.com/twitter.com 及子域 → 出手；
  * - hard/soft 片段含站点指称 → 出手；
  * - 归并主题词含「推特」或独立词「X」→ 出手（装配契约的中文触发词）。
+ * @param hints - 搜索提示（硬/软片段与主题词）。
+ * @returns 命中垂直触发矩阵时为 true。
  */
 export function hintsTargetVerticalX(hints: SearchHints): boolean {
   const siteFilter = hints.siteFilter?.toLowerCase().replace(/\.+$/, '')
@@ -65,6 +71,8 @@ const OPERATOR_HINT = /\bsite:|["“”]/
  * - 长度 ≤16 且不含操作符 → simple；
  * - 长度 ≤48 → medium；
  * - 其余 → complex。
+ * @param query - 原始查询串。
+ * @returns 复杂度分档。
  */
 export function estimateBand(query: string): ComplexityBand {
   const q = query.trim()
@@ -111,6 +119,10 @@ export interface SearchPlan {
  * - autoFallback=false → 无论分档，只返回首选单引擎；
  * - complexityRouting=false → 一律按 medium 宽度取池（不自适应）；
  * - fusion 仅在多引擎且 fusionEnabled 时开启。
+ * @param config - 路由器配置快照。
+ * @param _hints - 搜索提示（参数位为垂直加发判定保留）。
+ * @param band - 复杂度分档。
+ * @returns 本次搜索的执行计划。
  */
 export function planSearch(
   config: RouterConfigSnapshot,

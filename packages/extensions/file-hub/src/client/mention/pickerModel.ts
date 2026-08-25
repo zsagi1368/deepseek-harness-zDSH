@@ -13,6 +13,7 @@ export interface PickerItem {
   readonly depth: number
 }
 
+/** One keyboard-driven picker event (navigation, expand/collapse, replace). */
 export type PickerEvent =
   | { readonly type: 'highlight-next' }
   | { readonly type: 'highlight-previous' }
@@ -28,15 +29,21 @@ export type PickerEvent =
     readonly children: readonly { relativePath: string; kind: 'file' | 'directory' }[]
   }
 
+/** One picker snapshot: flattened items plus the highlight index. */
 export interface PickerState {
   readonly items: readonly PickerItem[]
   /** Index into items; -1 = nothing highlighted. */
   readonly highlight: number
 }
 
+/** The idle picker state: no items, nothing highlighted. */
 export const emptyPickerState: PickerState = { items: [], highlight: -1 }
 
-/** Flatten a search page into top-level picker items. */
+/**
+ * Flatten a search page into top-level picker items.
+ * @param entries - search results (workspace entries plus upload rows).
+ * @returns items at depth 0 in input order.
+ */
 export function pickerItemsFromEntries(
   entries: readonly { relativePath: string; kind: 'file' | 'directory' }[],
 ): PickerItem[] {
@@ -62,6 +69,9 @@ function endOfSubtree(items: readonly PickerItem[], parentIndex: number): number
  * Reduce one keyboard-driven event. Expansion splices children right below
  * the directory at depth+1 and highlights stays on the directory; collapse
  * removes the whole subtree and keeps highlight on the collapsed directory.
+ * @param state - the current picker snapshot.
+ * @param event - the event to apply.
+ * @returns the next snapshot.
  */
 export function reducePicker(state: PickerState, event: PickerEvent): PickerState {
   switch (event.type) {
@@ -114,6 +124,8 @@ export function reducePicker(state: PickerState, event: PickerEvent): PickerStat
  * Disambiguation display data: when several candidates share a basename, each
  * gets `parentDir · basename`; unique basenames display bare. Returns labels
  * aligned with the input order.
+ * @param items - candidates to label.
+ * @returns one display label per item, aligned with input order.
  */
 export function disambiguateLabels(
   items: readonly { relativePath: string }[],

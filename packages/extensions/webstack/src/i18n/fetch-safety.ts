@@ -29,7 +29,12 @@ export const fetchMessagesEn: Readonly<Record<FetchSafetyKey, string>> = Object.
     'The target site returned no extractable content. Open the link directly or retry later.',
 })
 
-/** 取抓取管线提示文案；未知 locale 安全回落中文。 */
+/**
+ * 取抓取管线提示文案；未知 locale 安全回落中文。
+ * @param key - 提示键。
+ * @param locale - 语言（默认 zh）。
+ * @returns 提示文本。
+ */
 export function fetchSafetyText(key: FetchSafetyKey, locale: Locale = 'zh'): string {
   return locale === 'en' ? fetchMessagesEn[key] : fetchMessagesZh[key]
 }
@@ -37,6 +42,9 @@ export function fetchSafetyText(key: FetchSafetyKey, locale: Locale = 'zh'): str
 /**
  * 组装非 2xx 状态前缀行：把 `status-prefix` 模板中的首个 `%s` 替换为真实
  * 状态码。只替换一次，模板其余字面量原样保留（防注入式重复替换）。
+ * @param status - HTTP 状态码。
+ * @param locale - 语言（默认 zh）。
+ * @returns 状态前缀行文本。
  */
 export function formatStatusPrefix(status: number, locale: Locale = 'zh'): string {
   return fetchSafetyText('webstack.fetch.status-prefix', locale).replace('%s', String(status))
@@ -96,6 +104,8 @@ export const fetchSafetyBlockedEn: Readonly<Record<FetchSafetyBlockedKey, string
 /**
  * 拒绝原因码 → 文案键映射：G2 网段四族各归其位；link-local 归 reserved；
  * redirect/body 类原因不在本分册语义内，安全回落 reserved 键。
+ * @param reason - SSRF 拒绝原因码。
+ * @returns 对应的文案键。
  */
 export function fetchSafetyBlockedKey(reason: SsrfRejectReason): FetchSafetyBlockedKey {
   switch (reason) {

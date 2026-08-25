@@ -23,8 +23,10 @@ export interface UploadedFileResult {
   readonly imageCaption?: string
 }
 
+/** Lifecycle status of one upload item. */
 export type UploadItemStatus = 'pending' | 'uploading' | 'done' | 'error' | 'cancelled'
 
+/** Stable machine-readable classification of one failed upload. */
 export type UploadErrorCode =
   /** Server 403: session id not known to the host. */
   | 'sessionUnknown'
@@ -47,6 +49,7 @@ export type UploadErrorCode =
   /** Transport-level failure (offline, CORS, reset). */
   | 'network'
 
+/** Structured failure metadata attached to an errored queue item. */
 export interface UploadItemError {
   readonly httpStatus?: number
   readonly code: UploadErrorCode
@@ -84,8 +87,10 @@ export interface OutgoingUploadRequest {
   readonly signal: AbortSignal
 }
 
+/** Transport signature: performs one upload and resolves the parsed wire result. */
 export type UploadTransport = (request: OutgoingUploadRequest) => Promise<UploadedFileResult>
 
+/** Non-2xx upload response, carrying the HTTP status for classification. */
 export class UploadHttpError extends Error {
   constructor(readonly status: number, message?: string) {
     super(message ?? `upload failed with HTTP ${status}`)
@@ -93,6 +98,7 @@ export class UploadHttpError extends Error {
   }
 }
 
+/** 2xx response whose body was not a usable upload result. */
 export class UploadResponseError extends Error {
   constructor(message: string) {
     super(message)
@@ -100,6 +106,11 @@ export class UploadResponseError extends Error {
   }
 }
 
+/**
+ * Build a DOM-standard AbortError so transport paths and the queue agree on
+ * the one "user aborted" signal.
+ * @returns an Error named 'AbortError'.
+ */
 export function makeAbortError(): Error {
   const error = new Error('upload aborted')
   error.name = 'AbortError'
@@ -115,6 +126,9 @@ function isAbort(error: unknown): boolean {
  * zod schema so the client bundle stays free of zod; the schema remains the
  * single source of truth on the host half. Exported for direct adversarial
  * testing (the default XHR transport funnels every 2xx body through here).
+ * @param status - the HTTP status of the upload response.
+ * @param text - the raw response body.
+ * @returns the parsed {@link UploadedFileResult}; throws UploadHttpError/UploadResponseError on bad shapes.
  */
 export function parseUploadResult(status: number, text: string): UploadedFileResult {
   if (status < 200 || status > 299) throw new UploadHttpError(status, text.slice(0, 300))
@@ -156,7 +170,11 @@ export function parseUploadResult(status: number, text: string): UploadedFileRes
   }
 }
 
-/** Map an HTTP status onto the stable error code + retryable hint. */
+/**
+ * Map an HTTP status onto the stable error code + retryable hint.
+ * @param status - the HTTP status returned by the upload endpoint.
+ * @returns the classified error metadata.
+ */
 export function classifyUploadFailure(status: number): UploadItemError {
   switch (status) {
     case 403:
@@ -189,12 +207,21 @@ export const UPLOAD_ERROR_MESSAGES: Readonly<Record<UploadErrorCode, { en: strin
   network: { en: 'Network error; check connection and retry.', zh: '网络错误，请检查连接后重试。' },
 }
 
+/**
+ * Bilingual human text for one item's error.
+ * @param error - the item's error metadata, or undefined for a clean item.
+ * @param lang - the language to render in.
+ * @returns the localized message, or '' when there is no error.
+ */
 export function formatUploadError(error: UploadItemError | undefined, lang: Lang): string {
   if (!error) return ''
   return UPLOAD_ERROR_MESSAGES[error.code][lang]
 }
 
-/** Default transport: XHR because fetch has no upload progress events (FR-A6). */
+/**
+ * Default transport: XHR because fetch has no upload progress events (FR-A6).
+ * @returns an {@link UploadTransport} posting via XMLHttpRequest.
+ */
 export function createXhrTransport(): UploadTransport {
   return request =>
     new Promise<UploadedFileResult>((resolve, reject) => {
@@ -231,6 +258,7 @@ export function createXhrTransport(): UploadTransport {
     })
 }
 
+/** Construction options for the upload queue: endpoint, concurrency, session resolver, transport. */
 export interface UploadQueueOptions {
   /** Absolute-path-on-origin endpoint. Default '/api/filehub/upload'. */
   uploadUrl?: string | undefined
@@ -274,11 +302,19 @@ export class UploadQueue {
     this.transport = options.transport ?? createXhrTransport()
   }
 
-  /** Stable snapshot reference between mutations (useSyncExternalStore-safe). */
+  /**
+   * Stable snapshot reference between mutations (useSyncExternalStore-safe).
+   * @returns the current immutable item list.
+   */
   getItems(): readonly UploadQueueItem[] {
     return this.items
   }
 
+  /**
+   * Subscribe to queue mutations; the observable-store shape React binds via useSyncExternalStore.
+   * @param listener - invoked after every mutation.
+   * @returns an unsubscribe function.
+   */
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener)
     return () => {
@@ -286,7 +322,10 @@ export class UploadQueue {
     }
   }
 
-  /** Aggregate counters for dock headers. */
+  /**
+   * Aggregate counters for dock headers.
+   * @returns per-status counts over the current items.
+   */
   stats(): { total: number; uploading: number; pending: number; done: number; errored: number } {
     const stats = { total: this.items.length, uploading: 0, pending: 0, done: 0, errored: 0 }
     for (const item of this.items) {
@@ -298,6 +337,11 @@ export class UploadQueue {
     return stats
   }
 
+  /**
+   * Append inputs as pending items and start the dispatch pump.
+   * @param inputs - the files (plus optional folder-relative paths) to upload.
+   * @returns the newly created immutable queue items.
+   */
   enqueue(inputs: readonly EnqueueInput[]): UploadQueueItem[] {
     const added: UploadQueueItem[] = []
     for (const input of inputs) {
@@ -329,7 +373,11 @@ export class UploadQueue {
     return added
   }
 
-  /** Re-dispatch a failed/cancelled item. Returns false when not retryable-state. */
+  /**
+   * Re-dispatch a failed/cancelled item. Returns false when not retryable-state.
+   * @param id - the queue item id to retry.
+   * @returns true when the item was re-queued.
+   */
   retry(id: string): boolean {
     const item = this.items.find(candidate => candidate.id === id)
     if (!item || (item.status !== 'error' && item.status !== 'cancelled')) return false
@@ -339,7 +387,11 @@ export class UploadQueue {
     return true
   }
 
-  /** Abort an in-flight item but keep its row (state 'cancelled'). */
+  /**
+   * Abort an in-flight item but keep its row (state 'cancelled').
+   * @param id - the queue item id to abort.
+   * @returns true when the item was uploading and got aborted.
+   */
   cancel(id: string): boolean {
     const item = this.items.find(candidate => candidate.id === id)
     if (!item || item.status !== 'uploading') return false
@@ -347,7 +399,11 @@ export class UploadQueue {
     return true
   }
 
-  /** Abort (if needed) and drop the row entirely. */
+  /**
+   * Abort (if needed) and drop the row entirely.
+   * @param id - the queue item id to remove.
+   * @returns true when the item existed and was dropped.
+   */
   remove(id: string): boolean {
     const index = this.items.findIndex(candidate => candidate.id === id)
     if (index < 0) return false

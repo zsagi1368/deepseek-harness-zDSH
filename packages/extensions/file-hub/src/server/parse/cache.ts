@@ -26,6 +26,7 @@ import type { ParsedDocument } from './types.js'
 /** Bump when ParsedDocument's extraction semantics change materially. */
 export const PARSE_RECORD_VERSION = 1
 
+/** Cache bounds: entry and byte ceilings (both optional, both defaulted). */
 export interface CacheOptions {
   /** Max cached documents. Default 64. */
   maxEntries?: number | undefined
@@ -33,6 +34,7 @@ export interface CacheOptions {
   maxBytes?: number | undefined
 }
 
+/** Default cache bounds: 64 entries / 256 MiB of extracted text. */
 export const DEFAULT_CACHE_OPTIONS: Required<CacheOptions> = {
   maxEntries: 64,
   maxBytes: 256 * 1024 * 1024,
@@ -44,6 +46,7 @@ interface CacheRecord {
   byteLength: number
 }
 
+/** Dual-bound LRU parse cache keyed by content hash, format, and options. */
 export class ParseCache {
   private readonly maxEntries: number
   private readonly maxBytes: number
@@ -60,6 +63,10 @@ export class ParseCache {
   /**
    * The cache key for one parse request. `optionsKey` must already be a
    * canonical string of the parse-affecting options (sheet selector etc.).
+   * @param content - the raw document bytes.
+   * @param format - the detected document format.
+   * @param optionsKey - canonicalized parse options component.
+   * @returns the composite content-addressed key.
    */
   static keyOf(content: Uint8Array, format: string, optionsKey: string): string {
     const digest = createHash('sha256').update(content).digest('hex')
@@ -71,6 +78,11 @@ export class ParseCache {
     return this.records.size
   }
 
+  /**
+   * Peek a cached document without refreshing LRU order or parsing.
+   * @param key - the cache key to look up.
+   * @returns the cached document, or undefined on a miss.
+   */
   peek(key: string): ParsedDocument | undefined {
     return this.records.get(key)?.doc
   }
@@ -79,6 +91,9 @@ export class ParseCache {
    * Get-or-compute with in-flight dedupe: concurrent callers with the same key
    * share one promise; a failed compute evicts the tombstone so a retry can
    * try again.
+   * @param key - the composite cache key.
+   * @param compute - the parse to run on a miss.
+   * @returns the parsed document (cached, in-flight, or freshly computed).
    */
   wrap(key: string, compute: () => Promise<ParsedDocument>): Promise<ParsedDocument> {
     const hit = this.records.get(key)

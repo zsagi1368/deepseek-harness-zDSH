@@ -1,7 +1,9 @@
 # zdsh-autopilot
 
 [![ci](https://github.com/zsagi1368/zdsh-autopilot/actions/workflows/ci.yml/badge.svg)](https://github.com/zsagi1368/zdsh-autopilot/actions/workflows/ci.yml)
+
 [![release](https://img.shields.io/github/v/tag/zsagi1368/zdsh-autopilot?label=release&sort=semver)](https://github.com/zsagi1368/zdsh-autopilot/releases)
+
 [![license](https://img.shields.io/github/license/zsagi1368/zdsh-autopilot)](LICENSE)
 
 **zDSH AutoPilot（自动领航）** —— [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的统一自动化引擎插件。三个协同能力，共享一个内核与一个控制台：
@@ -12,7 +14,7 @@
 | 🛡 | **守卫 Guard** | 沙箱优先的权限策略：例行工作在 OS 沙箱内零打扰直行；语义风险经脱敏后的 LLM 分类器严格裁决；越界操作发放五元组一次性授权并在官方审批点代答一次——永远只弹一次窗。 |
 | 🔎 | **复核 Review** | 只读第二模型复核子代理在完整认领条件下应答审批请求，默认 fail-closed，带双预算、推导式默认熔断器，并把拒绝理由回喂给错误结果。 |
 
-[English](README.md) ｜ 简体中文
+[English](README.md) | 中文
 
 ---
 
@@ -40,10 +42,10 @@
 ## 安装
 
 ```bash
-# 从 GitHub 安装
+# from GitHub
 dsh plugin --profile web add github:zsagi1368/zdsh-autopilot
 
-# 或从本地检出安装
+# or from a local checkout
 dsh plugin --profile web add link:/path/to/zdsh-autopilot
 ```
 
@@ -54,10 +56,10 @@ dsh plugin --profile web add link:/path/to/zdsh-autopilot
 所有操作都收敛在一个命令面：
 
 ```text
-/ap                          全模块状态 + 今日计数
+/ap                          status of all modules + today counters
 /ap on|off [continue|guard|review]
-/ap pause [时长]             /ap resume
-/ap approve                  授权最近一次拒绝（一次性语境）
+/ap pause [duration]         /ap resume
+/ap approve                  authorize the latest denial (one-shot context)
 /ap preset conservative|standard|fullspeed
 /ap reset-stats              /ap help
 ```
@@ -76,14 +78,14 @@ dsh plugin --profile web add link:/path/to/zdsh-autopilot
 
 ```text
 src/
-├── kernel/      共享门面：协调器 · 记账 · 审计(ap/*) · 脱敏 · 探测 · 默认值
-├── continue/    打断检测 · 调度器 · 循环守卫 · 续跑文案
-├── guard/       路径硬化 · shell 词法(bash/pwsh) · 工件身份 · 分类器 · 授权桥
-├── review/      应答器 · 复核提示词/裁决 · 熔断 · 反馈回路
-├── console/     命令解析 · 状态/动作桥(令牌或同源鉴权)
-└── client/      浏览器半身——仅官方槽位,零 DOM 依赖
-eval/            离线行为契约:YAML 用例驱动真实模块工厂
-corpus/          可扩展的错误分类语料
+├── kernel/      shared facade: coordinator · ledger · audit(ap/*) · redact · probes · defaults
+├── continue/    detector · scheduler · loopguard · resume texts
+├── guard/       path hardening · shell lexer (bash/pwsh) · artifacts · classifier · grants
+├── review/      answerer · reviewer prompt/verdict · circuit · feedback
+├── console/     command parser · status/action bridge (token-or-same-origin auth)
+└── client/      browser fiber — official slots only, zero DOM scraping
+eval/            offline behavior contracts: YAML cases drive real module factories
+corpus/          extensible error-classification corpus
 ```
 
 模块边界由 CI 强制（`scripts/check-boundaries.mjs`）：能力模块只准依赖内核门面与自身。因此任一模块目录未来都可零重构地抽出为独立插件。
@@ -92,8 +94,8 @@ corpus/          可扩展的错误分类语料
 
 ```bash
 pnpm install
-pnpm verify     # lint(边界) + typecheck(3 配置) + vitest + build + eval
-pnpm eval       # 仅离线行为契约套件(无需 API key)
+pnpm verify     # lint(boundaries) + typecheck(3 configs) + vitest + build + eval
+pnpm eval       # offline behavior-contract suite only (no API key needed)
 ```
 
 仓库内置的质量门禁：
@@ -111,8 +113,44 @@ pnpm eval       # 仅离线行为契约套件(无需 API key)
 - 动作端点要求令牌或同源鉴权，并对载荷设上限。
 - 越权授权绑定 会话/工具/调用/级别/理由 五要素，仅可消费一次。
 
-完整架构记录见 [docs/DESIGN.md](docs/DESIGN.md)，版本历史见 [CHANGELOG.md](CHANGELOG.md)。
+完整架构记录见 [docs/architecture.zh.md](../../../docs/architecture.zh.md)，版本历史见 [docs/dsh/CHANGELOG.zh.md](../../../docs/dsh/CHANGELOG.zh.md)。
 
 ## 许可证
 
 [MIT](LICENSE) © 2026 zsagi1368
+
+## 模型体验
+
+### 控制台输出、续跑文案与审批答复
+
+#### 模型看到什么
+
+`/ap` 命令面渲染模块状态与今日计数，续跑模块把续跑文案写进会话，守卫授权答复与复核拒绝理由以普通对话内容出现在宿主审批点上；`ap/*` 事件以可重放折叠 + 机械可查标记的形式落进会话日志。
+
+#### Token 影响
+
+体量随数据变化但都很小——固定形态的状态/计数行、一次性审批答复、回喂进错误结果的简短拒绝理由。
+
+#### KV 缓存影响
+
+输出词汇不变时前缀稳定；新产生的答复追加在可复用前缀之后，不使既有条目失效。
+
+### 脱敏分类器与复核子代理
+
+#### 模型看到什么
+
+主对话中看不到任何东西：守卫的脱敏 LLM 分类器与只读复核子代理是独立的模型调用，各带严格输出协议与完整认领条件，默认 fail-closed。
+
+#### Token 影响
+
+风险样本逐调用的分类器开销，加上受双预算与推导式默认熔断器约束的复核开销；预算随预设（conservative / standard / fullspeed）变化。
+
+#### KV 缓存影响
+
+对主对话前缀无影响：这些调用与主对话不共享请求前缀。
+
+## 已知限制与暂缓事项
+
+- **自动续跑只覆盖已识别的打断类别** —— 续跑检测器面向网络错误与截断回合构建；未识别的类别会让会话保持暂停，直到人工介入。
+- **越界操作依赖宿主审批点** —— 五元组一次性授权在官方审批面应答（永远只弹一次窗）；审批点缺失时守卫 fail-closed，不做越权升级。
+- **复核只读且默认 fail-closed** —— 第二模型复核员永远不会代为批准；拒绝理由回喂错误结果，放行与否始终由人工决定。

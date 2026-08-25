@@ -25,6 +25,7 @@ import type { GitRunResult } from './git-runner.ts'
 import type { RootCache } from './fs-routes.ts'
 import { ensureRealPathInside } from './path-guard.ts'
 
+/** Dependencies routed into the git handlers: the shared root cache and optional deployment clamp. */
 export interface GitRouteDeps {
   rootCache: RootCache
   /** Deployment clamp shared with the fs routes. */
@@ -91,6 +92,12 @@ async function guardAllPaths(
   return { rootReal: rootReal0.rootReal, repoPaths }
 }
 
+/**
+ * Build the `/workbench/api/git.*` handler map. All process work is delegated
+ * to named operations in git-runner.ts.
+ * @param deps - root cache plus optional deployment clamp.
+ * @returns the route method → handler map (all handlers return envelope values).
+ */
 export function createGitHandlers(deps: GitRouteDeps): Map<string, Handler> {
   const handlers = new Map<string, Handler>()
   const rootCache = deps.rootCache

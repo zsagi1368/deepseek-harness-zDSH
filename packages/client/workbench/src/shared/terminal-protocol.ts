@@ -15,6 +15,7 @@ export type TerminalClientMessage =
   | { t: 'resize'; sessionId: string; termId: string; cols: number; rows: number }
   | { t: 'close'; sessionId: string; termId: string }
 
+/** Every frame the host may send over the terminal socket. */
 export type TerminalServerMessage =
   | { t: 'attached'; sessionId: string; termId: string; pid: number; shell: string; replayBase64: string; degraded?: string }
   | { t: 'data'; sessionId: string; termId: string; dataBase64: string }

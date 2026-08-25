@@ -11,6 +11,7 @@
  */
 import type { LoopSignal } from '../kernel/types.js'
 
+/** Tunable thresholds for the three loop signals. */
 export interface LoopGuardThresholds {
   sameTextCount: number
   shortChars: number
@@ -19,6 +20,7 @@ export interface LoopGuardThresholds {
   toolRepeatCount: number
 }
 
+/** Conservative built-in threshold defaults (see module header rationale). */
 export const LOOP_GUARD_DEFAULTS: LoopGuardThresholds = {
   sameTextCount: 4,
   shortChars: 40,
@@ -39,6 +41,7 @@ function digest(text: string): string {
   return String(h)
 }
 
+/** Per-session loop detector: text/short-run/tool-repeat signals per turn. */
 export class LoopGuard {
   private lastText = ''
   private sameTextRuns = 0
@@ -52,6 +55,9 @@ export class LoopGuard {
     private readonly now: () => number = () => Date.now(),
   ) {}
 
+  /**
+   * Start a new turn: clears the fired flag and short-run window.
+   */
   beginTurn(): void {
     this.firedThisTurn = false
     this.shortRuns = []
@@ -59,6 +65,10 @@ export class LoopGuard {
     // spans turn boundaries after an auto-resume.
   }
 
+  /**
+   * Feed one assistant message; updates the same-text and short-run signals.
+   * @param text - the assistant message text.
+   */
   feedAssistant(text: string): void {
     if (text === this.lastText) {
       this.sameTextRuns += 1
@@ -76,6 +86,9 @@ export class LoopGuard {
   /**
    * Feed a completed tool call. Changed arguments OR changed result reset that
    * tool's streak and the short-run window (something moved → progress).
+   * @param name - the tool name.
+   * @param argsJson - the tool arguments JSON.
+   * @param resultJson - the tool result JSON.
    */
   feedTool(name: string, argsJson: string, resultJson: string): void {
     const key = `${name}#${digest(argsJson)}`
@@ -91,7 +104,10 @@ export class LoopGuard {
     }
   }
 
-  /** Signals currently over their thresholds (empty array when healthy). */
+  /**
+   * Signals currently over their thresholds (empty array when healthy).
+   * @returns the tripped loop signals.
+   */
   trippedSignals(): LoopSignal[] {
     const signals: LoopSignal[] = []
     if (this.sameTextRuns >= this.thresholds.sameTextCount) signals.push('same-text')
@@ -105,11 +121,17 @@ export class LoopGuard {
     return signals
   }
 
-  /** At most ONE interrupt per turn; callers must check before cancelling. */
+  /**
+   * At most ONE interrupt per turn; callers must check before cancelling.
+   * @returns whether a loop interrupt should fire this turn.
+   */
   shouldInterrupt(): boolean {
     return !this.firedThisTurn && this.trippedSignals().length > 0
   }
 
+  /**
+   * Mark the one interrupt of this turn as fired (see {@link shouldInterrupt}).
+   */
   markFired(): void {
     this.firedThisTurn = true
   }

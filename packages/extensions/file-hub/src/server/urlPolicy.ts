@@ -191,7 +191,11 @@ function parseHttpUrl(input: string | URL): URL {
   return url
 }
 
-/** Lower-cased hostname with brackets stripped (WHATWG keeps them on IPv6). */
+/**
+ * Lower-cased hostname with brackets stripped (WHATWG keeps them on IPv6).
+ * @param url - the URL whose hostname to read.
+ * @returns the normalized hostname (lowercase, no brackets, no trailing dot).
+ */
 export function hostnameOf(url: URL): string {
   let host = url.hostname.toLowerCase()
   if (host.startsWith('[') && host.endsWith(']')) host = host.slice(1, -1)
@@ -237,6 +241,8 @@ function isSanctionedLoopback(ip: NormalizedIp): boolean {
  * Assert that `input` targets the local machine: hostname `localhost`, or an
  * IP literal inside the sanctioned loopback set above. Any other target
  * throws. Ports are unrestricted on purpose — the probe may use any port.
+ * @param input - the URL to validate (http/https only).
+ * @returns the parsed URL when it targets the local machine.
  */
 export function assertLocalLoopbackUrl(input: string | URL): URL {
   const url = parseHttpUrl(input)
@@ -258,6 +264,7 @@ export type LookupAllAddresses = (hostname: string) => Promise<Array<{ address: 
 
 const defaultLookup: LookupAllAddresses = hostname => dns.promises.lookup(hostname, { all: true })
 
+/** Options for the public-URL guard: DNS resolution override (tests). */
 export interface PublicHttpUrlOptions {
   /** Override DNS resolution (tests). Defaults to node dns.lookup(all:true). */
   lookup?: LookupAllAddresses | undefined
@@ -277,6 +284,9 @@ function rejectIfNotPublic(address: NormalizedIp, origin: string): void {
  * loopback/private/reserved/mapped address under ANY spelling, and — for real
  * hostnames — no DNS answer landing in those ranges (rebinding defense:
  * EVERY resolved address must be public or the call fails closed).
+ * @param input - the URL to validate (http/https only).
+ * @param options - optional DNS lookup override.
+ * @returns the parsed URL when every resolution lands on public addresses.
  */
 export async function assertPublicHttpUrl(
   input: string | URL,

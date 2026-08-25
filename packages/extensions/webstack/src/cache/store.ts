@@ -74,6 +74,9 @@ export class SearchCache {
   /**
    * 读取一个条目。命中即刷新 LRU 访问序；发现已过期则惰性清除
    * （含 L1 侧的过期残留）并计一次 miss。L0 miss 时尝试 L1 回填。
+   * @param domain - 缓存域（search/fetch/vertical）。
+   * @param key - 域内缓存键（keyFor 派生）。
+   * @returns 缓存值；miss 为 undefined。
    */
   async get(domain: CacheDomain, key: string): Promise<unknown> {
     const now = Date.now()
@@ -119,6 +122,10 @@ export class SearchCache {
   /**
    * 写入一个条目（值**原样存放**，W-B-32）。L0 同步生效；
    * 注入了 adapter 时 write-through 到 L1。`ttlMs` 缺省用分域默认表。
+   * @param domain - 缓存域（search/fetch/vertical）。
+   * @param key - 域内缓存键（keyFor 派生）。
+   * @param value - 原样存放的值（W-B-32 不加工）。
+   * @param ttlMs - 可选 TTL 覆盖；缺省用分域默认表。
    */
   async set(domain: CacheDomain, key: string, value: unknown, ttlMs?: number): Promise<void> {
     const ttl = ttlMs ?? this.effectiveTtl(domain)
@@ -127,7 +134,11 @@ export class SearchCache {
     await this.adapter?.set(this.scopedKey(domain, key), value, ttl)
   }
 
-  /** 删除一个条目：L0 与 L1 双层同删（幂等）。 */
+  /**
+   * 删除一个条目：L0 与 L1 双层同删（幂等）。
+   * @param domain - 缓存域。
+   * @param key - 域内缓存键。
+   */
   async delete(domain: CacheDomain, key: string): Promise<void> {
     const scoped = this.scopedKey(domain, key)
     this.l0.delete(scoped)
@@ -143,7 +154,10 @@ export class SearchCache {
     await this.adapter?.clearAll()
   }
 
-  /** 运行统计：命中数 / 未命中数 / 当前 L0 条目数。计数器只增不清（诊断用）。 */
+  /**
+   * 运行统计：命中数 / 未命中数 / 当前 L0 条目数。计数器只增不清（诊断用）。
+   * @returns 统计快照。
+   */
   stats(): CacheStats {
     return { hits: this.hits, misses: this.misses, size: this.l0.size }
   }
@@ -177,6 +191,9 @@ const inflight = new Map<string, Promise<unknown>>()
  * single-flight 合并（W-B-34 配套）：并发调用同 `key` 的异步任务共享同一个
  * Promise，避免对同一资源的重复外呼；任务落定（无论成败）后从在飞表移除，
  * 后续调用开启新的一轮。
+ * @param key - 并发去重键。
+ * @param fn - 待合并的异步任务。
+ * @returns 共享的任务 Promise。
  */
 export function singleFlight<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const existing = inflight.get(key)
@@ -193,6 +210,8 @@ export function singleFlight<T>(key: string, fn: () => Promise<T>): Promise<T> {
  * 缓存键派生（W-B/boost A07 反制）：直接复用 fingerprint 的 `cacheKey`——
  * 键维度 = CacheKeyInput 字段清单，canonical JSON → sha256。本函数是唯一
  * 合法入口，禁止各层自行拼键。
+ * @param input - 全维度 CacheKeyInput。
+ * @returns 指纹派的缓存键字符串。
  */
 export function keyFor(input: CacheKeyInput): string {
   return cacheKey(input)

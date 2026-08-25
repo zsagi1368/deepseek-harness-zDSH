@@ -65,6 +65,7 @@ export class HistoryStore {
   /**
    * 记录一条历史：入环尾（最新在尾），超容丢环首；有适配器时调度
    * write-behind 刷写。绝不抛错——非法入参按「未记录」处理。
+   * @param entry - 待记录的历史条目。
    */
   record(entry: HistoryEntry): void {
     try {
@@ -77,7 +78,11 @@ export class HistoryStore {
     }
   }
 
-  /** 最新在前返回至多 `limit` 条（缺省全部）；`limit<=0` 返回空。 */
+  /**
+   * 最新在前返回至多 `limit` 条（缺省全部）；`limit<=0` 返回空。
+   * @param limit - 返回条数上限（可选）。
+   * @returns 最新在前的防御性拷贝。
+   */
   list(limit?: number): HistoryEntry[] {
     try {
       const capped =
@@ -90,7 +95,10 @@ export class HistoryStore {
     }
   }
 
-  /** 当前环内条数（诊断用）。 */
+  /**
+   * 当前环内条数（诊断用）。
+   * @returns 内存环条目数。
+   */
   size(): number {
     return this.entries.length
   }

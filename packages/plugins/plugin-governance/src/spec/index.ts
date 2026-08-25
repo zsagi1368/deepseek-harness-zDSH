@@ -343,12 +343,14 @@ export interface SandboxContext {
   list(path: string): Promise<string[]>
 }
 
+/** exec 调用选项 */
 export interface ExecOptions {
   timeout?: number
   env?: Record<string, string>
   cwd?: string
 }
 
+/** exec 调用结果 */
 export interface ExecResult {
   exitCode: number
   stdout: string
@@ -396,6 +398,11 @@ export interface ApprovalService {
   request(payload: ApprovalRequest): Promise<ApprovalOutcome>
 }
 
+/**
+ * PluginContext - 插件运行上下文
+ *
+ * 插件通过此上下文访问 DSH 核心能力：服务、事件、配置与生命周期钩子。
+ */
 export interface PluginContext {
   // === 服务访问 ===
   services: Map<string, unknown>
@@ -559,6 +566,8 @@ export interface PluginRegistry {
  * - namespace/name（标准格式）
  * - dsh-xxx（旧格式）
  * - @scope/name（npm 格式）
+ * @param id - 原始插件 ID。
+ * @returns 规范化后的插件 ID。
  */
 export function normalizePluginId(id: string): string {
   // 格式 1: @scope/name → scope/name
@@ -577,6 +586,8 @@ export function normalizePluginId(id: string): string {
 
 /**
  * 验证插件 ID 格式
+ * @param id - 待验证的插件 ID。
+ * @returns 是否符合 namespace/name 标准格式。
  */
 export function validatePluginId(id: string): boolean {
   // 标准格式: namespace/name

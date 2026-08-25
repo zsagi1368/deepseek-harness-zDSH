@@ -16,12 +16,21 @@ import { engineError } from '../kernel/errors.js'
 import type { SafetyGate, SafetyVerdict, SsrfRejectReason } from '../kernel/types.js'
 import { redactUrl } from './scrub.js'
 
-/** 放行裁决便捷构造。 */
+/**
+ * 放行裁决便捷构造。
+ * @returns allowed 裁决。
+ */
 export function allow(): SafetyVerdict {
   return { allowed: true }
 }
 
-/** 拒绝裁决便捷构造：必须携带闸位与原因码（i18n/处方按 reasonCode 派生）。 */
+/**
+ * 拒绝裁决便捷构造：必须携带闸位与原因码（i18n/处方按 reasonCode 派生）。
+ * @param gate - 拒绝发生的闸位。
+ * @param reasonCode - 闭集原因码。
+ * @param detail - 可选附加详情（脱敏后落入 detail 字段）。
+ * @returns 拒绝裁决。
+ */
 export function reject(
   gate: SafetyGate,
   reasonCode: SsrfRejectReason,
@@ -161,6 +170,8 @@ function classifyV6(groups: readonly number[]): IpClass {
 /**
  * IP 风险分类纯函数：IPv4、纯 IPv6 与 `::ffff:` 映射地址统一判定；
  * 映射地址剥前缀后完全按 v4 规则走（防 `::ffff:127.0.0.1` 绕过）。
+ * @param ip - 待分类的 IP 字符串。
+ * @returns IP 风险类别（无法解析时为 'unknown'）。
  */
 export function classifyIp(ip: string): IpClass {
   const trimmed = ip.trim()
@@ -261,6 +272,7 @@ function cidrExempt(ip: string, list: readonly Exemption[]): boolean {
  * @param url        待检目标 URL
  * @param exemptions 豁免表：`host:port`（跳过 G2 且不发起 DNS）与 IPv4 CIDR
  *                   （对已解析地址放行）；永不影响 G1/G3/G4
+ * @returns SSRF 裁决（放行或带闸位/原因码的拒绝）。
  */
 export async function checkTarget(
   url: string,

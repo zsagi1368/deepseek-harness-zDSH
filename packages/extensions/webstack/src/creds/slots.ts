@@ -25,7 +25,11 @@ export const ENGINE_CRED_SLOTS: Readonly<Record<string, string>> = Object.freeze
   anysearch: ANYSEARCH_CRED_SLOT,
 })
 
-/** 取引擎的凭据槽位名；未登记引擎返回 undefined（无凭据通道）。 */
+/**
+ * 取引擎的凭据槽位名；未登记引擎返回 undefined（无凭据通道）。
+ * @param engineId - 引擎 id。
+ * @returns 槽位名；未登记时为 undefined。
+ */
 export function credSlotOf(engineId: string): string | undefined {
   return ENGINE_CRED_SLOTS[engineId]
 }

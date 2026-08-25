@@ -3,8 +3,10 @@ import type { CatalogEntry } from '../shared/catalog.js'
 import { isValidCommit } from '../shared/catalog.js'
 import { CpErrorCode, type PlanState } from '../shared/types.js'
 
+/** The mutation a plan performs on the target profile. */
 export type PlanAction = 'install' | 'uninstall' | 'update'
 
+/** A staged, content-addressed plan awaiting confirmation and execution. */
 export interface InstallPlan {
   planId: string
   action: PlanAction
@@ -14,6 +16,7 @@ export interface InstallPlan {
   createdAt: string
 }
 
+/** An error carrying a machine-readable plugin-center result code. */
 export class CpError extends Error {
   constructor(
     public readonly code: CpErrorCode,
@@ -40,6 +43,11 @@ function hashPlan(plan: Omit<InstallPlan, 'planId' | 'confirmCode' | 'createdAt'
 /**
  * Build an install plan from a catalog entry. GitHub entries must pin a full
  * commit; anything else is rejected as untrusted before a plan can exist.
+ * @param entry - the validated catalog entry the plan targets.
+ * @param action - the mutation the plan performs.
+ * @param profile - the profile the plan will modify.
+ * @returns the staged plan with its content-derived id and random code.
+ * @throws a CpError when the entry is untrusted or the profile is missing.
  */
 export function createPlan(
   entry: CatalogEntry,
@@ -82,6 +90,8 @@ export function createPlan(
  * Bilingual confirmation phrase wrapping the one-shot random code. The code
  * is returned exactly once in the staging response and never derivable from
  * public data.
+ * @param plan - the staged plan whose confirmation code is wrapped.
+ * @returns the bilingual phrase the operator must reproduce exactly.
  */
 export function confirmationPhrase(plan: InstallPlan): string {
   const verb =
@@ -101,6 +111,12 @@ export class PlanStore {
 
   constructor(private readonly ttlMs = 10 * 60_000) {}
 
+  /**
+   * Register a plan. Terminal states may be re-staged; a live plan id is
+   * refused so the one-shot window stays closed.
+   * @param plan - the plan to register.
+   * @throws a CpError when a non-terminal plan with the same id exists.
+   */
   add(plan: InstallPlan): void {
     const existing = this.pending.get(plan.planId)
     if (existing !== undefined) {
@@ -119,17 +135,33 @@ export class PlanStore {
     })
   }
 
+  /**
+   * Read a pending plan without consuming it.
+   * @param planId - the plan id to look up.
+   * @returns the plan and its state, or null when unknown or swept.
+   */
   get(planId: string): { plan: InstallPlan; state: PlanState } | null {
     const record = this.pending.get(planId)
     return record ? { plan: record.plan, state: record.state } : null
   }
 
+  /**
+   * Advance a pending plan's state in place.
+   * @param planId - the plan id to update.
+   * @param state - the new state to record.
+   */
   markState(planId: string, state: PlanState): void {
     const record = this.pending.get(planId)
     if (record) record.state = state
   }
 
-  /** Consume the plan: only the exact code, only once, only unexpired. */
+  /**
+   * Consume the plan: only the exact code, only once, only unexpired.
+   * @param planId - the staged plan id to confirm.
+   * @param phrase - the confirmation phrase to match exactly.
+   * @returns the confirmed plan.
+   * @throws a CpError for unknown, expired, consumed, or mismatched plans.
+   */
   confirm(planId: string, phrase: string): InstallPlan {
     const record = this.pending.get(planId)
     if (!record) throw new CpError(CpErrorCode.planNotFound, `unknown plan ${planId}`)
@@ -150,7 +182,11 @@ export class PlanStore {
     return record.plan
   }
 
-  /** Drop expired plans; returns the number removed. */
+  /**
+   * Drop expired plans; returns the number removed.
+   * @param nowMs - the reference time in milliseconds, defaults to now.
+   * @returns the number of expired plans removed.
+   */
   sweepExpired(nowMs: number = Date.now()): number {
     let removed = 0
     for (const [id, record] of this.pending) {

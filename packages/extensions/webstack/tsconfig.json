@@ -1,7 +1,4 @@
 {
-  // Split-face package solution (mirrors packages/api/remotes): the host face
-  // excludes src/client so the host aggregate never reaches the client
-  // dependency chain, and the client face carries the React JSX sources.
   "files": [],
   "references": [
     {

@@ -1,4 +1,6 @@
-<h1 align="center">zDSH 插件中心</h1>
+# zDSH 插件中心
+
+[English](README.md) | 中文
 
 <p align="center">
   <a href="https://github.com/zsagi1368/zdsh-plugin-center/actions/workflows/ci.yml"><img src="https://github.com/zsagi1368/zdsh-plugin-center/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -9,18 +11,14 @@
 
 <p align="center">
   DeepSeek Harness（DSH）的内置插件中枢：在一个设置页里完成插件的发现、评估、
-  安装、更新与审计——安全第一，Windows 一等公民。<br>
-  English documentation: <a href="README.md">README.md</a>
+  安装、更新与审计——安全第一，Windows 一等公民。
 </p>
 
 ---
 
 ## 为什么做它
 
-现在安装一个 DSH 插件，意味着手敲一条 CLI 命令、然后无条件信任进入 profile
-的东西。插件中心把这件事变成由 Web 界面驱动的「先审核、可回滚」流程——同时
-它自己就是一个普通插件：除标准 bundle 声明外不修改宿主任何文件，也不需要
-特权辅助进程。
+现在安装一个 DSH 插件，意味着手敲一条 CLI 命令、然后无条件信任进入 profile 的东西。插件中心把这件事变成由 Web 界面驱动的「先审核、可回滚」流程——同时它自己就是一个普通插件：除标准 bundle 声明外不修改宿主任何文件，也不需要特权辅助进程。
 
 ## 核心能力
 
@@ -41,8 +39,7 @@
 - 追加式审计日志记录每一步——落盘前统一经过秘密脱敏
 
 **重启编排**
-- 独立 Node 看门狗探测固定环回地址，宿主崩溃后自动拉起：5 分钟内最多 3 次，
-  超限熔断放弃——不需要 launchd / schtasks / systemd
+- 独立 Node 看门狗探测固定环回地址，宿主崩溃后自动拉起：5 分钟内最多 3 次，超限熔断放弃——不需要 launchd / schtasks / systemd
 
 **运维与体验**
 - 看门狗开关、备份恢复、卸载全部内嵌在市场页旁
@@ -58,8 +55,7 @@
 
 ## 安装
 
-请固定精确的发布 commit——当前值见
-[Releases 页面](https://github.com/zsagi1368/zdsh-plugin-center/releases)：
+请固定精确的发布 commit——当前值见 [Releases 页面](https://github.com/zsagi1368/zdsh-plugin-center/releases)：
 
 ```bash
 dsh plugin --profile web add 'git+https://github.com/zsagi1368/zdsh-plugin-center.git#<release-commit>'
@@ -70,12 +66,12 @@ dsh plugin --profile web add 'git+https://github.com/zsagi1368/zdsh-plugin-cente
 ## 一次安装的完整流转
 
 ```
-浏览 / 搜索            → 有界分页、徽章、详情元数据
-创建计划（staging）    → 服务端校验 commit 固定、脚本策略与信任级别
-输入确认码             → 消费该一次性计划
-应用                   → 哈希 → 备份 → 固定参数安装 → 校验 → 健康探测
-完成                   → 「待重启生效」横幅；看门狗随时可用
-任一步失败             → 字节级校验回滚 + 审计记录
+browse / search            → bounded pages, badges, detail metadata
+stage a plan               → server validates pins, scripts policy and trust level
+type the confirmation code → consumes the one-shot plan
+apply                      → hash → backup → pinned install → verify → health
+done                       → “restart required” banner; watchdog available
+any failure                 → byte-verified rollback + audit record
 ```
 
 ## 配置
@@ -88,44 +84,56 @@ dsh plugin --profile web add 'git+https://github.com/zsagi1368/zdsh-plugin-cente
 | `mutationsEnabled: false` | 只读模式 |
 | `webPort` | DSH Web 宿主环回端口（看门狗探测用） |
 
-完整参考（示例与 `~/.zdsh-plugin-center` 数据布局）：
-[docs/CONFIGURATION.md](docs/CONFIGURATION.md)
+完整参考（示例与 `~/.zdsh-plugin-center` 数据布局）：`docs/CONFIGURATION.md`（随独立插件包分发，不在本 monorepo 内）。
 
 ## 安全声明
 
-威胁模型、八项保证（目标固定、一次性计划、字节级回滚、脚本门禁、SSRF 守卫、
-同源 + 意图双闸、无秘密审计、有界重启）以及已接受的残余风险，详见
-[SECURITY.md](SECURITY.md)。
+威胁模型、八项保证（目标固定、一次性计划、字节级回滚、脚本门禁、SSRF 守卫、同源 + 意图双闸、无秘密审计、有界重启）以及已接受的残余风险，详见 `SECURITY.md`（随独立插件包分发，不在本 monorepo 内）。
 
 ## 项目文档
 
 | 文档 | 内容 |
 |---|---|
-| [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | 全部配置键、默认值、示例与数据布局 |
-| [SECURITY.md](SECURITY.md) | 威胁模型与安全保证 |
-| [docs/INTEGRATION-PLAYBOOK.md](docs/INTEGRATION-PLAYBOOK.md) | 成为分支原生核心包的路径 |
-| [CHANGELOG.md](CHANGELOG.md) | 发布历史（双语） |
+| `docs/CONFIGURATION.md` | 全部配置键、默认值、示例与数据布局（随独立插件包分发） |
+| `SECURITY.md` | 威胁模型与安全保证（随独立插件包分发） |
+| [扩展插件形态手册](../../../docs/cookbook/extension-cookbook.zh.md) | 成为分支原生核心包的路径（仓库内参考） |
+| [DSH 变更记录](../../../docs/dsh/CHANGELOG.zh.md) | 发布历史（双语） |
 
 ## 本地开发
 
 ```bash
 pnpm install
-pnpm lint        # tsc --noEmit，strict
-pnpm build       # tsdown：host ESM + client 加载器包 + 看门狗入口
-pnpm test        # vitest：单元 + 契约 + 闭环集成套件
+pnpm lint        # tsc --noEmit, strict
+pnpm build       # tsdown: host ESM + client loader bundle + watchdog entry
+pnpm test        # vitest: unit + contract + closed-loop integration suites
 ```
 
-集成套件会启动真实 HTTP 服务、以真实子进程驱动 CLI 替身、作用于真实临时
-profile 文件。CI 在 ubuntu-latest 与 windows-latest 双跑道跑完整门禁。
+集成套件会启动真实 HTTP 服务、以真实子进程驱动 CLI 替身、作用于真实临时 profile 文件。CI 在 ubuntu-latest 与 windows-latest 双跑道跑完整门禁。
 
-面向开发代理的仓库守则见 [AGENTS.md](AGENTS.md)。
-
-## 已知限制（v0.x）
-
-- `restart/request` 路由目前返回 `not_implemented`；请通过看门狗开关路由管理守护进程，宿主重启暂需手动。
-- 无法获取目标实时清单时，脚本门禁退回使用目录中声明的策略。
-- 出站请求仅判定字面主机名，解析后地址钉扎属于后续工作。
+面向开发代理的仓库守则见 [AGENTS.md](../../../AGENTS.md)。
 
 ## 许可证
 
 [MIT](./LICENSE)
+
+## 模型体验
+
+### 设置中枢、看门狗与确认码流程
+
+#### 模型看到什么
+
+没有直接的模型可见面：中枢以浏览器设置页（设置 → 插件中心）加独立 Node 看门狗进程呈现；安装计划、一次性确认码与追加式审计轨迹都存放在中枢自己的 `~/.zdsh-plugin-center` 状态中，而非对话上下文——只有当人工把流程转述进会话时，助手才会参与。
+
+#### Token 影响
+
+本包不产生任何 Token：不注册工具 schema、不贡献 prompt、不写会话事件；安装命令 `dsh plugin --profile web add ...` 由人工在终端里键入。
+
+#### KV 缓存影响
+
+无：本包不产生任何 prompt 输入，其应答也不扩展或改写历史尾部。
+
+## 已知限制与暂缓事项
+
+- `restart/request` 路由目前返回 `not_implemented`；请通过看门狗开关路由管理守护进程，宿主重启暂需手动。
+- 无法获取目标实时清单时，脚本门禁退回使用目录中声明的策略。
+- 出站请求仅判定字面主机名，解析后地址钉扎属于后续工作。

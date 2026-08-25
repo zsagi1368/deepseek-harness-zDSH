@@ -1,7 +1,9 @@
 # zdsh-autopilot
 
 [![ci](https://github.com/zsagi1368/zdsh-autopilot/actions/workflows/ci.yml/badge.svg)](https://github.com/zsagi1368/zdsh-autopilot/actions/workflows/ci.yml)
+
 [![release](https://img.shields.io/github/v/tag/zsagi1368/zdsh-autopilot?label=release&sort=semver)](https://github.com/zsagi1368/zdsh-autopilot/releases)
+
 [![license](https://img.shields.io/github/license/zsagi1368/zdsh-autopilot)](LICENSE)
 
 **zDSH AutoPilot（自动领航）** — a unified automation engine plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). Three cooperating capabilities behind one kernel and one console:
@@ -12,7 +14,7 @@
 | 🛡 | **Guard** | Sandbox-first permission policy: routine work runs without prompts inside the OS sandbox; semantic risks go through a redacted LLM classifier with a strict output protocol; out-of-boundary work gets a five-element one-shot escalation grant answered at the official approval seam — one popup, ever. |
 | 🔎 | **Review** | A read-only second-model reviewer subagent answers approval requests under a full claim conjunction, fail-closed by default, with dual budgets, a derived-default circuit breaker, and denial reasons fed back into error results. |
 
-English | [简体中文](README.zh.md)
+English | [中文](README.zh.md)
 
 ---
 
@@ -111,8 +113,44 @@ Quality gates shipped in-repo:
 - Action endpoints require token or same-origin authorization and cap payload size.
 - Escalations bind session/tool/call/level/justification, consumable exactly once.
 
-See [docs/DESIGN.md](docs/DESIGN.md) for the full architecture record and [CHANGELOG.md](CHANGELOG.md) for release history.
+See [docs/architecture.md](../../../docs/architecture.md) for the full architecture record and [docs/dsh/CHANGELOG.md](../../../docs/dsh/CHANGELOG.md) for release history.
 
 ## License
 
 [MIT](LICENSE) © 2026 zsagi1368
+
+## Model Experience
+
+### Console outputs, resume texts, and approval answers
+
+#### What the model sees
+
+The `/ap` command surface renders module status and today counters, the continue module writes resume texts into the session, and guard grant answers plus review denial reasons arrive as ordinary conversation content on the host approval seam; `ap/*` events land in the session log as replayable folds with mechanical marker checking.
+
+#### Token effect
+
+Sizes are data-dependent but small — fixed status/counter lines, one-shot approval answers, and short denial reasons fed back into error results.
+
+#### KV Cache effect
+
+Prefix-stable while the printed vocabulary is unchanged; newly emitted replies append after the reusable prefix and do not invalidate existing entries.
+
+### Redacted classifier and review subagent
+
+#### What the model sees
+
+Nothing in the main conversation: the guard's redacted LLM classifier and the read-only review subagent are separate model calls with their own strict output protocol and claim conjunction, fail-closed by default.
+
+#### Token effect
+
+Per-call classifier spend on risk-classified samples plus review spend bounded by its dual budgets and the derived-default circuit breaker; budgets vary per preset (conservative / standard / fullspeed).
+
+#### KV Cache effect
+
+None on the main conversation prefix: these calls share no request prefix with it.
+
+## Known Limitations and Deferred Work
+
+- **Auto-resume covers detected interruption classes only** — the continue detector is built for network errors and truncated turns; undetected classes leave the session paused until a human acts.
+- **Out-of-boundary work depends on the host approval seam** — the five-element one-shot escalation is answered at the official approval surface (one popup, ever); without that seam the guard fails closed instead of escalating.
+- **Review is read-only and fail-closed** — the second-model reviewer never approves; denial reasons feed back into error results, and granting remains the human's call.

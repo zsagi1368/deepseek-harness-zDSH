@@ -24,6 +24,9 @@ export const UNTRUSTED_ERROR_PREFIX = {
  * 字符预算内截断（W-B-95 语义的最小实现）：超预算即硬切并置 `truncated`
  * 标志，绝不静默丢弃标志位——上层据此决定「已截断」提示与缓存策略。
  * 负数/非整数预算按 0 处理（防御性钳制，不抛错）。
+ * @param text - 待截断的不可信文本。
+ * @param maxChars - 字符预算上限。
+ * @returns 截断后的文本与截断标志。
  */
 export function truncateBudget(
   text: string,
@@ -38,6 +41,8 @@ export function truncateBudget(
  * 尖括号转义：`<` → `&lt;`、`>` → `&gt;`。单遍替换、输出不再二次扫描
  * （与 decodeHtmlEntities 的单遍原则对偶），防止 `&lt;script&gt;` 类双重
  * 编解码把不可信文本重新抬升为标记。
+ * @param text - 待转义的不可信文本。
+ * @returns 单遍转义后的文本。
  */
 export function escapeAngleBrackets(text: string): string {
   return text.replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -47,6 +52,9 @@ export function escapeAngleBrackets(text: string): string {
  * 用「非指令」免责横幅包裹上游内容：横幅在前，空行分隔，内容原样附后
  * （转义由调用方按上文推荐顺序先行完成）。locale 缺失键不可能发生——
  * 参数类型收敛为 'zh' | 'en' 双字面量。
+ * @param locale - 横幅语言。
+ * @param content - 待包裹的上游内容（已截断/转义）。
+ * @returns 横幅 + 空行 + 内容的完整文本。
  */
 export function wrapBanner(locale: 'zh' | 'en', content: string): string {
   return `${NOT_INSTRUCTIONS_BANNERS[locale]}\n\n${content}`

@@ -6,6 +6,7 @@
  */
 import type { FsEventsFrame } from '../shared/fs-protocol.ts'
 
+/** Error thrown for every failed workbench API call, carrying the stable envelope code. */
 export class ApiError extends Error {
   constructor(readonly code: string, message: string) {
     super(message)
@@ -34,11 +35,17 @@ async function parseEnvelope<T>(response: Response): Promise<T> {
   throw new ApiError('bad-envelope', 'workbench api response had neither value nor error')
 }
 
+/** Client face of the workbench host API: calls a route method and unwraps the envelope. */
 export interface ApiClient {
   /** POST `/workbench/api/<method>` with a JSON body, unwrapping the envelope. */
   call<TResult>(method: string, payload?: unknown): Promise<TResult>
 }
 
+/**
+ * Build an ApiClient that targets the given base URL (defaults to the same origin).
+ * @param baseUrl - optional URL prefix for the workbench routes.
+ * @returns a ready-to-use ApiClient instance.
+ */
 export function createApiClient(baseUrl = ''): ApiClient {
   return {
     async call<TResult>(method: string, payload?: unknown): Promise<TResult> {
@@ -52,12 +59,17 @@ export function createApiClient(baseUrl = ''): ApiClient {
   }
 }
 
+/** Disposer that permanently closes the subscribed event stream. */
 export type Unsubscribe = () => void
 
 /**
  * Subscribe to the fs event stream with automatic reconnect (exponential
  * backoff capped at 15s). Returns a disposer that closes the stream and
  * stops reconnection permanently.
+ * @param roots - absolute workspace root paths whose changes to watch.
+ * @param onFrame - callback invoked for every fs frame received on the stream.
+ * @param options - optional `signal` to abort the subscription and `baseUrl` override.
+ * @returns a disposer that closes the stream and stops reconnection.
  */
 export function subscribeFsEvents(
   roots: string[],

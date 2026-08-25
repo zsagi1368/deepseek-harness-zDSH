@@ -9,6 +9,7 @@
 import { redact } from '../kernel/redact.js'
 import type { FailureKind } from '../kernel/types.js'
 
+/** Redacted, caller-supplied inputs the classifier is allowed to see. */
 export interface ClassifierInput {
   sessionId: string
   toolName: string
@@ -24,16 +25,24 @@ export interface ClassifierInput {
   }
 }
 
+/** Verified classifier decision plus the model's stated reason. */
 export interface ClassifierVerdict {
   decision: 'allow' | 'ask' | 'deny'
   reason: string
 }
 
+/** Transport signature: raw classifier call returning unparsed output. */
 export type ClassifierTransport = (input: ClassifierInput) => Promise<unknown>
 
 const MAX_MESSAGES = 4
 const MAX_TOTAL_CHARS = 4000
 
+/**
+ * Build the classifier input from a raw tool-call context, redacting every
+ * args/message payload first.
+ * @param raw - the pre-execution tool-call context.
+ * @returns the redacted classifier input.
+ */
 export function buildClassifierInput(raw: {
   sessionId: string
   toolName: string
@@ -63,6 +72,8 @@ export function buildClassifierInput(raw: {
 /**
  * Strict output protocol: exactly two keys, decision in the closed enum,
  * non-empty reason ≤1000 chars. Anything else throws → caller fail-closes.
+ * @param raw - the unparsed transport output.
+ * @returns the verified verdict.
  */
 export function parseClassifierOutput(raw: unknown): ClassifierVerdict {
   if (typeof raw !== 'object' || raw === null) throw new Error('classifier output is not an object')
@@ -86,6 +97,7 @@ export function parseClassifierOutput(raw: unknown): ClassifierVerdict {
 // Failure ladder
 // ---------------------------------------------------------------------------
 
+/** What the failure ladder decides per consecutive failure count. */
 export type LadderAction = 'deny' | 'ask'
 
 /**
@@ -97,21 +109,33 @@ export class FailureLadder {
 
   constructor(private readonly denyStreak: number) {}
 
+  /**
+   * Count one failure toward the ladder, unless the user cancelled it.
+   * @param kind - the failure kind recorded by the kernel.
+   */
   recordFailure(kind: FailureKind): void {
     if (kind === 'cancelled') return
     this.streak += 1
   }
 
+  /**
+   * Reset the streak after a success.
+   */
   recordSuccess(): void {
     this.streak = 0
   }
 
+  /**
+   * Decide the action for the current streak.
+   * @returns 'ask' past the configured deny streak, 'deny' otherwise.
+   */
   nextAction(): LadderAction {
     // After `denyStreak` consecutive failures, stop auto-denying and hand the
     // decision to a human instead of nagging forever.
     return this.streak >= this.denyStreak ? 'ask' : 'deny'
   }
 
+  /** Current consecutive failure count (reset by success). */
   get currentStreak(): number {
     return this.streak
   }

@@ -17,8 +17,10 @@ import {
 } from '../shared/catalog.js'
 import { cpErr, cpOk, type CpResult, type PlanState } from '../shared/types.js'
 
+/** The canonical plugin identifier used across the guardian and host state. */
 export const PLUGIN_NAME = 'zdsh-plugin-center'
 
+/** Runtime configuration of the plugin-center services, normalized from raw input. */
 export interface PluginCenterConfig {
   defaultProfile: string
   /** Explicit profile directory override; resolved from dshHome when absent. */
@@ -37,12 +39,22 @@ export interface PluginCenterConfig {
   mutationsEnabled: boolean
 }
 
+/**
+ * Resolve the data root from the config, falling back to the default home
+ * directory location when not configured.
+ * @param config - optional plugin-center configuration carrying `dataRoot`.
+ * @returns the absolute data root path.
+ */
 export function resolveDataRoot(config?: PluginCenterConfig): string {
   if (!config?.dataRoot) return join(homedir(), '.zdsh-plugin-center')
   return isAbsolute(config.dataRoot) ? config.dataRoot : resolve(config.dataRoot)
 }
 
-/** Profile directory layout follows the host convention `$DSH_HOME/profiles/<name>`. */
+/**
+ * Profile directory layout follows the host convention `$DSH_HOME/profiles/<name>`.
+ * @param config - the normalized plugin-center configuration.
+ * @returns the absolute profile directory path.
+ */
 export function resolveProfileDir(config: PluginCenterConfig): string {
   if (config.profileDir) return config.profileDir
   const home =
@@ -57,6 +69,12 @@ function defaultDshHome(): string {
   return join(homedir(), '.dsh')
 }
 
+/**
+ * Normalize a raw configuration record into a fully populated
+ * `PluginCenterConfig`, applying defaults for every optional field.
+ * @param raw - the raw configuration record, treated as partial by default.
+ * @returns the normalized configuration.
+ */
 export function normalizeConfig(raw: Record<string, unknown> = {}): PluginCenterConfig {
   const cfg = raw as Partial<PluginCenterConfig>
   return {
@@ -89,7 +107,10 @@ export function normalizeConfig(raw: Record<string, unknown> = {}): PluginCenter
   }
 }
 
-/** Locate the catalog seed shipped inside this package (src or built lib). */
+/**
+ * Locate the catalog seed shipped inside this package (src or built lib).
+ * @returns the absolute path of the bundled seed catalog.
+ */
 export function bundledSeedPath(): string {
   for (const candidate of ['../catalog/seed.json', '../../catalog/seed.json']) {
     const path = fileURLToPath(new URL(candidate, import.meta.url))
@@ -107,6 +128,10 @@ export interface RuntimeIdentity {
   restartMode: 'self-guardian'
 }
 
+/**
+ * Build the frozen per-boot runtime identity for this process.
+ * @returns the frozen runtime identity record.
+ */
 export function createRuntimeIdentity(): RuntimeIdentity {
   return Object.freeze({
     schemaVersion: 1 as const,
@@ -117,13 +142,20 @@ export function createRuntimeIdentity(): RuntimeIdentity {
   })
 }
 
+/** A paged slice of catalog entries enriched with the loaded catalog mode. */
 export interface MarketPage extends Page<CatalogEntry> {
   mode: LoadedCatalog['mode']
   fetchedAt?: string | undefined
 }
 
+/**
+ * Facade over the plugin lifecycle: staging, confirmation, watchdog control,
+ * catalog browsing, and backup restore flows.
+ */
 export class PluginCenterServices {
+  /** The normalized configuration this service runs with. */
   readonly config: PluginCenterConfig
+  /** The underlying lifecycle engine driving plan execution. */
   readonly engine: LifecycleEngine
   private readonly identity = createRuntimeIdentity()
   private catalogCache: { atMs: number; value: Promise<CpResult<LoadedCatalog>> } | null = null
@@ -142,7 +174,12 @@ export class PluginCenterServices {
     })
   }
 
-  /** Stage a plan for a catalog entry; returns the plan id and its phrase. */
+  /**
+   * Stage a plan for a catalog entry; returns the plan id and its phrase.
+   * @param action - the plan action to stage for the entry.
+   * @param entryId - the catalog entry id the plan targets.
+   * @returns the staged plan id and confirmation phrase, or an error result.
+   */
   async stagePlan(
     action: PlanAction,
     entryId: string,
@@ -154,7 +191,12 @@ export class PluginCenterServices {
     return cpOk({ planId: built.data.plan.planId, phrase: built.data.phrase })
   }
 
-  /** Confirm with the exact phrase, then carry the plan through. */
+  /**
+   * Confirm with the exact phrase, then carry the plan through.
+   * @param planId - the staged plan id to confirm.
+   * @param phrase - the confirmation phrase printed at staging time.
+   * @returns the resulting plan state, or an error result.
+   */
   async confirmAndRun(planId: string, phrase: string): Promise<CpResult<{ state: PlanState }>> {
     const confirmed = this.engine.confirmPlan(planId, phrase)
     if (!confirmed.ok) return confirmed
@@ -163,7 +205,10 @@ export class PluginCenterServices {
 
   // ------------------------------------------------------- operations surface
 
-  /** Last known watchdog state from disk; idle when never started. */
+  /**
+   * Last known watchdog state from disk; idle when never started.
+   * @returns the watchdog status snapshot.
+   */
   guardianStatus(): {
     running: boolean
     state: string
@@ -186,7 +231,11 @@ export class PluginCenterServices {
     }
   }
 
-  /** Start or stop the detached watchdog. */
+  /**
+   * Start or stop the detached watchdog.
+   * @param action - `start` launches the watchdog; `stop` halts it.
+   * @returns success plus the watchdog pid or reason, or an error result.
+   */
   async guardianToggle(
     action: 'start' | 'stop',
   ): Promise<CpResult<{ ok: boolean; pid?: number; reason?: string }>> {
@@ -206,7 +255,10 @@ export class PluginCenterServices {
     return cpOk(started)
   }
 
-  /** Backup snapshots under the data root, newest first. */
+  /**
+   * Backup snapshots under the data root, newest first.
+   * @returns the sorted backup rows by creation time, newest first.
+   */
   backupsList(): Array<{ name: string; createdAtMs: number }> {
     const dir = join(resolveDataRoot(this.config), 'backups')
     let names: string[]
@@ -241,7 +293,11 @@ export class PluginCenterServices {
 
   private readonly restores = new Map<string, { name: string; dir: string; code: string; expiresAtMs: number }>()
 
-  /** Stage a restore: returns a one-shot id/code pair for the confirm step. */
+  /**
+   * Stage a restore: returns a one-shot id/code pair for the confirm step.
+   * @param name - the backup name to restore.
+   * @returns the one-shot restore id and confirmation code, or an error result.
+   */
   stageRestore(name: string): CpResult<{ restoreId: string; code: string }> {
     const resolved = this.resolveBackupDir(name)
     if (!resolved.ok) return resolved
@@ -256,7 +312,12 @@ export class PluginCenterServices {
     return cpOk({ restoreId, code })
   }
 
-  /** Consume a staged restore and run the byte-verified copy back. */
+  /**
+   * Consume a staged restore and run the byte-verified copy back.
+   * @param restoreId - the one-shot restore id from staging.
+   * @param code - the confirmation code issued at staging.
+   * @returns the list of restored profile paths, or an error result.
+   */
   applyRestore(restoreId: string, code: string): CpResult<{ restored: string[] }> {
     const staged = this.restores.get(restoreId)
     if (staged === undefined) {
@@ -275,14 +336,21 @@ export class PluginCenterServices {
     return this.engine.restoreBackupInto(this.profileDir, staged.dir, staged.name)
   }
 
+  /** The frozen runtime identity of this boot, stable for the process lifetime. */
   get runtime(): RuntimeIdentity {
     return this.identity
   }
 
+  /** The resolved profile directory this service operates on. */
   get profileDir(): string {
     return resolveProfileDir(this.config)
   }
 
+  /**
+   * Load the catalog, using the in-memory cache unless a refresh is forced.
+   * @param forceRefresh - bypass the cache TTL when true.
+   * @returns the loaded catalog, or an error result.
+   */
   catalog(forceRefresh = false): Promise<CpResult<LoadedCatalog>> {
     const now = Date.now()
     if (!forceRefresh && this.catalogCache && now - this.catalogCache.atMs < this.catalogTtlMs) {
@@ -300,7 +368,11 @@ export class PluginCenterServices {
     return value
   }
 
-  /** Bounded, sorted, filtered market page. */
+  /**
+   * Bounded, sorted, filtered market page.
+   * @param params - paging, search, and category filters for the page.
+   * @returns the paged market listing, or an error result.
+   */
   async marketPage(params: {
     page?: number | undefined
     pageSize?: number | undefined
@@ -321,6 +393,11 @@ export class PluginCenterServices {
     return cpOk({ ...page, mode: loaded.data.mode, fetchedAt: loaded.data.fetchedAt })
   }
 
+  /**
+   * Resolve a catalog entry by its id.
+   * @param entryId - the catalog entry id to look up.
+   * @returns the matching catalog entry, or an error result.
+   */
   async entryById(entryId: string): Promise<CpResult<CatalogEntry>> {
     const loaded = await this.catalog()
     if (!loaded.ok) return loaded

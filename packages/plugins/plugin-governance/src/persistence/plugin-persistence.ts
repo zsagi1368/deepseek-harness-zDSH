@@ -187,6 +187,7 @@ export class PluginPersistence {
 
   /**
    * 从文件加载插件注册表
+   * @returns 从文件解析出的插件清单（文件缺失或内容不受信时返回空数组）。
    */
   load(): PluginManifest[] {
     if (!existsSync(this.registryPath)) {
@@ -228,6 +229,8 @@ export class PluginPersistence {
 /**
  * 创建默认的PluginPersistence实例
  * 使用用户主目录 ~/.dsh-zdsh 作为存储根目录
+ * @param registry - 持久化要关联的插件注册表。
+ * @returns 默认的插件持久化实例。
  */
 export function createDefaultPersistence(registry: PluginRegistry): PluginPersistence {
   return new PluginPersistence(registry)

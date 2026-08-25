@@ -13,18 +13,30 @@ export interface Bilingual {
   readonly zh: string
 }
 
+/**
+ * Detect the UI language once from a browser-like locale.
+ * @param navigatorLike - an object exposing `language` (defaults to global navigator).
+ * @returns 'zh' for zh-* locales, else 'en'.
+ */
 export function detectLang(navigatorLike?: { language?: string | undefined }): Lang {
   const source = navigatorLike ?? (typeof navigator !== 'undefined' ? navigator : undefined)
   return /^zh\b|-zh/i.test(source?.language ?? '') ? 'zh' : 'en'
 }
 
-/** Resolve a bilingual entry against a language. */
+/**
+ * Resolve a bilingual entry against a language.
+ * @param text - the bilingual copy pair.
+ * @param lang - the language to pick.
+ * @returns the matching copy string.
+ */
 export function pick(text: Bilingual, lang: Lang): string {
   return text[lang]
 }
 
 /**
  * Human byte size: 1024-based units, one decimal max, trailing ".0" trimmed.
+ * @param bytes - the byte count to format.
+ * @returns e.g. '512 B', '1.5 MB'; '?' for non-finite or negative input.
  */
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) return '?'
@@ -42,7 +54,11 @@ export function formatBytes(bytes: number): string {
   return `${text} ${unit}`
 }
 
-/** Last path segment after either separator; empty-safe. */
+/**
+ * Last path segment after either separator; empty-safe.
+ * @param path - the path to take the basename of.
+ * @returns the trailing segment (whole input when no separator).
+ */
 export function basename(path: string): string {
   const normalized = path.replace(/\\/g, '/')
   const index = normalized.lastIndexOf('/')
@@ -54,6 +70,8 @@ export function basename(path: string): string {
  * `x-file-relpath` header: forward slashes, no leading "./", no leading or
  * trailing slash. Does NOT sanitize hostile names — that authority stays with
  * the server (P01 §9 FR-F2).
+ * @param input - the raw client-supplied relative path.
+ * @returns the wire-form path ('' for empty/dot results).
  */
 export function normalizeRelativePath(input: string): string {
   let path = input.replace(/\\/g, '/').trim()
@@ -69,6 +87,8 @@ let styleInjected = false
  * classes carry the `zdsh-filehub-` prefix and live under element-scoped
  * selectors; no host-private class names are referenced (they are hash-named
  * and break across versions).
+ * @param id - the style element id (also the once-guard key).
+ * @param css - the stylesheet text to install.
  */
 export function injectStylesOnce(id: string, css: string): void {
   if (styleInjected || typeof document === 'undefined') return

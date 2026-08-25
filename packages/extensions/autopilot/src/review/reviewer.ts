@@ -10,6 +10,7 @@
 import { redact } from '../kernel/redact.js'
 import { buildMarker } from '../kernel/audit.js'
 
+/** Everything the reviewer needs to judge one pending tool call. */
 export interface ReviewRequestContext {
   sessionId: string
   toolName: string
@@ -24,6 +25,7 @@ export interface ReviewRequestContext {
   humanOverrideId?: string
 }
 
+/** Closed-schema reviewer outcome: allow/deny plus risk level and reason. */
 export interface ReviewVerdict {
   decision: 'allow' | 'deny'
   reason: string
@@ -33,6 +35,12 @@ export interface ReviewVerdict {
 const REASON_CAP = 2000
 const ARG_PREVIEW_CAP = 1500
 
+/**
+ * Render the reviewer system-side prompt for one pending call, labeling every
+ * model-controlled input as caller-claimed evidence and truncating previews.
+ * @param ctx - the review request being judged.
+ * @returns the complete prompt text to send to the reviewer model.
+ */
 export function buildReviewPrompt(ctx: ReviewRequestContext): string {
   const lines: string[] = []
   lines.push('You are a READ-ONLY reviewer. You cannot execute anything or modify any file.')
@@ -80,7 +88,12 @@ export function buildReviewPrompt(ctx: ReviewRequestContext): string {
   return lines.join('\n')
 }
 
-/** Boundary narrowing over whatever the provider produced. */
+/**
+ * Boundary narrowing over whatever the provider produced.
+ * @param raw - untyped model output to validate against the closed verdict schema.
+ * @param stopReason - provider stop reason; anything but `completed` throws.
+ * @returns the parsed and re-narrowed `ReviewVerdict`.
+ */
 export function parseVerdict(raw: unknown, stopReason?: string): ReviewVerdict {
   if (stopReason !== undefined && stopReason !== 'completed') {
     throw new Error(`reviewer did not complete (${stopReason})`)
@@ -107,8 +120,10 @@ export function parseVerdict(raw: unknown, stopReason?: string): ReviewVerdict {
 // Policy table
 // ---------------------------------------------------------------------------
 
+/** Who may run a tool: the AI reviewer, a human, or nobody. */
 export type ToolPolicy = 'ai' | 'human' | 'never'
 
+/** One policy rule: a regex matched against the approval reason text. */
 export interface RiskRule {
   pattern: RegExp
   policy: ToolPolicy
@@ -117,6 +132,12 @@ export interface RiskRule {
 /**
  * First matching rule wins; rules are evaluated against the reason text by
  * default. Overrides then defaults fill the rest.
+ * @param toolName - name of the tool being resolved.
+ * @param reason - caller-claimed approval reason text rules match against.
+ * @param rules - ordered risk rules; first pattern hit decides.
+ * @param overrides - per-tool-name policy map (case-insensitive keys).
+ * @param fallbackDefault - policy used when no rule or override matches.
+ * @returns the effective `ToolPolicy` for this call.
  */
 export function resolvePolicy(
   toolName: string,

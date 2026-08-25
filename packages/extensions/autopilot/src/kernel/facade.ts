@@ -14,6 +14,7 @@ import { DEFAULTS, resolveConfig } from './defaults.js'
 import type { ResolvedDefaults } from './defaults.js'
 import type { ModuleId } from './types.js'
 
+/** Optional port dependencies for kernel construction. */
 export interface KernelPorts {
   clock?: Clock
   rng?: RandomSource
@@ -21,6 +22,7 @@ export interface KernelPorts {
   statsPersistence?: StatsPersistence
 }
 
+/** The kernel surface capability modules are allowed to touch. */
 export interface Kernel {
   readonly coordinator: AutomationCoordinator
   readonly ledger: LedgerHub
@@ -36,16 +38,23 @@ export interface Kernel {
 // Frozen module starter contracts (implemented by M2/M3/M4)
 // ---------------------------------------------------------------------------
 
+/** Something with an explicit dispose hook for module lifecycle control. */
 export interface Disposable {
   dispose(): void
 }
 
+/** Configuration surface a continue starter receives. */
 export type ContinueOptions = ResolvedDefaults['continue']
+/** Configuration surface a guard starter receives. */
 export type GuardOptions = ResolvedDefaults['guard']
+/** Configuration surface a review starter receives. */
 export type ReviewOptions = ResolvedDefaults['review']
 
+/** Frozen continue module starter contract. */
 export type ContinueModuleStarter = (kernel: Kernel, options: ContinueOptions) => Disposable
+/** Frozen guard module starter contract. */
 export type GuardModuleStarter = (kernel: Kernel, options: GuardOptions) => Disposable
+/** Frozen review module starter contract. */
 export type ReviewModuleStarter = (kernel: Kernel, options: ReviewOptions) => Disposable
 
 /** Modules mounted by the composition root, keyed for lifecycle control. */
@@ -55,6 +64,11 @@ export interface MountedModules {
   review?: Disposable
 }
 
+/**
+ * Build the kernel with its coordinator, ledger, probes, clock and config.
+ * @param ports - optional injected ports (clock, rng, stats persistence).
+ * @returns the assembled kernel.
+ */
 export function createKernel(ports: KernelPorts = {}): Kernel {
   const clock: Clock = ports.clock ?? { now: () => Date.now() }
   const rng: RandomSource = ports.rng ?? createTokenSource()
@@ -80,6 +94,11 @@ export function createKernel(ports: KernelPorts = {}): Kernel {
   }
 }
 
+/**
+ * Derive the continue backoff parameters from resolved configuration.
+ * @param resolved - the resolved configuration tree.
+ * @returns the backoff parameters.
+ */
 export function defaultBackoffParams(resolved: ResolvedDefaults): BackoffParams {
   return {
     baseMs: resolved.continue.cooldownMs,
@@ -88,6 +107,12 @@ export function defaultBackoffParams(resolved: ResolvedDefaults): BackoffParams 
   }
 }
 
+/**
+ * Whether a module is enabled per the resolved configuration.
+ * @param resolved - the resolved configuration tree.
+ * @param moduleId - the module to query.
+ * @returns true when the module is enabled.
+ */
 export function moduleEnabled(resolved: ResolvedDefaults, moduleId: ModuleId): boolean {
   switch (moduleId) {
     case 'continue':

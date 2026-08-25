@@ -23,3 +23,13 @@ Directory placement follows the repository's source-mapping convention: both new
 Directory placement follows the repository's source-mapping convention: both new packages live at `packages/<group>/<package-name>/src` matching their `@deepseek-ai/dsh-<name>` names, and the `plugins` group was registered in the base `paths` mapping. Bare directories under `packages/*/*` crash the tsdown workspace batch and are rejected.
 
 The gateway drives the governance registry only. Loader-level install/uninstall flows, a client settings surface consuming these Remotes, and OS-keychain credential storage remain future work.
+
+## Alternatives considered
+
+- **Extend the governance package in place with host-facing methods** — rejected: the repo splits model/spec packages from host/user-facing seams (`packages/plugins/*` vs `packages/host/*`), and the governance package owns no Cordis face; a host package keeps the seam boundary and the remote surface local to the host.
+- **Plain Cordis RPC instead of Typert-generated Remotes** — rejected: the rest of the host surface publishes typed Remotes (plugin-inventory pattern), and the client runtime consumes the same double-envelope decode path.
+- **Namespace mirroring only (no native install/uninstall)** — accepted as the shipping constraint: Loader mirroring covers mounted entries, while `install`/`uninstall` stay `not-implemented` until the guarded download-and-admit pipeline exists.
+
+## Consequences
+
+The gateway mounts a seventh host service and adds durable approvals/preset state to the governance persistence, snapshot-compensated like every other acknowledged mutation. `install`/`uninstall` remain explicit gaps rather than half-built downloaders, and the settings surface consuming these Remotes is still future work — the remote contract ships ahead of its only UI.

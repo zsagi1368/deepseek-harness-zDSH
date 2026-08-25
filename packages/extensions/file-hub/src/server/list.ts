@@ -20,6 +20,7 @@ export const MAX_LIST_ENTRIES = 500
 
 const MAX_WALK_DEPTH = 24
 
+/** Seams the listing handler consumes: meta store and workspace resolver. */
 export interface ListServiceDeps {
   meta: MetaStore
   workspaces: WorkspaceResolver
@@ -29,6 +30,11 @@ function forwardSlashes(value: string): string {
   return value.replace(/\\/g, '/')
 }
 
+/**
+ * Build the bounded workspace-listing handler.
+ * @param deps - meta store and workspace resolver seams.
+ * @returns the HttpHandler serving GET /api/filehub/list.
+ */
 export function createListHandler(deps: ListServiceDeps): HttpHandler {
   const { meta, workspaces } = deps
 

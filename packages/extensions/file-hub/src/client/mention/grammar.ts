@@ -27,6 +27,8 @@ function isSpaceChar(char: string | undefined): boolean {
  * Word-initial @tokens only: an `@` glued to the previous word (email
  * addresses) never triggers. Handles the quoted form for paths containing
  * whitespace; unterminated quotes are ignored entirely.
+ * @param text - the raw draft text to scan.
+ * @returns every token in order of appearance.
  */
 export function scanDraftTokens(text: string): DraftToken[] {
   const tokens: DraftToken[] = []
@@ -62,6 +64,10 @@ export function scanDraftTokens(text: string): DraftToken[] {
  * Format one candidate as insertion text, mirroring host formatFileMention:
  * directories carry a trailing slash; whitespace paths use `@"..."`; control
  * characters or embedded quotes make the path unrepresentable (undefined).
+ * @param relativePath - the candidate's workspace-relative path.
+ * @param kind - file or directory (directories gain a trailing slash).
+ * @param preserveQuote - force the quoted form even without whitespace.
+ * @returns the insertion text, or undefined when the path is unrepresentable.
  */
 export function formatMentionToken(
   relativePath: string,
@@ -78,6 +84,10 @@ export function formatMentionToken(
 /**
  * Remove exactly one occurrence [start, end) from the draft. Pure string cut;
  * surrounding whitespace is left untouched (the user owns spacing).
+ * @param draft - the current draft text.
+ * @param start - half-open range start.
+ * @param end - half-open range end.
+ * @returns the draft with that one range cut (unchanged when out of bounds).
  */
 export function removeDraftRange(draft: string, start: number, end: number): string {
   if (start < 0 || end <= start || end > draft.length) return draft

@@ -59,25 +59,41 @@ export interface ResolveCredsOptions {
   onWarning?: (engineId: string, warningKey: string) => void
 }
 
-/** 引擎 id → env 变量名：`bing-lite` → `WEBSTACK_BING_LITE_API_KEY`。 */
+/**
+ * 引擎 id → env 变量名：`bing-lite` → `WEBSTACK_BING_LITE_API_KEY`。
+ * @param engineId - 引擎 id（连字符形态）。
+ * @returns 全大写下划线形态的 env 变量名。
+ */
 export function envVarName(engineId: string): string {
   return `WEBSTACK_${engineId.toUpperCase().replace(/-/g, '_')}_API_KEY`
 }
 
-/** 占位符判定：正则黑名单或尖括号整体包裹即命中。 */
+/**
+ * 占位符判定：正则黑名单或尖括号整体包裹即命中。
+ * @param secret - 待判定的密钥串。
+ * @returns 命中占位形态时为 true。
+ */
 export function isPlaceholderSecret(secret: string): boolean {
   const trimmed = secret.trim()
   return PLACEHOLDER_REGEX.test(trimmed) || ANGLE_WRAPPED_REGEX.test(trimmed)
 }
 
-/** 掩码 hint：长度 > 8 取前 3 + … + 尾 4；否则整串星号（不泄长度差信息过多）。 */
+/**
+ * 掩码 hint：长度 > 8 取前 3 + … + 尾 4；否则整串星号（不泄长度差信息过多）。
+ * @param secret - 明文密钥。
+ * @returns 掩码后的 hint 串。
+ */
 export function maskSecret(secret: string): string {
   return secret.length > 8
     ? `${secret.slice(0, 3)}…${secret.slice(-4)}`
     : '*'.repeat(secret.length)
 }
 
-/** opaque key id：sha256 前 8 位十六进制——可对比轮换，不可逆出原文。 */
+/**
+ * opaque key id：sha256 前 8 位十六进制——可对比轮换，不可逆出原文。
+ * @param secret - 明文密钥。
+ * @returns 8 位 opaque id。
+ */
 export function opaqueIdOf(secret: string): string {
   return createHash('sha256').update(secret).digest('hex').slice(0, 8)
 }
@@ -165,6 +181,9 @@ async function resolveCore(
  * - credential-ref：ref 存在但 credentials seam 缺席 → 整层跳过；
  *   seam 在而 resolve 返回空 → 该引擎该层 absent，继续下探；
  * - env：变量名由 {@link envVarName} 派生，空串等同缺席。
+ * @param engineIds - 待解析的引擎 id 列表。
+ * @param opts - 三个来源容器与告警出口。
+ * @returns 全引擎快照（仅布尔态/掩码/opaque id）。
  */
 export async function resolveCreds(
   engineIds: readonly string[],
@@ -179,6 +198,9 @@ export async function resolveCreds(
  * 一致，额外返回 `engineId → 明文密钥` 映射——仅供聚合器在同一操作起点把
  * 明文装进 EngineSearchRequest.credentials（仅进程内、仅请求生命周期），
  * 绝不落日志/缓存/模型上下文（W-B-55 纪律由调用方继续承担）。
+ * @param engineIds - 待解析的引擎 id 列表。
+ * @param opts - 三个来源容器与告警出口。
+ * @returns 快照 + 引擎 id → 明文密钥映射。
  */
 export async function resolveCredsDetailed(
   engineIds: readonly string[],
@@ -192,6 +214,8 @@ export async function resolveCredsDetailed(
  * 凭据指纹（进 CacheKeyInput.credFingerprint 维度）：各 configured 条目的
  * opaqueId 排序拼接再 sha256 取前 8 位。无任何凭据时返回 `'none'`——
  * 免 Key 引擎池因此获得稳定键；任一密钥轮换都会改变指纹 → 换键（W-B-30）。
+ * @param snapshot - 凭据快照。
+ * @returns 8 位指纹串，无凭据时为 'none'。
  */
 export function credFingerprint(snapshot: CredsSnapshot): string {
   const ids = Object.values(snapshot.entries)

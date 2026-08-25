@@ -24,10 +24,16 @@ const PRIVATE_HOST_PATTERNS: ReadonlyArray<RegExp> = [
   /^\[?fd/i,
 ]
 
+/** Verdict of the address-bar guard: allowed target URL, or a refused result with a machine code. */
 export type UrlGuardVerdict =
   | { allowed: true; url: string }
   | { allowed: false; code: 'bad-url' | 'scheme-refused' | 'host-refused'; message: string }
 
+/**
+ * Decide whether one address may be loaded in the sandboxed browser panel.
+ * @param input - the raw address-bar value to judge.
+ * @returns an `allowed` verdict with the normalized URL, or a refused verdict with code and message.
+ */
 export function judgeUrl(input: string): UrlGuardVerdict {
   const trimmed = input.trim()
   if (trimmed === '') return { allowed: false, code: 'bad-url', message: '请输入网址' }

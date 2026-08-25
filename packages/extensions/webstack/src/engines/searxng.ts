@@ -20,6 +20,7 @@ import type {
 } from '../kernel/types.js'
 import { BaseEngine, freezeDescriptor } from './engine.js'
 
+/** 自托管 SearXNG 引擎 id。 */
 export const SEARXNG_ENGINE_ID = 'searxng'
 
 /** G4 有界响应体上限：JSON 结果集适中，1MB 封顶。 */
@@ -38,6 +39,10 @@ export const SEARXNG_DESCRIPTOR: EngineDescriptor = freezeDescriptor({
 /**
  * 组装 SearXNG JSON 查询串：locale→language 参数、freshness→time_range
  * （day/week/month/year 直映）；baseUrl 去尾部斜杠防出现双斜杠。
+ * @param baseUrl - 实例根地址。
+ * @param query - 原始查询串。
+ * @param opts - language 与 timeRange 可选参数。
+ * @returns 完整查询 URL。
  */
 export function buildSearxngUrl(
   baseUrl: string,
@@ -70,6 +75,9 @@ function asString(v: unknown): string | undefined {
  * - content → snippet（空串保持缺席）；publishedDate 仅接受 ISO-8601 形态，
  *   否则缺席（不猜测、不改写）；
  * - 截断至 count 条。
+ * @param value - 上游返回的原始载荷。
+ * @param count - 命中条数上限。
+ * @returns 归一化命中列表。
  */
 export function parseSearxngJson(value: unknown, count: number): NormalizedHit[] {
   const root = asRecord(value)
@@ -117,7 +125,11 @@ export class SearxngEngine extends BaseEngine {
     super(descriptor)
   }
 
-  /** 搜索：出站必经安全管道；JSON 解析失败转 narrow-failed，条目级坏行跳过。 */
+  /**
+   * 搜索：出站必经安全管道；JSON 解析失败转 narrow-failed，条目级坏行跳过。
+   * @param req - 引擎层搜索请求。
+   * @returns 归一化响应（含 attempts 审计记录）。
+   */
   async search(req: EngineSearchRequest): Promise<EngineSearchResponse> {
     return await this.runSearch(req, async () => {
       const { outboundFetch, parseJsonLoose } = await this.pipeline()

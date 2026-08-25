@@ -54,6 +54,7 @@ function normalizeWithPort(entry: string): string {
  * (case aside). Paths, user info, whitespace, dangling or zero-padded ports,
  * and non-canonical host spellings are refused loudly instead of silently
  * narrowing (or broadening) the grant until some request 403s.
+ * @param entry - the configured `host[:port]` authority to validate.
  */
 export function assertTrustedAuthorityEntry(entry: string): void {
   const canonical = canonicalAuthority(entry)
@@ -65,6 +66,9 @@ export function assertTrustedAuthorityEntry(entry: string): void {
  * Decide whether a request may proceed from its headers alone. The Host
  * header binds the decision: loopback hostnames pass regardless of port;
  * anything else must match one configured authority in exact canonical form.
+ * @param headers - the request headers whose Host value binds the decision.
+ * @param trustedEntries - the deployment-configured trusted authorities.
+ * @returns true when the request host is loopback or in the trusted set.
  */
 export function isTrustedRequestHost(headers: IncomingHttpHeaders, trustedEntries: readonly string[]): boolean {
   const host = headers.host

@@ -29,6 +29,7 @@ import type { HttpHandler } from './upload.js'
 // Schema + defaults (P01 §7.2 table)
 // ---------------------------------------------------------------------------
 
+/** Zod schema of the full `filehub.*` settings record (P01 §7.2 table). */
 export const FILEHUB_SETTINGS_SCHEMA = z.object({
   /** Master switch: false hides the console entry and degrades every face. */
   enabled: z.boolean(),
@@ -43,10 +44,12 @@ export const FILEHUB_SETTINGS_SCHEMA = z.object({
   /** Vision waterfall posture. */
   'vision.mode': z.enum(['off', 'caption', 'analyze']),
 })
+/** Full settings record, inferred from {@link FILEHUB_SETTINGS_SCHEMA}. */
 export type FileHubSettings = z.infer<typeof FILEHUB_SETTINGS_SCHEMA>
 /** Patch shape with explicitly-optional keys (zod output carries | undefined). */
 export type FileHubSettingsPatch = { [K in keyof FileHubSettings]?: FileHubSettings[K] | undefined }
 
+/** Server-owned defaults, frozen; clients never see raw unmerged values. */
 export const FILEHUB_SETTINGS_DEFAULTS: Readonly<FileHubSettings> = Object.freeze({
   enabled: true,
   ignorePastedMentions: false,
@@ -62,6 +65,8 @@ const PATCH_SCHEMA = FILEHUB_SETTINGS_SCHEMA.partial()
  * Server-side normalization: keep only known keys, drop undefined values.
  * Values are NOT validated here — validation is the caller's (HTTP layer)
  * job; pure functions stay pure.
+ * @param input - the raw incoming patch payload.
+ * @returns a patch containing only known keys with defined values.
  */
 export function sanitizeSettingsPatch(input: unknown): FileHubSettingsPatch {
   const patch: Record<string, unknown> = {}
@@ -73,7 +78,12 @@ export function sanitizeSettingsPatch(input: unknown): FileHubSettingsPatch {
   return patch
 }
 
-/** Merge a validated patch onto a base record into a complete settings view. */
+/**
+ * Merge a validated patch onto a base record into a complete settings view.
+ * @param base - the record to merge onto.
+ * @param patch - partial overrides; undefined keys keep the base value.
+ * @returns the merged full settings record.
+ */
 export function mergeSettings(base: FileHubSettings, patch: FileHubSettingsPatch): FileHubSettings {
   return {
     enabled: patch.enabled ?? base.enabled,
@@ -93,11 +103,16 @@ const SETTINGS_UNIT = 'filehub_settings'
 const SETTINGS_TABLE = 'values'
 const SETTINGS_KEY = 'filehub'
 
+/** Persistence surface for the settings record: load and save a patch. */
 export interface SettingsStore {
   load(): Promise<FileHubSettingsPatch>
   save(value: FileHubSettingsPatch): Promise<void>
 }
 
+/**
+ * In-memory {@link SettingsStore} used when no storage KV facet exists.
+ * @returns a working store backed by a plain variable (dies with the process).
+ */
 export function createMemorySettingsStore(): SettingsStore {
   let stored: FileHubSettingsPatch = {}
   return {
@@ -158,17 +173,24 @@ function pickKvFacet(storage: unknown): KvFacetLike | undefined {
   return undefined
 }
 
+/** Seams for the settings service: the storage hub face and a warn logger. */
 export interface SettingsServiceDeps {
   storage?: unknown
   logWarn(message: string): void
 }
 
+/** Settings service surface: read the merged view, patch it, or reset to defaults. */
 export interface SettingsService {
   get(): Promise<FileHubSettings>
   put(patch: FileHubSettingsPatch): Promise<FileHubSettings>
   reset(): Promise<FileHubSettings>
 }
 
+/**
+ * Build the settings service over the given seams.
+ * @param deps - storage hub face and warn logger.
+ * @returns the service object implementing {@link SettingsService}.
+ */
 export function createSettingsService(deps: SettingsServiceDeps): SettingsService {
   const kv = pickKvFacet(deps.storage)
   if (!kv) {
@@ -227,7 +249,11 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
   return text === '' ? {} : JSON.parse(text)
 }
 
-/** GET /api/filehub/settings */
+/**
+ * GET /api/filehub/settings
+ * @param deps - the handler's service seam.
+ * @returns an HttpHandler serving the full merged settings view.
+ */
 export function createSettingsGetHandler(deps: { service: SettingsService }): HttpHandler {
   return async function handleSettingsGet(req, res) {
     if (req.method !== 'GET') {
@@ -238,7 +264,11 @@ export function createSettingsGetHandler(deps: { service: SettingsService }): Ht
   }
 }
 
-/** PUT /api/filehub/settings — partial patch; invalid values answer 400. */
+/**
+ * PUT /api/filehub/settings — partial patch; invalid values answer 400.
+ * @param deps - the handler's service seam.
+ * @returns an HttpHandler patching and answering with the merged view.
+ */
 export function createSettingsPutHandler(deps: { service: SettingsService }): HttpHandler {
   return async function handleSettingsPut(req, res) {
     if (req.method !== 'PUT') {

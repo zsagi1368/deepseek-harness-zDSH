@@ -36,6 +36,7 @@ export interface SessionMetaRecord {
   files: Record<string, UploadMetaEntry>
 }
 
+/** Upload-metadata persistence surface: per-file rows keyed by session. */
 export interface MetaStore {
   /** Upsert one file row (and remember cwd when provided). */
   record(sessionId: string, relPath: string, entry: UploadMetaEntry, cwd?: string): Promise<void>
@@ -51,6 +52,10 @@ const UNIT_NAME = 'filehub'
 const UNIT_VERSION = 1
 const TABLE = 'sessions'
 
+/**
+ * In-memory {@link MetaStore} used when no storage KV facet exists.
+ * @returns a working store backed by a Map (dies with the process).
+ */
 export function createMemoryMetaStore(): MetaStore {
   const records = new Map<string, SessionMetaRecord>()
   return {
@@ -102,6 +107,7 @@ export interface KvUnitLike {
   close(): Promise<void>
 }
 
+/** Structural subset of dsh-storage's KvFacet: open a named KV unit. */
 export interface KvFacetLike {
   open(descriptor: {
     name: string
@@ -197,6 +203,9 @@ class KvMetaStore implements MetaStore {
 /**
  * Build the metadata store: KV-backed when the host exposes a KV facet,
  * in-memory otherwise (single-process fallback — quota resets on restart).
+ * @param storage - the host storage hub, or undefined for a memory store.
+ * @param logWarn - warns when falling back to memory.
+ * @returns the metadata store implementing {@link MetaStore}.
  */
 export function createMetaStore(
   storage: StorageHubLike | undefined,

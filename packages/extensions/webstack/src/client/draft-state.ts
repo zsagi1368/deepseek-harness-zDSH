@@ -75,15 +75,19 @@ export type DraftEvent =
 
 /** maxResults 合法区间（含端点）。 */
 export const MAX_RESULTS_MIN = 1
+/** maxResults 合法区间上界。 */
 export const MAX_RESULTS_MAX = 50
 /** maxContentChars 合法区间（8 MiB 封顶）。 */
 export const MAX_CONTENT_CHARS_MIN = 200
+/** maxContentChars 合法区间上界（8 MiB）。 */
 export const MAX_CONTENT_CHARS_MAX = 8_000_000
 
 /**
  * host:port 单行格式校验：主机名为域名标签序列 / IPv4 点分十进制 /
  * `localhost`，端口必填且落在 1–65535。CIDR 与裸主机名不在卡片编辑面
  * （组合入口配置档负责），此处从严——拒绝即高亮，不静默改写。
+ * @param raw - 待校验的单行 host:port。
+ * @returns 格式合法时为 true。
  */
 export function isValidSsrfLine(raw: string): boolean {
   const line = raw.trim()
@@ -100,7 +104,11 @@ export function isValidSsrfLine(raw: string): boolean {
   return host.split('.').every(part => label.test(part))
 }
 
-/** 行文本 → 豁免数组：去空白行、trim、按首次出现去重。 */
+/**
+ * 行文本 → 豁免数组：去空白行、trim、按首次出现去重。
+ * @param text - textarea 原始内容。
+ * @returns 去重后的豁免行数组。
+ */
 export function parseSsrfExempts(text: string): string[] {
   const seen = new Set<string>()
   for (const raw of text.split('\n')) {
@@ -171,7 +179,11 @@ function sameShape(a: WebstackSettingsShape, b: WebstackSettingsShape): boolean 
   )
 }
 
-/** 以 committed 基线构造 clean 相。 */
+/**
+ * 以 committed 基线构造 clean 相。
+ * @param committed - 已提交的形状基线。
+ * @returns phase=clean 的初始状态。
+ */
 export function cleanDraft(committed: WebstackSettingsShape): DraftState {
   return { phase: 'clean', draft: { ...committed }, committed: { ...committed } }
 }
@@ -180,6 +192,9 @@ export function cleanDraft(committed: WebstackSettingsShape): DraftState {
  * 唯一迁移入口。saving 相闸掉 load/edit/discard/save（写入在途不允许旁路
  * 变更）；save 只接受「合法的 dirty」或「failed 重试」；saveSuccess 把草稿
  * 升格为已提交基线并回到 clean。
+ * @param state - 当前状态快照。
+ * @param event - 待迁移的事件。
+ * @returns 迁移后的下一状态。
  */
 export function reduceDraft(state: DraftState, event: DraftEvent): DraftState {
   switch (event.type) {
@@ -232,18 +247,32 @@ export function reduceDraft(state: DraftState, event: DraftEvent): DraftState {
   }
 }
 
-/** 卡片按钮/提示用的派生只读量。 */
+/**
+ * 卡片按钮/提示用的派生只读量。
+ * @param state - 当前状态快照。
+ * @returns 当前草稿的全部校验问题。
+ */
 export function draftIssues(state: DraftState): readonly DraftIssue[] {
   return validateShape(state.draft)
 }
 
+/**
+ * 是否允许发起保存：合法的 dirty 或 failed 重试且草稿通过校验。
+ * @param state - 当前状态快照。
+ * @returns 可保存时为 true。
+ */
 export function canSave(state: DraftState): boolean {
   return (
     (state.phase === 'dirty' || state.phase === 'failed') && validateShape(state.draft).length === 0
   )
 }
 
-/** 宿主设置 section（嵌套结构，缺字段回落默认）→ 扁平形状。 */
+/**
+ * 宿主设置 section（嵌套结构，缺字段回落默认）→ 扁平形状。
+ * @param section - 宿主返回的原始设置对象。
+ * @param fallback - 缺字段时回落的默认形状。
+ * @returns 平铺的可编辑形状。
+ */
 export function shapeFromSection(
   section: unknown,
   fallback: WebstackSettingsShape,
@@ -280,7 +309,12 @@ export function shapeFromSection(
   }
 }
 
-/** 草稿与基线的差异 → 宿主点路径写入清单（顺序稳定，供 scope.set 逐条排队）。 */
+/**
+ * 草稿与基线的差异 → 宿主点路径写入清单（顺序稳定，供 scope.set 逐条排队）。
+ * @param draft - 当前草稿。
+ * @param committed - 已提交基线。
+ * @returns 差异写入项数组（值已按字段类型归一）。
+ */
 export function diffToWrites(
   draft: WebstackSettingsShape,
   committed: WebstackSettingsShape,

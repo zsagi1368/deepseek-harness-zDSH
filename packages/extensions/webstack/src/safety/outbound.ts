@@ -147,6 +147,7 @@ async function readBounded(
  * （caller 中止）、`transport`（超时/DNS 外网络故障/重定向超限/Location 非法）。
  * @param req  出站请求（url/maxBytes 必填）
  * @param opts 可选豁免表：透传给 G2（host:port 与 CIDR），永不影响 G1/G3/G4
+ * @returns 出站响应（最终 URL 已过重定向复验，正文读取受 maxBytes 约束）。
  */
 export async function outboundFetch(
   req: OutboundRequest,

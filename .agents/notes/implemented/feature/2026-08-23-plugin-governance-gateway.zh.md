@@ -21,3 +21,13 @@ Status: implemented
 目录放置遵循仓库源码映射约定：两个新包位于 `packages/<组>/<包名>/src`，与其 `@deepseek-ai/dsh-<名>` 命名一致，并在基础 `paths` 映射中登记 `plugins` 组。`packages/*/*` 下的裸目录会使 tsdown workspace 批处理崩溃，属禁止形态。
 
 网关仅驱动治理注册表。Loader 级安装/卸载流程、消费这些 Remote 的客户端设置界面、OS-keychain 凭证存储均为后续工作。
+
+## Alternatives considered
+
+- **在原治理包内直接增加宿主导向方法** —— 否决：仓库将模型/规范包与宿主/用户侧接缝分目录（`packages/plugins/*` 与 `packages/host/*`），治理包本身不持有 Cordis 面；独立宿主包保持接缝边界，远程面归属宿主。
+- **用普通 Cordis RPC 而非 Typert 生成的 Remote** —— 否决：宿主其余面均发布类型化 Remote（plugin-inventory 模式），客户端运行时复用同一双信封解包路径。
+- **仅做 Loader 镜像（无原生 install/uninstall）** —— 作为发布约束采纳：镜像覆盖已挂载条目；`install`/`uninstall` 保持 `not-implemented`，直到受守卫的下载-准入管线就绪。
+
+## Consequences
+
+网关新增第七个宿主服务，并为治理持久化增加了可审计的审批/预设状态（与所有已确认变更一样带快照补偿）。`install`/`uninstall` 作为显式缺口保留而非半成品下载器；消费这些 Remote 的设置界面仍属未来工作——远程契约先于其唯一 UI 发布。

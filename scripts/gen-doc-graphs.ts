@@ -589,6 +589,22 @@ const SERVICE_ROLES: ServiceRole[] = [
     consumers: ['tool-cordis'],
     note: 'Registers host inspect providers, mirrors the client provider manifest, and routes client queries through the dynamic Cordis transport.',
   },
+  {
+    key: 'pluginGovernance',
+    pkg: 'plugin-governance-host',
+    title: 'Plugin governance gateway',
+    mode: 'core',
+    consumers: ['ui-plugin-manager'],
+    note: 'Owns the governed plugin registry mirror, admission decisions, health and preset operations; the web plugin-management tab consumes the same face over the wire.',
+  },
+  {
+    key: 'agentMemory',
+    pkg: 'zdsh-memory',
+    title: 'Cross-session memory extractor and store',
+    mode: 'core',
+    consumers: ['agent-loop'],
+    note: 'Heuristically extracts durable decision/fact/preference entries at session end and serves the top-k overlap matches into fresh session prompts.',
+  },
 ]
 
 function generatedHeader(title: string): string[] {

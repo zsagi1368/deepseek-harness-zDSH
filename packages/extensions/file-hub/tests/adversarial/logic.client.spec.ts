@@ -3,7 +3,8 @@
  *
  * ReDoS attempts against the search endpoint, symlink-cycle + maxFiles double
  * stress on the workspace indexer, parse-cache poisoning across formats, and
- * KV/disk divergence (ghost entries). Log: docs/adversarial-log.md.
+ * KV/disk divergence (ghost entries). 对抗日志归档于 FileHub 战役仓库
+ * （其仓库内 adversarial-log 文档，位于本仓库之外）。
  */
 import http from 'node:http'
 import fsp from 'node:fs/promises'

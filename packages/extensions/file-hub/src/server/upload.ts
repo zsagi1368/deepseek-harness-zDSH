@@ -39,6 +39,7 @@ import { isValidSessionId, PathPolicyError, sanitizeFileName, sanitizeRelativePa
 /** Handler shape demanded by dsh-host-webserver WebRoute. */
 export type HttpHandler = (req: IncomingMessage, res: ServerResponse) => Promise<void>
 
+/** Upload guard rails: byte/concurrency/quota ceilings and the extension deny list. */
 export interface UploadGuards {
   /** Per-file byte ceiling. */
   maxBytes: number
@@ -50,6 +51,7 @@ export interface UploadGuards {
   dangerousExtensions: readonly string[]
 }
 
+/** Seams the upload handler consumes: guards, meta store, workspace resolver, logger. */
 export interface UploadServiceDeps {
   guards: UploadGuards
   meta: MetaStore
@@ -63,6 +65,8 @@ export interface UploadServiceDeps {
  * True when the remote address is a loopback. Handles the IPv4-mapped form
  * (`::ffff:127.0.0.1`) by unwrapping the prefix BEFORE matching — the mapped
  * spelling must not sneak past an `addr === '::1'`-only check.
+ * @param address - the socket remote address, or undefined.
+ * @returns true for ::1 or 127.x.x.x (IPv4-mapped forms unwrapped).
  */
 export function isLoopbackRemoteAddress(address: string | undefined): boolean {
   if (!address) return false
@@ -76,6 +80,9 @@ export function isLoopbackRemoteAddress(address: string | undefined): boolean {
  * Origin→Host consistency. Absent Origin passes (non-browser clients);
  * present-but-unparseable fails closed. Only the hostnames are compared —
  * ports may legitimately differ behind proxies.
+ * @param originHeader - the request's Origin header, if any.
+ * @param hostHeader - the request's Host header.
+ * @returns true when origin is absent or its hostname matches the Host hostname.
  */
 export function originMatchesHost(originHeader: string | undefined, hostHeader: string | undefined): boolean {
   if (originHeader === undefined) return true
@@ -125,6 +132,11 @@ class Semaphore {
 
 // ---- Helpers ----------------------------------------------------------------
 
+/**
+ * Lowercase extension of a file name; '' for dotfiles, trailing dots, no dots.
+ * @param fileName - the file name to inspect.
+ * @returns the extension without the dot, lowercased.
+ */
 export function fileExtensionOf(fileName: string): string {
   const dot = fileName.lastIndexOf('.')
   if (dot <= 0 || dot === fileName.length - 1) return ''
@@ -254,6 +266,11 @@ async function totalRecordedBytes(meta: MetaStore, sessionId: string): Promise<n
 
 // ---- The handler ------------------------------------------------------------
 
+/**
+ * Build the upload handler: raw-body POST with the guard-rail cascade.
+ * @param deps - guards plus meta, workspace resolver, and logger seams.
+ * @returns the HttpHandler serving POST /api/filehub/upload.
+ */
 export function createUploadHandler(deps: UploadServiceDeps): HttpHandler {
   const { guards, meta, workspaces, logWarn } = deps
   const gate = new Semaphore(guards.maxConcurrent)

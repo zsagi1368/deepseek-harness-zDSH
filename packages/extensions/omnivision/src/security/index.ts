@@ -8,6 +8,8 @@ import { isAbsolute, relative, resolve } from 'node:path'
 
 /**
  * Check if IP is private or reserved
+ * @param ip - the IP address to classify (IPv4 or IPv6).
+ * @returns true when the address is private, loopback, link-local, or reserved.
  */
 export function isPrivateOrReserved(ip: string): boolean {
   // IPv4-mapped IPv6 (e.g. ::ffff:10.0.0.5) must be judged by its embedded
@@ -40,6 +42,10 @@ export function isPrivateOrReserved(ip: string): boolean {
 
 /**
  * Resolve hostname to IP and check if safe
+ * @param url - the http(s) URL to resolve and validate.
+ * @returns the resolved IP and the parsed URL when safe.
+ * @throws an SSRF_* error when the protocol is unsupported, DNS fails, or the
+ *   resolved address is private or reserved.
  */
 export async function assertSafeRemoteTarget(url: string): Promise<{ ip: string; url: URL }> {
   const parsed = new URL(url)
@@ -63,6 +69,9 @@ export async function assertSafeRemoteTarget(url: string): Promise<{ ip: string;
  * Whether `resolved` sits inside `root` (or is the root itself), compared at
  * path-segment boundaries — never a raw string prefix, so `/tmp` does not
  * admit `/tmpx`. Cross-drive and home-relative escapes read as outside.
+ * @param resolved - the path to test, already resolved.
+ * @param root - the allowed root directory.
+ * @returns true when the resolved path sits inside the root or equals it.
  */
 export function isPathWithinRoot(resolved: string, root: string): boolean {
   const rel = relative(root, resolved)
@@ -71,6 +80,9 @@ export function isPathWithinRoot(resolved: string, root: string): boolean {
 
 /**
  * Whether `resolved` sits inside any of the allowed roots.
+ * @param resolved - the path to test, already resolved.
+ * @param roots - the allowed root directories.
+ * @returns true when at least one root contains the resolved path.
  */
 export function isPathWithinRoots(resolved: string, roots: readonly string[]): boolean {
   return roots.some(root => isPathWithinRoot(resolved, root))
@@ -82,6 +94,7 @@ export function isPathWithinRoots(resolved: string, roots: readonly string[]): b
  * rejected. RESIDUAL RISK: the component can still be swapped between this
  * check and the actual open — closing that window needs openat-style relative
  * handles, which this codebase's provider layer does not use.
+ * @param path - the path whose final component is probed.
  * @returns true when the final component exists and is a plain file.
  */
 export function isPlainFileAt(path: string): boolean {
@@ -140,6 +153,8 @@ export class PathPolicy {
    * component is additionally lstat-probed to reject a symlink planted at
    * the leaf. RESIDUAL RISK: TOCTOU between this check and open — closing
    * that needs O_NOFOLLOW/openat-style handles.
+   * @param path - the candidate path to probe.
+   * @returns true when the path passes containment and is not a final symlink.
    */
   allowInput(path: string): boolean {
     const resolved = this.canonical(path)
@@ -152,12 +167,19 @@ export class PathPolicy {
     )
   }
 
-  /** The resolved roots this policy admits inputs from (workspace + temp). */
+  /**
+   * The resolved roots this policy admits inputs from (workspace + temp).
+   * @returns the canonicalized allowed input roots.
+   */
   inputRoots(): string[] {
     return [this.workspace, this.tempDir]
   }
 
-  /** Same canonical containment-plus-final-symlink discipline as {@link allowInput}. */
+  /**
+   * Same canonical containment-plus-final-symlink discipline as {@link allowInput}.
+   * @param path - the candidate path to probe.
+   * @returns true when the path passes containment and is not a final symlink.
+   */
   allowOutput(path: string): boolean {
     const resolved = this.canonical(path)
     return (
@@ -167,6 +189,11 @@ export class PathPolicy {
     )
   }
 
+  /**
+   * Reject a path whose final component is a symbolic link.
+   * @param path - the path to inspect.
+   * @throws an error tagged PATH_SYMLINK_DENIED when the final component is a symlink.
+   */
   rejectSymlink(path: string): void {
     try {
       const stats = lstatSync(path)
@@ -180,6 +207,11 @@ export class PathPolicy {
     }
   }
 
+  /**
+   * Resolve a path to its absolute form.
+   * @param path - the path to normalize.
+   * @returns the resolved absolute path.
+   */
   normalize(path: string): string {
     return resolve(path)
   }
@@ -187,6 +219,9 @@ export class PathPolicy {
 
 /**
  * Three-layer credential redaction
+ * @param text - the text to redact credentials from.
+ * @param knownSecrets - known secret values to mask by exact match.
+ * @returns the text with credential material replaced by markers.
  */
 export function redactSecrets(text: string, knownSecrets: string[] = []): string {
   let out = text
@@ -207,6 +242,8 @@ export function redactSecrets(text: string, knownSecrets: string[] = []): string
 
 /**
  * Redact URL credentials
+ * @param url - the URL whose userinfo is redacted.
+ * @returns the URL with username and password masked, or the input when unparseable.
  */
 export function redactUrl(url: string): string {
   try {
@@ -224,6 +261,7 @@ export function redactUrl(url: string): string {
 
 /**
  * Get a list of currently set API keys for redaction
+ * @returns the non-empty API key values from the well-known environment variables.
  */
 export function getKnownSecrets(): string[] {
   const secrets: string[] = []

@@ -4,12 +4,14 @@ import { validateCatalogEntry } from '../shared/catalog.js'
 import { cpErr, cpOk, type CpResult } from '../shared/types.js'
 import type { HttpPort } from './ports.js'
 
+/** The catalog sources a load attempt may consult. */
 export interface CatalogLoadInput {
   seedPath: string
   cachePath: string
   remoteUrl?: string | undefined
 }
 
+/** A validated catalog snapshot with its provenance mode. */
 export interface LoadedCatalog {
   entries: CatalogEntry[]
   mode: 'fresh' | 'cached' | 'seed'
@@ -79,6 +81,9 @@ function entriesOf(snapshot: SnapshotFile): CpResult<CatalogEntry[]> {
  * Three-tier catalog loading with graceful degradation:
  * verified remote success → fresh (cache rewritten); anything else falls back
  * to the digest-checked local cache (`cached`), then the bundled seed.
+ * @param input - the seed, cache, and optional remote catalog locations.
+ * @param ports - the fs and http ports used to fetch and persist snapshots.
+ * @returns the validated catalog entries with their provenance mode, or an error result.
  */
 export async function loadCatalog(
   input: CatalogLoadInput,

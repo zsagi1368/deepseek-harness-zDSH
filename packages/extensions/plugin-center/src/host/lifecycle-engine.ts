@@ -26,6 +26,7 @@ const LIFECYCLE_SCRIPT_KEYS = [
   'prepare',
 ] as const
 
+/** Configuration for the lifecycle engine: data storage and script gating. */
 export interface LifecycleConfig {
   /** Root for backups / audit log / snapshot cache. */
   dataRoot: string
@@ -36,6 +37,7 @@ export interface LifecycleConfig {
 /** Optional post-install probe; throwing or rejecting fails the plan. */
 export type HealthProbe = () => Promise<void>
 
+/** Ports and hooks the lifecycle engine needs from its host environment. */
 export interface EngineDeps {
   ports: EnginePorts
   config: LifecycleConfig
@@ -43,7 +45,14 @@ export interface EngineDeps {
   auditSink?: (line: string) => void
 }
 
-/** Pure command builders so tests can pin exact shapes without spawning. */
+/**
+ * Pure command builders so tests can pin exact shapes without spawning.
+ * @param profile - the target DSH profile name.
+ * @param owner - the GitHub repository owner.
+ * @param repo - the GitHub repository name.
+ * @param commit - the pinned commit to install.
+ * @returns the command and argument list for the install.
+ */
 export function buildInstallCmd(
   profile: string,
   owner: string,
@@ -62,15 +71,32 @@ export function buildInstallCmd(
   }
 }
 
+/**
+ * Build the command that adds a registry package at a pinned version.
+ * @param profile - the target DSH profile name.
+ * @param pkgName - the registry package name.
+ * @param version - the package version to install.
+ * @returns the command and argument list for the npm-style add.
+ */
 export function buildNpmAddCmd(profile: string, pkgName: string, version: string): { cmd: string; args: string[] } {
   return { cmd: 'dsh', args: ['plugin', '--profile', profile, 'add', `${pkgName}@${version}`] }
 }
 
+/**
+ * Build the command that removes a package from a profile.
+ * @param profile - the target DSH profile name.
+ * @param pkgName - the package name to remove.
+ * @returns the command and argument list for the remove.
+ */
 export function buildRemoveCmd(profile: string, pkgName: string): { cmd: string; args: string[] } {
   return { cmd: 'dsh', args: ['plugin', '--profile', profile, 'remove', pkgName] }
 }
 
-/** List lifecycle scripts a package manifest would run on install. */
+/**
+ * List lifecycle scripts a package manifest would run on install.
+ * @param manifest - the package manifest to inspect.
+ * @returns the lifecycle script keys the manifest declares.
+ */
 export function detectLifecycleScripts(manifest: Record<string, unknown>): string[] {
   const scripts = manifest.scripts
   if (typeof scripts !== 'object' || scripts === null) return []
@@ -92,6 +118,10 @@ interface BackupRecord {
   pairs: Array<{ backupPath: string; originalPath: string }>
 }
 
+/**
+ * Orchestrates plugin install plans: staging, confirmation, serialized
+ * execution with backup and byte-verified rollback, and operator restores.
+ */
 export class LifecycleEngine {
   private readonly plans = new PlanStore()
   private readonly states = new Map<string, PlanState>()
@@ -103,6 +133,11 @@ export class LifecycleEngine {
     return this.deps.ports.fs
   }
 
+  /**
+   * Read the current state of a plan.
+   * @param planId - the plan id to look up.
+   * @returns the plan state, or `draft` when unknown.
+   */
   stateOf(planId: string): PlanState {
     return this.states.get(planId) ?? 'draft'
   }
@@ -110,6 +145,11 @@ export class LifecycleEngine {
   /**
    * Build and register a plan. `targetManifest` (when the registry supplied
    * the package manifest) runs the lifecycle-script gate before staging.
+   * @param entry - the catalog entry the plan targets.
+   * @param action - the plan action to stage.
+   * @param profile - the profile the plan will modify.
+   * @param targetManifest - the package manifest when the registry supplied one.
+   * @returns the staged plan and confirmation phrase, or an error result.
    */
   buildPlan(
     entry: Entry,
@@ -146,7 +186,12 @@ export class LifecycleEngine {
     }
   }
 
-  /** One-shot confirmation bound to the deterministic phrase. */
+  /**
+   * One-shot confirmation bound to the deterministic phrase.
+   * @param planId - the staged plan id to confirm.
+   * @param phrase - the confirmation phrase printed at staging time.
+   * @returns the confirmed plan, or an error result.
+   */
   confirmPlan(planId: string, phrase: string): CpResult<InstallPlan> {
     try {
       const plan = this.plans.confirm(planId, phrase)
@@ -170,6 +215,8 @@ export class LifecycleEngine {
    *
    * Plans serialize through a per-engine queue so two concurrent applies can
    * never interleave snapshots and rollbacks against one profile.
+   * @param planId - the confirmed plan id to apply.
+   * @returns the final plan state after execution, or an error result.
    */
   applyPlan(planId: string): Promise<CpResult<{ state: PlanState }>> {
     const run = this.queue.then(() => this.applyPlanLocked(planId))
@@ -345,6 +392,10 @@ export class LifecycleEngine {
   /**
    * Operator-facing restore: copy a backup directory (base-named profile
    * files) back into the profile, byte-verified per file.
+   * @param profileDir - the profile directory to restore into.
+   * @param backupDir - the backup directory holding the profile files.
+   * @param backupName - the backup name used in diagnostics.
+   * @returns the list of restored profile file names, or an error result.
    */
   restoreBackupInto(profileDir: string, backupDir: string, backupName: string): CpResult<{ restored: string[] }> {
     let names: string[]
@@ -417,6 +468,11 @@ function baseNameOf(p: string): string {
   return idx === -1 ? p : p.slice(idx + 1)
 }
 
+/**
+ * Convert a thrown error into an error result, preserving CpError codes.
+ * @param error - the thrown value to translate.
+ * @returns an error result carrying the CpError code or `internal`.
+ */
 export function toCpResult<T>(error: unknown): CpResult<T> {
   if (error instanceof CpError) {
     return cpErr(error.code, error.message)

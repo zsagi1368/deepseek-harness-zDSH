@@ -53,6 +53,8 @@ function maskUrl(rawUrl: string, placeholder: string): string {
 /**
  * 脱敏 URL：遮蔽黑名单 query 值、剥除 userinfo 段。解析失败时返回占位符
  * 而非抛错——scrubber 自身绝不允许成为新的故障点。
+ * @param rawUrl - 待脱敏的原始 URL。
+ * @returns 脱敏后的 URL 串（失败时返回占位符）。
  */
 export function redactUrl(rawUrl: string): string {
   return maskUrl(rawUrl, REDACTED)
@@ -61,6 +63,8 @@ export function redactUrl(rawUrl: string): string {
 /**
  * 脱敏 URL（`***` 占位变体）：与 redactUrl 同规则，供自由文本通道使用，
  * 保证同一 URL 在结构化与文本两条输出边界上泄露面一致。
+ * @param url - 待脱敏的原始 URL。
+ * @returns 以 `***` 遮蔽后的 URL 串。
  */
 export function scrubUrl(url: string): string {
   return maskUrl(url, SCRUB_PLACEHOLDER)
@@ -70,6 +74,8 @@ export function scrubUrl(url: string): string {
  * 脱敏自由文本：先对文本中出现的每个 http(s) URL 应用 scrubUrl 规则
  * （userinfo 与敏感 query 值替换为 `***`），再兜底扫描裸 `?key=value`
  * 形态的敏感参数对——覆盖错误消息里被截断的非完整 URL。
+ * @param text - 待脱敏的自由文本。
+ * @returns 敏感值被遮蔽后的文本。
  */
 export function scrubText(text: string): string {
   return text

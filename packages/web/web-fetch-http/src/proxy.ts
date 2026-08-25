@@ -51,6 +51,8 @@ function assertHttpProxyUrl(value: string): string {
  * (empty or not a plain `http://` URL) is skipped rather than fatal — ambient
  * environment changes must not break plugin startup for deployments that
  * previously fetched directly.
+ * @param configured - explicit `proxyUrl` from plugin config, when present.
+ * @param env - environment map consulted for proxy variables; defaults to `process.env`.
  * @returns the effective proxy URL, or `undefined` when no proxy applies.
  */
 export function resolveProxyUrl(
@@ -70,7 +72,11 @@ export function resolveProxyUrl(
   return undefined
 }
 
-/** Build the undici dispatcher injected into every proxied `fetch` call. */
+/**
+ * Build the undici dispatcher injected into every proxied `fetch` call.
+ * @param proxyUrl - validated plain-`http://` proxy URL to tunnel through.
+ * @returns a `ProxyAgent` usable as a fetch request dispatcher.
+ */
 export function createProxyDispatcher(proxyUrl: string): ProxyAgent {
   return new ProxyAgent(proxyUrl)
 }

@@ -96,6 +96,10 @@ function messageText(content: UserMessage['content']): string {
 /**
  * Derive the current task's keywords: tokens over the most recent human
  * prompts of the assembling session (plugin-injected context never counts).
+ * @param events - the session event stream to scan backwards.
+ * @param scan - how many user-authored messages to tokenize at most; defaults
+ * to {@link KEYWORD_SCAN_MESSAGES}.
+ * @returns the deduplicated keyword token set.
  */
 export function taskKeywords(events: readonly SessionEvent[], scan: number = KEYWORD_SCAN_MESSAGES): Set<string> {
   const keywords = new Set<string>()
@@ -142,6 +146,8 @@ export class AgentMemoryService extends Service {
   /**
    * Ingest one session event: human prompts feed the decision/preference
    * rules; a completed turn's final assistant reply feeds the fact rule.
+   * @param session - the session the event belongs to.
+   * @param event - the session event to observe.
    */
   async observe(session: Session, event: SessionEvent): Promise<void> {
     switch (event.type) {
@@ -171,6 +177,8 @@ export class AgentMemoryService extends Service {
    * Render the `agent:memory` section text for one prompt assembly: Top-K
    * keyword-overlap entries against the assembling agent's current task.
    * Returns `''` when no agent is attached or nothing overlaps.
+   * @param assemble - the prompt assembly context carrying the agent to score.
+   * @returns the rendered section text (possibly empty).
    */
   renderSection(assemble: AssembleContext): string {
     const agent: Agent | undefined = assemble.agent
@@ -179,13 +187,17 @@ export class AgentMemoryService extends Service {
     return renderMemorySection(selected)
   }
 
-  /** Every stored entry, oldest first (future UI/Remote read face). */
+  /**
+   * Every stored entry, oldest first (future UI/Remote read face).
+   * @returns the stored memory entries, oldest first.
+   */
   list(): Promise<MemoryEntry[]> {
     return this.store.list()
   }
 
   /**
    * Drop one stored entry by id.
+   * @param id - the entry id to forget.
    * @returns whether the id existed.
    */
   forget(id: string): Promise<boolean> {

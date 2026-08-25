@@ -11,6 +11,7 @@ import type { PathRoots } from './pathhard.js'
 const DESTRUCTIVE_TOOL_HEADS = /^(rm|rmdir|del|rd|remove-item)$/i
 const EXECUTION_POLICY = /set-executionpolicy/i
 
+/** Fuse denial: the call is stopped no matter what lower layers would say. */
 export interface FuseVerdict {
   denied: true
   reason: string
@@ -19,6 +20,10 @@ export interface FuseVerdict {
 /**
  * Synchronous hard-deny fuse for tool calls. Returns undefined when the call
  * may proceed to the lower layers.
+ * @param toolName - the tool being called.
+ * @param argsJson - the tool arguments JSON.
+ * @param roots - the session's path roots for critical-path judgment.
+ * @returns a fuse denial, or undefined when the call proceeds.
  */
 export function hardDeny(toolName: string, argsJson: string, roots: PathRoots): FuseVerdict | undefined {
   const lower = `${toolName} ${argsJson}`.toLowerCase()
@@ -102,8 +107,10 @@ function extractPathLikeArgs(argsJson: string): string[] {
 // Deterministic assessment of non-shell tools
 // ---------------------------------------------------------------------------
 
+/** Deterministic assessment decision for a non-shell tool call. */
 export type ToolDecision = 'allow' | 'classify' | 'deny'
 
+/** Assessment result plus the reason that drove the decision. */
 export interface ToolAssessment {
   decision: ToolDecision
   reason: string
@@ -117,6 +124,14 @@ const READONLY_TOOLS = new Set([
 
 const STATEFUL_TERMINAL_TOOLS = new Set(['terminal_open', 'terminal_send'])
 
+/**
+ * Deterministic assessment of a non-shell tool call.
+ * @param toolName - the tool being called.
+ * @param argsJson - the tool arguments JSON.
+ * @param roots - the session's path roots for boundary judgment.
+ * @param hasArtifact - optional session-artifact probe for target paths.
+ * @returns the assessment decision and its reason.
+ */
 export function assessTool(
   toolName: string,
   argsJson: string,

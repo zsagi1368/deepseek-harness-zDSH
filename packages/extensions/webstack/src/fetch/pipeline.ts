@@ -27,6 +27,7 @@ import { applySelectorRules, matchRule } from './selectors.js'
 /** 管线档位闭集（配置 `fetch.pipeline` 的合法值）。 */
 export const PIPELINE_TIERS = ['t1', 't1+t2', 't1+t2+t3'] as const
 
+/** 管线档位联合类型（t1 基础 / t1+t2 选择器 / t1+t2+t3 垂类）。 */
 export type PipelineTier = (typeof PIPELINE_TIERS)[number]
 
 /** 有界响应体硬上限：8 MiB（G4 出站纪律，与安全侧一致）。 */
@@ -167,6 +168,7 @@ function ruleExtract(
  * @param req 引擎层抓取请求（url/mode/budgets/signal）。
  * @param opts 转发给出站客户端的可选项（如 SSRF 豁免清单，语义归安全侧）；
  *   `rulesGetter` 为站选规则的构造参数注入口（F-203），缺席 = 行为与旧版一致。
+ * @returns 抓取结果（正文/标题/最终 URL/截断态）。
  */
 export async function fetchPipeline(
   req: FetchRequest,

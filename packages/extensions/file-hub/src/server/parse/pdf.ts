@@ -52,6 +52,9 @@ function loadPdfjs(): Promise<PdfjsModule> {
  * lines so offsets remain stable and a UI can show page numbers. Pages past
  * the cap contribute nothing but are counted into `pageCountTotal` via the
  * returned overview warning.
+ * @param bytes - the pdf file bytes.
+ * @param maxPages - page-render cap; pages past it are counted, not rendered.
+ * @returns the paginated text plus format overview and warnings.
  */
 export async function extractPdf(
   bytes: Uint8Array,

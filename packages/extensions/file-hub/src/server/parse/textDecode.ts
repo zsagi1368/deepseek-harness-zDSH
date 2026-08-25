@@ -13,6 +13,8 @@ export type TextCharset = 'utf-8' | 'utf-16le' | 'utf-16be' | 'gb18030'
  * Extract the charset parameter from a mime string; defaults to utf-8.
  * Unknown charset names fail closed to utf-8 (non-fatal decode below turns
  * hostile bytes into replacement characters instead of throwing).
+ * @param mime - the mime string to inspect.
+ * @returns the declared charset, defaulting to utf-8.
  */
 export function charsetOfMime(mime: string): TextCharset {
   const match = /charset=([a-z0-9_-]+)/i.exec(mime)
@@ -24,7 +26,11 @@ export function charsetOfMime(mime: string): TextCharset {
   return 'utf-8'
 }
 
-/** Strip a leading BOM from decoded text (TextDecoder keeps it as \uFEFF). */
+/**
+ * Strip a leading BOM from decoded text (TextDecoder keeps it as \uFEFF).
+ * @param text - the decoded text.
+ * @returns the text without a leading BOM.
+ */
 export function stripBom(text: string): string {
   return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text
 }
@@ -33,6 +39,9 @@ export function stripBom(text: string): string {
  * Decode bytes with a NON-fatal decoder for the given charset. Malformed
  * sequences become U+FFFD — the "best-effort" semantics of stage 1 and of
  * the final fallback. Never throws.
+ * @param bytes - the raw bytes to decode.
+ * @param charset - the charset to decode with.
+ * @returns the decoded (BOM-stripped) text.
  */
 export function decodeBestEffort(bytes: Uint8Array, charset: TextCharset): string {
   try {

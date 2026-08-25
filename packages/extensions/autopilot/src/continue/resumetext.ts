@@ -8,6 +8,7 @@
  */
 export type TemplateKind = 'continue' | 'continue-max-tokens' | 'loop'
 
+/** Placeholder context filled into resume text templates. */
 export interface TemplateContext {
   code?: string
   message?: string
@@ -17,14 +18,21 @@ export interface TemplateContext {
   elapsedMs?: number
 }
 
+/** State of the previous tool call, driving the guardrail suffix choice. */
 export type GuardToolState = 'pending' | 'done' | 'failed'
 
+/** Guardrail suffix texts per tool state. */
 export interface GuardTexts {
   pending?: string
   done?: string
   failed?: string
 }
 
+/**
+ * Format a millisecond duration as a compact `MmSs` label.
+ * @param ms - the elapsed duration in milliseconds.
+ * @returns the formatted duration label.
+ */
 export function formatElapsed(ms: number): string {
   const total = Math.max(0, Math.round(ms / 1000))
   const minutes = Math.floor(total / 60)
@@ -32,6 +40,12 @@ export function formatElapsed(ms: number): string {
   return minutes > 0 ? `${minutes}m${seconds}s` : `${seconds}s`
 }
 
+/**
+ * Replace `{placeholder}` tokens in a template from the context.
+ * @param template - the text template.
+ * @param ctx - the placeholder values available for substitution.
+ * @returns the filled template.
+ */
 export function fillTemplate(template: string, ctx: TemplateContext): string {
   const replacements: Record<string, string> = {
     code: ctx.code ?? 'unknown',
@@ -44,6 +58,12 @@ export function fillTemplate(template: string, ctx: TemplateContext): string {
   return template.replace(/\{(\w+)\}/g, (whole, key: string) => replacements[key] ?? whole)
 }
 
+/**
+ * Build the final resume prompt for a kind, filling placeholders and appending
+ * the idempotency guardrail when the previous tool state is known.
+ * @param args - kind, texts, context, and optional guard state.
+ * @returns the assembled resume text.
+ */
 export function buildResumeText(args: {
   kind: TemplateKind
   texts: { continue: string; continueMaxTokens: string; loop: string }

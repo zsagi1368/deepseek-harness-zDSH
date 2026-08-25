@@ -22,6 +22,10 @@ export interface PingResult {
   version: string
 }
 
+/**
+ * Build the liveness-probe answer.
+ * @returns the ping result with ok, plugin, and version fields.
+ */
 export function pingResult(): PingResult {
   return { ok: true, plugin: WORKBENCH_PACKAGE_NAME, version: WORKBENCH_VERSION }
 }

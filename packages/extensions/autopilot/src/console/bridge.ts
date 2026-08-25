@@ -13,6 +13,7 @@ import type { ConsoleStatePort, PresetName } from './commands.js'
 // Presets (named config sets applied over user settings)
 // ---------------------------------------------------------------------------
 
+/** Named config sets applied over user settings by {@link applyPreset}. */
 export const PRESET_PATCHES: Record<PresetName, Record<string, unknown>> = {
   conservative: {
     continue: { enabled: false },
@@ -35,6 +36,7 @@ export const PRESET_PATCHES: Record<PresetName, Record<string, unknown>> = {
   },
 }
 
+/** Dependencies the console state port needs from the kernel composition root. */
 export interface ConsoleDeps {
   kernel: import('../kernel/facade.js').Kernel
   moduleEnabled(moduleId: ModuleId): boolean
@@ -49,18 +51,30 @@ interface RecentAction {
 
 const RECENT_CAP = 8
 
+/** In-memory console state: recent module activity, latest denial, pause flag. */
 export class ConsoleState implements ConsoleStatePort {
   private readonly recent: RecentAction[] = []
   private latestDenial: { toolName: string; sessionId: string; at: number } | undefined
+  /** Whether the automation is paused; mirrored to the coordinator on change. */
   paused = false
 
   constructor(private readonly deps: ConsoleDeps) {}
 
+  /**
+   * Record one module activity line into the recent-actions ring.
+   * @param moduleId - the module that acted.
+   * @param summary - short human-readable summary of the action.
+   */
   note(moduleId: ModuleId, summary: string): void {
     this.recent.push({ at: this.deps.kernel.clock.now(), moduleId, summary })
     if (this.recent.length > RECENT_CAP) this.recent.shift()
   }
 
+  /**
+   * Record a review denial so the console can surface the latest one.
+   * @param toolName - the denied tool name.
+   * @param sessionId - the session that attempted the call.
+   */
   noteDenial(toolName: string, sessionId: string): void {
     this.latestDenial = { toolName, sessionId, at: this.deps.kernel.clock.now() }
     this.note('review', `denied ${toolName}`)
@@ -116,6 +130,10 @@ export class ConsoleState implements ConsoleStatePort {
     this.deps.kernel.ledger.statsCounters.reset()
   }
 
+  /**
+   * Recent module activity, newest first, as plain summaries for the UI.
+   * @returns the recent actions without their internal timestamps.
+   */
   recentActions(): Array<{ moduleId: ModuleId; summary: string }> {
     return this.recent.map(r => ({ moduleId: r.moduleId, summary: r.summary }))
   }
@@ -125,6 +143,7 @@ export class ConsoleState implements ConsoleStatePort {
 // Action endpoint payload contract
 // ---------------------------------------------------------------------------
 
+/** Action names the bridge endpoint accepts, with optional session scope. */
 export type BridgeAction =
   | { action: 'resume'; sessionId?: string }
   | { action: 'pause1h'; sessionId?: string }
@@ -132,6 +151,7 @@ export type BridgeAction =
   | { action: 'approve-latest' }
   | { action: 'reset-stats' }
 
+/** Status snapshot served to the console panel by the bridge endpoint. */
 export interface BridgeSnapshot {
   version: 1
   paused: boolean
@@ -150,6 +170,14 @@ export interface BridgeStateTarget {
   resetStats(): void
 }
 
+/**
+ * Execute one bridge action against the console state, after authorization.
+ * @param payload - the raw action payload (string or parsed object).
+ * @param state - the console-state surface the action mutates.
+ * @param authorize - security gate; must reject unauthenticated requests.
+ * @param hooks - composition-root callbacks for resume/pause/approve.
+ * @returns whether the action succeeded, plus an error label when it did not.
+ */
 export function performBridgeAction(
   payload: unknown,
   state: BridgeStateTarget,

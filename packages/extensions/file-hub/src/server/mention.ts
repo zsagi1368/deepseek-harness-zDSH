@@ -71,6 +71,8 @@ function isWhitespace(char: string | undefined): boolean {
  * Scan draft text for word-initial @tokens (plain `@path` and quoted
  * `@"path with spaces"`), aligned with the host grammar. An `@` glued to the
  * previous word (email addresses like `a@b.com`) never triggers.
+ * @param text - the raw draft text to scan.
+ * @returns every mention token in order of appearance.
  */
 export function scanMentionTokens(text: string): MentionToken[] {
   const tokens: MentionToken[] = []
@@ -115,6 +117,7 @@ function escapeAttribute(value: string): string {
 // Existence validation (FR-B3 semantics)
 // ---------------------------------------------------------------------------
 
+/** Verdict of validating one @token against a workspace cwd. */
 export type MentionValidation =
   | { readonly status: 'ok'; readonly path: string; readonly kind: 'file' | 'directory'; readonly absolutePath: string }
   | { readonly status: 'invalid'; readonly reason: 'absolute' | 'escapes-workspace' | 'not-found' }
@@ -125,6 +128,9 @@ export type MentionValidation =
  * - after resolve(), a relative path containing `..` (i.e. escaping the cwd)
  *   is rejected;
  * - stat decides file vs directory; anything else is not-found.
+ * @param value - the @token value to validate.
+ * @param cwd - the workspace cwd the reference must stay inside.
+ * @returns ok with a workspace-relative path, or the rejection reason.
  */
 export async function validateMentionToken(value: string, cwd: string): Promise<MentionValidation> {
   const trimmed = value.trim()
@@ -165,6 +171,8 @@ export async function validateMentionToken(value: string, cwd: string): Promise<
 /**
  * Render validated references as schema-matching tags, one per line. Only
  * path + kind are embedded — never content (FR-B5).
+ * @param references - validated references to render.
+ * @returns one `<workspace-reference>` tag per reference, newline-joined.
  */
 export function renderReferenceTags(references: ReadonlyArray<{ path: string; kind: 'file' | 'directory' }>): string {
   return references
@@ -220,10 +228,12 @@ function deepFreeze<T>(value: T): T {
   return value
 }
 
+/** Seams for the mention injector: a warn logger for ignored tokens. */
 export interface MentionInjectorDeps {
   logWarn: (message: string) => void
 }
 
+/** Send-time mention injection surface: attach registers the pre-step listener. */
 export interface MentionInjector {
   /**
    * Register the `agent/pre-step` listener. Returns the disposer. Absent
@@ -241,6 +251,8 @@ export interface MentionInjector {
  * the WARN LOG): appending invalid markers into model-visible text would hand
  * the model paths we know do not exist, inviting confusion or hallucinated
  * reads; a warn keeps the transcript clean while staying debuggable.
+ * @param deps - the injector's seams (warn logger).
+ * @returns the injector object implementing {@link MentionInjector}.
  */
 export function createMentionInjector(deps: MentionInjectorDeps): MentionInjector {
   const injectReferences = async (
@@ -341,6 +353,10 @@ const UPLOAD_DIR_PREFIX = '.filehub/'
 /**
  * Double-source merge (workspace index ∪ this session's uploads) + basename
  * scoring, capped at `limit` entries with a truncated flag.
+ * @param cwd - the session cwd anchoring workspace-relative paths.
+ * @param index - the workspace index snapshot (walk results).
+ * @param uploads - meta rows keyed storage-root-relative under .filehub/.
+ * @returns deduplicated file entries, upload rows winning on size facts.
  */
 export function mergeSearchEntries(
   cwd: string,
@@ -371,6 +387,11 @@ export function mergeSearchEntries(
   return [...byRelative.values()]
 }
 
+/**
+ * GET /api/filehub/search?sessionId=&q= — ranked workspace + upload matches.
+ * @param deps - indexer, meta store, workspace resolver, and page cap.
+ * @returns an HttpHandler serving candidate entries.
+ */
 export function createSearchHandler(deps: SearchServiceDeps): HttpHandler {
   const limit = Math.max(1, deps.limit ?? 50)
 

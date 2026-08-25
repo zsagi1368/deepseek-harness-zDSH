@@ -1,5 +1,7 @@
 # dsh-webstack (WebStack / 网栈)
 
+English | [中文](README.zh.md)
+
 An integrated web **search + fetch kernel plugin** for DeepSeek Harness (DSH). WebStack registers a single neutral aggregator into the host `ctx.web` seam (both the `search` and `fetch` faces) and keeps every routing decision — layer routing (`native` / `free` / `api` / `selfhosted` / `mcp`), query-complexity banding, multi-engine fallback, RRF fusion, caching, credential resolution and the SSRF four-gate safety pipeline — inside itself. The bundled cordis patch is an empty list: coexist mode by default, upstream selectors stay untouched unless you explicitly opt into takeover.
 
 ## Features
@@ -45,7 +47,7 @@ Node.js >= 22.19. Zero native modules; runtime dependencies are limited to `@dee
 
 Two optional companion packages live in this monorepo:
 
-- **`dsh-webstack-bridge`** — browser extension providing the T3 render fallback (and JS-shell rescues for static fetching). Installation and pairing instructions: [`packages/bridge/extension/README.md`](../../packages/bridge/extension/README.md).
+- **`dsh-webstack-bridge`** — browser extension providing the T3 render fallback (and JS-shell rescues for static fetching). Installation and pairing instructions live in the satellite's own README (`packages/bridge/extension/README.md`, shipped outside this monorepo).
 - **`dsh-webstack-verticals`** — experimental X/Twitter vertical leg (free-pool + oEmbed chain, credential-free). Enable via `verticals.packEnabled` plus `verticals.channels.x`; enabling requires a plugin reload.
 
 ## Configuration
@@ -96,8 +98,7 @@ All three only read local state or reuse existing pipelines: no network probes, 
 
 The client half (`dsh-webstack/client`, built as `lib/client.js`, injected into the Web GUI via ModuleLoader handshake) provides two browser surfaces:
 
-**Settings card (Settings → Plugins, keyed slot `settings.plugin.item`, key `webstack`)**
-Editable fields mirror the host settings schema: master switch, default routing layer, max results (1–50), candidate expansion, fusion trio (timeDecayHalfLifeH / authorityBoost / diversityDiscount), fetch char budget, SSRF exemption list (one `host:port` per line). All edits pass through a staged draft state machine (clean / dirty / invalid / saving / failed); writes queue point-by-point after validation. Engine `apiKey`/`credentialRef` are intentionally outside the card — keys never enter the browser render tree.
+**Settings card (Settings → Plugins, keyed slot `settings.plugin.item`, key `webstack`)** — Editable fields mirror the host settings schema: master switch, default routing layer, max results (1–50), candidate expansion, fusion trio (timeDecayHalfLifeH / authorityBoost / diversityDiscount), fetch char budget, SSRF exemption list (one `host:port` per line). All edits pass through a staged draft state machine (clean / dirty / invalid / saving / failed); writes queue point-by-point after validation. Engine `apiKey`/`credentialRef` are intentionally outside the card — keys never enter the browser render tree.
 
 Degradation ladder:
 
@@ -105,8 +106,7 @@ Degradation ladder:
 2. `settingsScope` reachable but read-only (memory mode etc.) → read-only display of effective values;
 3. `settingsScope` unreachable (current shape: the dsh-client-ui-settings family is not shipped with plugins) → read-only card against built-in defaults, noting the `webstack:` config-section path.
 
-**Session online button (composer tool row, left end, list slot `conversation.input.left`)**
-Session-level three-state cycle off → on → ask (mirrors `mode.sessionOnline`). Click-through persists to the host document when writable; otherwise it degrades to local session state (reset on refresh), noted in the tooltip.
+**Session online button (composer tool row, left end, list slot `conversation.input.left`)** — Session-level three-state cycle off → on → ask (mirrors `mode.sessionOnline`). Click-through persists to the host document when writable; otherwise it degrades to local session state (reset on refresh), noted in the tooltip.
 
 ## Pipeline
 
@@ -139,19 +139,47 @@ url
 
 Budget derivation (canonical = min(maxContentChars×4, 8 MiB)) → SSRF four gates → bounded read → extract fallback chain (raw→fit) → status-as-data reporting; with the bridge satellite online, pipeline failures or short bodies get a single `bridge.render` rescue (`statusCode=0`, `via='bridge'`).
 
-Performance envelopes for every stage are tracked in [`docs/BENCHMARK.md`](./docs/BENCHMARK.md) (reproduce locally with `pnpm --filter dsh-webstack bench`).
-
-## Roadmap
-
-Remaining real TODOs:
-
-- Native delegate handle capture (platform side) so the `native` layer truly forwards to host built-ins.
-- Host locale probing (charter/status sections are fixed Chinese today).
-- Fetch-domain cache wiring (`cache.ttlFetchMin` already defined).
-- Vertical channel expansion and a settings-surface editor for selector rules.
-- Runtime read-back verification of `selectorPatchable`; active heartbeat read-back of bridge pairing.
-- npm publish automation (release token pending).
+Performance envelopes for every stage are tracked in `docs/BENCHMARK.md` (reproduce locally with `pnpm --filter dsh-webstack bench`).
 
 ## License
 
 [MIT](./LICENSE)
+
+## Model Experience
+
+### Tool trio
+
+#### What the model sees
+
+The model can call `web_backend_status` (side-effect-free diagnostics incl. bridge/vertical status lines), `web_batch_search` (up to 10 queries fanned through the same aggregation pipeline, order-preserving and per-item isolated, with explicit over-limit rejection) and `web_history` (parameterized list/clear replay of the recent search/fetch ring ledger); search results arrive mapped as `NormalizedHit[]` → `SeamWebSearchResult`, truncated to `search.maxResults` (default 8).
+
+#### Token effect
+
+Diagnostics and history listing are small and fixed in shape; batch search output scales with the requested count and the rendered content budget (`fetch.maxContentChars`, default 12000 per fetch).
+
+#### KV Cache effect
+
+Prefix-stable while the tool view and the rendering vocabulary are unchanged; cache hits resend the same rendered hits, and `mode.sessionOnline=on` forces cache-skipping fresh reads without changing the reusable prefix.
+
+### Prompt charter and status line
+
+#### What the model sees
+
+WebStack registers a ≤200-word behavior charter plus a dynamic ≤80-word status line (engine states, bridge/vertical tri-state) through the host systemPrompt seam, so every request in the configured scope carries them.
+
+#### Token effect
+
+A fixed ≤280-word contribution per request in that scope, independent of query data.
+
+#### KV Cache effect
+
+Prefix-stable while the charter and status-line text are unchanged; a changed word count shifts the prefix from the first changed token.
+
+## Known Limitations and Deferred Work
+
+- **Native delegate handle capture is a platform-side TODO** — until the host exposes the handle, the `native` layer fails diagnosably and falls back instead of pretending.
+- **Charter/status sections are fixed Chinese today** — host locale probing is deferred, so the ≤200-word charter and status line do not switch language with the UI.
+- **Fetch-domain cache wiring is undeclared** — `cache.ttlFetchMin` is defined but the fetch cache domain is not yet wired.
+- **Vertical channel expansion and a settings-surface editor for selector rules are deferred.**
+- **Runtime read-back of `selectorPatchable` and active heartbeat read-back of bridge pairing are deferred.**
+- **npm publish automation is pending** (release token TODO).

@@ -157,6 +157,7 @@ const EN: Record<string, string> = {
   'settings.loading': 'Loading…',
 }
 
+/** All built-in UI copy, one frozen record per language (keys enforced equal by tests). */
 export const FILEHUB_DICTS: Readonly<Record<Lang, Readonly<Record<string, string>>>> = { zh: ZH, en: EN }
 
 /** Every dictionary key; zh/en key-set equality is enforced by unit tests. */
@@ -169,12 +170,18 @@ export type I18nKey = keyof typeof ZH
 let currentLang: Lang = detectLang()
 const listeners = new Set<() => void>()
 
-/** Current UI language (host-bound when available, navigator otherwise). */
+/**
+ * Current UI language (host-bound when available, navigator otherwise).
+ * @returns the active language.
+ */
 export function getI18nLang(): Lang {
   return currentLang
 }
 
-/** Switch the UI language and notify subscribers. No-op when unchanged. */
+/**
+ * Switch the UI language and notify subscribers. No-op when unchanged.
+ * @param lang - the language to activate.
+ */
 export function setI18nLang(lang: Lang): void {
   if (lang === currentLang) return
   currentLang = lang
@@ -187,7 +194,11 @@ export function setI18nLang(lang: Lang): void {
   }
 }
 
-/** Subscribe to language changes; returns the unsubscribe function. */
+/**
+ * Subscribe to language changes; returns the unsubscribe function.
+ * @param listener - invoked after every language switch.
+ * @returns an unsubscribe function.
+ */
 export function subscribeI18n(listener: () => void): () => void {
   listeners.add(listener)
   return () => listeners.delete(listener)
@@ -196,6 +207,9 @@ export function subscribeI18n(listener: () => void): () => void {
 /**
  * Translate `key` in the current language with `{name}` interpolation.
  * Missing keys fall through en then the raw key — fail visible, never blank.
+ * @param key - the dictionary key to translate.
+ * @param params - optional `{name}` interpolation values.
+ * @returns the translated string.
  */
 export function t(key: I18nKey, params?: Record<string, string | number>): string {
   const template = FILEHUB_DICTS[currentLang][key] ?? FILEHUB_DICTS.en[key] ?? key
@@ -218,6 +232,7 @@ function activeToLang(active: string): Lang {
 /**
  * Adopt the host's active locale and follow future switches. Safe on bare
  * contexts: an absent/malformed face leaves the navigator-derived language.
+ * @param face - the host LocaleRuntime subset, or undefined.
  */
 export function bindHostLocale(face: HostLocaleFace | undefined): void {
   if (!face || typeof face.getLocale !== 'function' || typeof face.subscribe !== 'function') return

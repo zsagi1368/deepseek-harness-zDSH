@@ -1,44 +1,59 @@
 # zdsh-workbench（中文）
 
-zDSH 工作台 —— 为 DSH（deepseek-harness）打造的 IDE 级停靠工作区插件：文件 / 编辑器 / 终端 / Git / 任务 / 浏览一屏直达，并向所有插件开放面板与命令注册表服务。
+[English](README.md) | 中文
+
+zDSH 工作台 —— 为 DSH（deepseek-harness）打造的 IDE 级停靠工作区插件。
 
 **净室独立开发**：功能思想参考了社区的侧边栏/全家桶实践，但全部代码、API 形状与资源均为原创，未复制任何社区代码。
 
-## 功能
+## 规划状态（v0.1.0-alpha.0 脚手架）
 
-- **🗂 文件工作台**：懒加载目录树（软链语义、失效链接标红）、面包屑导航、名称搜索（跳过 node_modules/.git）、原子写入、图片/PDF 内嵌预览、沙箱 iframe 的 HTML 预览、文本编辑（Ctrl/Cmd+S 保存）
-- **💻 终端**：node-pty + xterm.js 真 shell，最多 3 个/会话；断线重连回放滚动缓冲；Windows 自动探测 pwsh → PowerShell
-- **🌿 Git 中心**：分支胶囊（ahead/behind）、暂存/取消暂存、内联彩色 diff、Ctrl/Cmd+Enter 提交、历史列表；fetch/pull/push 一律先预览再确认
-- **✅ 任务中心**：三栏看板，宿主权威账本 + 单调 revision + SSE 推送信号，损坏文件自动隔离
-- **🌐 浏览**：多标签沙箱浏览器（不透明源 iframe），拒绝脚本协议与内网地址，一键转系统浏览器
-- **⌘ 命令面板**：Ctrl/Cmd+Shift+P 模糊搜索命令；所有内置功能与第三方扩展走同一注册表 API
-- **📱 移动端**：<768px 自动切换全宽抽屉
+按里程碑推进中：
 
-## 安全模型
+- M1 外壳骨架：host 路由 + 客户端面板注册表 + 停靠框架
+- M2 文件工作台（资源管理器 / 编辑器 / 预览器 / watcher）
+- M3 终端（node-pty + xterm.js + 模型工具）
+- M4 Git 中心 · M5 任务中心 · M6 浏览 + 侧聊 · M7 打磨 · M8 发布
 
-- 所有路由共用与 DSH `/api` 同源的 Host 信任围栏（DNS 重绑定防御）
-- 每次文件操作实时校验工作区包含性：绝对路径强制、win32 跨盘陷阱防护、symlink realpath 逃逸拒绝
-- git 仅以 argv 数组调用、不写任何身份配置；网络操作必须显式确认
-- 部署可选 `allowedRoots` 工作区钳制：非空时请求声明的 cwd 必须落在白名单目录内（端口暴露到局域网时建议开启）
+完整设计见仓库内 `docs/PLAN.md`（同步自研发规划 P01）。
 
-## 安装（源码方式）
+## 安装（开发阶段）
 
 ```sh
 git clone https://github.com/zsagi1368/zdsh-workbench.git
-cd zdsh-workbench && pnpm install && pnpm approve-builds --all && pnpm build
+cd zdsh-workbench && pnpm install && pnpm build
 # 在 ~/.dsh/profiles/web/package.json 的 dependencies 加：
-#   "zdsh-workbench": "file:<本仓库绝对路径>"
-# 然后在 profile 目录 pnpm install，重启 dsh web 并硬刷新浏览器
+#   "zdsh-workbench": "link:<本仓库绝对路径>"
+# 并在 ~/.dsh/profiles/web/cordis.patch.yml 追加挂载行后 pnpm install
 ```
 
-官方 bundle patch 已内置于包中，安装器会自动追加挂载行。
+## License
 
-## 开发
+MIT
 
-```sh
-pnpm typecheck && pnpm build && pnpm test   # 三道门禁
+## Model Experience
+
+### IDE dock
+
+#### What the model sees
+
+`ctx.workbench` 服务键与宿主 `reveal` 通道路由：模型经工具入口触发文件系统操作，布局状态可跨会话保持。
+
+##### Reveal routing
+
+```markdown
+ctx.workbench.reveal(path) -> host reveal/open
 ```
 
-里程碑历史见 `CHANGELOG.md`；完整设计见 `docs/PLAN.md`。
+#### Token effect
 
-MIT License
+仅按需装配文件实体视图；不注入固定 prompt 文本。
+
+#### KV Cache effect
+
+无：布局与标签状态保存在客户端会话内。
+
+## Known Limitations and Deferred Work
+
+- 以独立 dock 形态 vendor，尚未与 Fork 主树做侧聊/会话作用域深度集成。
+- 依赖宿主面 seam；未挂载时将优雅降级为空面板。

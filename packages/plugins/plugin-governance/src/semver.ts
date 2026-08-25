@@ -49,6 +49,9 @@ function comparePrerelease(a: string, b: string): number {
  * Minimal semver comparison: parses "major.minor.patch" and optional
  * prerelease tags. Returns -1 if a < b, 0 if equal, 1 if a > b.
  * Unparseable input degrades to a plain string comparison on the raw value.
+ * @param a - the first version string.
+ * @param b - the second version string.
+ * @returns -1, 0, or 1 per semver precedence of `a` relative to `b`.
  */
 export function semverCompare(a: string, b: string): number {
   const [aMaj, aMin, aPat, aPre] = parseSemver(a)

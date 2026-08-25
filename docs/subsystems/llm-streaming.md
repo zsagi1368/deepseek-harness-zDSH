@@ -312,6 +312,14 @@ declare class BlockAssembler {
    */
   push(chunk: StreamChunk): void;
   /**
+   * Tool-call blocks a max-tokens finish removed from {@link blocks}, in stream
+   * order; empty for every other finish kind. The drop itself stays (replay
+   * metadata must describe stored content), but callers no longer have to infer
+   * the loss: an agent loop can turn "intent without execution" into an
+   * explicit failure instead of silently ending the turn.
+   */
+  truncatedToolCalls(): ContentBlock[];
+  /**
    * Assemble all blocks seen so far, in stream order.
    * @returns one block per seen index, except that max-token truncation drops
    *   tool calls that cannot be executed safely; an open block assembles from

@@ -11,6 +11,7 @@ export interface GlobalDefaults {
   statsPersistence: boolean
 }
 
+/** Defaults for the continue module. */
 export interface ContinueDefaults {
   enabled: boolean
   /** Grace period before an auto-resume fires; a self-healing turn cancels it. */
@@ -27,6 +28,7 @@ export interface ContinueDefaults {
   classifyErrors: boolean
 }
 
+/** Defaults for the guard module. */
 export interface GuardDefaults {
   enabled: boolean
   classifierTimeoutMs: number
@@ -39,6 +41,7 @@ export interface GuardDefaults {
 /** Sentinel: resolve to the same value as `maxReviewsPerTurn`. */
 export type SameAsMaxReviews = '=maxReviews'
 
+/** Defaults for the review module. */
 export interface ReviewDefaults {
   enabled: boolean
   maxReviewsPerTurn: number
@@ -55,6 +58,7 @@ export interface ReviewDefaults {
   reviewerTimeoutMs: number
 }
 
+/** One default per module, the tree the settings schema derives from. */
 export interface DefaultsTree {
   global: GlobalDefaults
   continue: ContinueDefaults
@@ -62,6 +66,7 @@ export interface DefaultsTree {
   review: ReviewDefaults
 }
 
+/** The canonical defaults tree — nothing elsewhere hardcodes a default. */
 export const DEFAULTS: DefaultsTree = {
   global: {
     paused: false,
@@ -126,6 +131,7 @@ const CLAMPS: Record<string, { min?: number; max?: number }> = {
   'review.circuit.windowDenials': { min: 1 },
 }
 
+/** The merged user-visible configuration tree after clamps and sentinel resolution. */
 export interface ResolvedDefaults {
   global: GlobalDefaults
   continue: ContinueDefaults
@@ -176,6 +182,9 @@ function mergeSection(
  * Deep-merge user config over defaults (objects merge, arrays and scalars
  * replace), then apply numeric clamps and resolve the '=maxReviews' sentinel.
  * Unknown user keys are ignored — the defaults tree is the schema of record.
+ * @param defaults - the base defaults tree.
+ * @param user - the user configuration patch.
+ * @returns the resolved configuration tree.
  */
 export function resolveConfig(
   defaults: DefaultsTree = DEFAULTS,
@@ -196,7 +205,12 @@ export function resolveConfig(
   }
 }
 
-/** Walk every leaf of the defaults tree with its dotted path (schema derivation helper). */
+/**
+ * Walk every leaf of the defaults tree with its dotted path (schema derivation helper).
+ * @param tree - the node being walked.
+ * @param visit - called once per leaf with its dotted path and value.
+ * @param prefix - the dotted path prefix accumulated so far.
+ */
 export function walkDefaults(
   tree: unknown,
   visit: (path: string, value: unknown) => void,

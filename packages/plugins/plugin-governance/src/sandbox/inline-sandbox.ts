@@ -9,6 +9,11 @@ import { PluginSandboxConfig, ExecResult, ExecOptions, SandboxContext } from '..
 import { checkPathAllowed } from './path-guard.js'
 import { deriveSandboxEnvironment } from './env.js'
 
+/**
+ * InlineSandbox - 内联沙箱
+ *
+ * 为低风险插件提供主线执行环境，通过守卫机制进行监控。
+ */
 export class InlineSandbox implements SandboxContext {
   private config: PluginSandboxConfig
   private pluginId: string
@@ -148,6 +153,8 @@ export class InlineSandbox implements SandboxContext {
   /**
    * 检查路径是否允许（与 ProcessSandbox 共享同一 fail-closed 闸门：
    * 白名单为空时一律拒绝，而不是放行任意路径）
+   * @param path - 待检查的路径。
+   * @returns 路径是否被允许访问。
    */
   isPathAllowed(path: string): boolean {
     return checkPathAllowed(this.config.filesystem, path)

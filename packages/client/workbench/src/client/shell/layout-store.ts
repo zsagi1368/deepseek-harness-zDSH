@@ -11,6 +11,7 @@
  */
 import type { RegisteredPanel } from '../registry.ts'
 
+/** One tab in the stored layout: panel id, live or orphaned. */
 export interface LayoutTab {
   /** Panel id while registered; orphan entries keep their stored id. */
   id: string
@@ -18,6 +19,7 @@ export interface LayoutTab {
   orphan: boolean
 }
 
+/** Persistent dock layout snapshot: tabs, active id, geometry, and collapse state. */
 export interface WorkbenchLayout {
   tabs: LayoutTab[]
   activeId: string | null
@@ -29,6 +31,7 @@ export interface WorkbenchLayout {
 
 const WIDTH_MIN = 20
 const WIDTH_MAX = 80
+/** Default layout used before any stored value exists. */
 export const LAYOUT_DEFAULT: WorkbenchLayout = {
   tabs: [],
   activeId: null,
@@ -37,6 +40,11 @@ export const LAYOUT_DEFAULT: WorkbenchLayout = {
   revision: 0,
 }
 
+/**
+ * Narrow a stored value to WorkbenchLayout.
+ * @param value - the unknown value to test.
+ * @returns true when the value is a structurally valid WorkbenchLayout.
+ */
 export function isLayout(value: unknown): value is WorkbenchLayout {
   if (typeof value !== 'object' || value === null) return false
   const candidate = value as Record<string, unknown>
@@ -72,6 +80,9 @@ function sameTabs(a: readonly LayoutTab[], b: readonly LayoutTab[]): boolean {
  * Reconcile stored tabs against the live registration snapshot:
  * known ids stay live entries, unknown ids survive as orphans, and an
  * orphan whose provider re-registers flips back to live automatically.
+ * @param stored - the tabs loaded from storage.
+ * @param panels - the live registration snapshot to reconcile against.
+ * @returns the reconciled tab list.
  */
 export function reconcileTabs(stored: LayoutTab[], panels: readonly RegisteredPanel[]): LayoutTab[] {
   const claimed = new Set(panels.map(panel => panel.id))
@@ -83,6 +94,9 @@ export function reconcileTabs(stored: LayoutTab[], panels: readonly RegisteredPa
  * its tab still exists — even as an orphan, because "provider not loaded"
  * is exactly what the placeholder must show for the tab you were reading.
  * Otherwise prefer the first live tab, then any remaining tab, else null.
+ * @param tabs - the reconciled tab list.
+ * @param storedActiveId - the previously stored active id, or null.
+ * @returns the id to activate.
  */
 export function resolveActive(tabs: readonly LayoutTab[], storedActiveId: string | null): string | null {
   if (storedActiveId !== null && tabs.some(tab => tab.id === storedActiveId)) return storedActiveId
@@ -102,6 +116,11 @@ export class LayoutStore {
     this.state = this.read()
   }
 
+  /**
+   * Storage key under which one scope's layout is persisted.
+   * @param scopeKey - the layout scope ('global' or a session scope).
+   * @returns the localStorage key for that scope.
+   */
   static storageKey(scopeKey: string): string {
     return `zdsh.workbench.layout.${scopeKey}`
   }
@@ -123,10 +142,19 @@ export class LayoutStore {
     }
   }
 
+  /**
+   * Current layout snapshot.
+   * @returns the in-memory layout state.
+   */
   getState(): WorkbenchLayout {
     return this.state
   }
 
+  /**
+   * Subscribe to layout changes.
+   * @param listener - callback invoked after every committed change.
+   * @returns a disposer that removes the listener.
+   */
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener)
     return () => {
@@ -147,7 +175,10 @@ export class LayoutStore {
     for (const listener of this.listeners) listener()
   }
 
-  /** Re-run reconciliation against a fresh registration snapshot. */
+  /**
+   * Re-run reconciliation against a fresh registration snapshot.
+   * @param panels - the current registration snapshot.
+   */
   syncRegistrations(panels: readonly RegisteredPanel[]): void {
     const current = this.state
     const tabs = reconcileTabs(current.tabs, panels)
@@ -161,6 +192,11 @@ export class LayoutStore {
     this.commit({ ...current, tabs, activeId })
   }
 
+  /**
+   * Open (or focus) a panel: existing live tabs just activate; otherwise the
+   * tab is appended as a fresh live entry.
+   * @param panelId - the panel id to open.
+   */
   openPanel(panelId: string): void {
     const current = this.state
     if (current.tabs.some(tab => tab.id === panelId && !tab.orphan)) {
@@ -171,6 +207,10 @@ export class LayoutStore {
     this.commit({ ...current, tabs, activeId: panelId })
   }
 
+  /**
+   * Close one tab, re-resolving the active id when it was the closed tab.
+   * @param tabId - the tab id to close.
+   */
   closeTab(tabId: string): void {
     const current = this.state
     const index = current.tabs.findIndex(tab => tab.id === tabId)
@@ -180,16 +220,28 @@ export class LayoutStore {
     this.commit({ ...current, tabs, activeId })
   }
 
+  /**
+   * Activate an existing tab.
+   * @param tabId - the tab id to make active.
+   */
   activate(tabId: string): void {
     if (this.state.activeId === tabId) return
     if (!this.state.tabs.some(tab => tab.id === tabId)) return
     this.commit({ ...this.state, activeId: tabId })
   }
 
+  /**
+   * Set the dock width, clamped to the supported range.
+   * @param percent - the desired width in percent.
+   */
   setWidth(percent: number): void {
     this.commit({ ...this.state, widthPercent: clampWidth(percent) })
   }
 
+  /**
+   * Set the dock collapsed state.
+   * @param collapsed - whether the dock should be collapsed.
+   */
   setCollapsed(collapsed: boolean): void {
     this.commit({ ...this.state, collapsed })
   }

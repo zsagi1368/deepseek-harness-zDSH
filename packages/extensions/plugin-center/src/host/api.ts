@@ -10,8 +10,10 @@ import { join } from 'node:path'
 import type { PluginCenterServices } from './services.js'
 import { PLUGIN_NAME, resolveDataRoot } from './services.js'
 
+/** The URL path prefix under which every plugin-center route is mounted. */
 export const API_PREFIX = ['/api2', PLUGIN_NAME].join('/')
 
+/** The canonical route table mapping API names to their full paths. */
 export const ROUTES = {
   market: [API_PREFIX, 'market'].join('/'),
   entry: [API_PREFIX, 'entry'].join('/'),
@@ -36,8 +38,10 @@ const WRITE_PATHS: ReadonlySet<string> = new Set([
   ROUTES.restartRequest,
 ])
 
+/** The header naming this API's origin plugin on every write request. */
 export const INTENT_HEADER = 'x-zdsh-pc-intent'
 
+/** The normalized API request the pure router dispatches on. */
 export interface RouterRequest {
   method: 'GET' | 'POST'
   path: string
@@ -46,6 +50,7 @@ export interface RouterRequest {
   body?: unknown
 }
 
+/** A JSON-ready API response; the router never throws. */
 export interface RouterResponse {
   status: number
   payload: unknown
@@ -118,7 +123,12 @@ function matches(request: RouterRequest, method: 'GET' | 'POST', path: string): 
   return request.method === method && request.path === path
 }
 
-/** Handle one API request. Never throws — every outcome is a JSON response. */
+/**
+ * Handle one API request. Never throws — every outcome is a JSON response.
+ * @param services - the plugin-center services the routes operate on.
+ * @param request - the normalized request to dispatch.
+ * @returns the JSON response for the matched route.
+ */
 export async function handleApiRequest(
   services: PluginCenterServices,
   request: RouterRequest,

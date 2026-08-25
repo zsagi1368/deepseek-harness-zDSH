@@ -17,6 +17,7 @@ import type {
 } from '../kernel/types.js'
 import { BaseEngine, decodeHtmlEntities, freezeDescriptor, stripHtmlToText } from './engine.js'
 
+/** DuckDuckGo 引擎 id（免费池第一腿）。 */
 export const DDG_ENGINE_ID = 'ddg'
 
 /** HTML 端点基址（GET 查询即表单提交）。 */
@@ -38,6 +39,9 @@ export const DDG_DESCRIPTOR: EngineDescriptor = freezeDescriptor({
 /**
  * 组装 DDG HTML 端点查询串。`site:` 是硬约束片段，直接追加到 query 尾部
  * （hints.siteFilter 存在时），整体走 encodeURIComponent。
+ * @param query - 原始查询串。
+ * @param siteFilter - 可选 site: 硬约束主机名。
+ * @returns 完整查询 URL。
  */
 export function buildDdgUrl(query: string, siteFilter?: string): string {
   const effective = siteFilter !== undefined ? `${query} site:${siteFilter}` : query
@@ -47,6 +51,8 @@ export function buildDdgUrl(query: string, siteFilter?: string): string {
 /**
  * hints.locale → Accept-Language 头映射：zh*→zh-CN、en*→en-US、
  * auto/缺席→不带该头。返回 undefined 表示头缺席。
+ * @param locale - hints.locale 值。
+ * @returns 映射后的 Accept-Language 值或 undefined。
  */
 export function ddgAcceptLanguage(locale?: string): string | undefined {
   if (locale === undefined) return undefined
@@ -65,6 +71,9 @@ export function ddgAcceptLanguage(locale?: string): string | undefined {
  * - 标题取锚文本（去标签 + 实体解码），空则回落 url；
  * - snippet 取第 i 个 `result__snippet` 块文本，缺失容错（保持缺席）；
  * - 截断至 count 条；零结果返回空数组（不是错误）。
+ * @param html - DDG HTML 页面原文。
+ * @param count - 命中条数上限。
+ * @returns 归一化命中列表。
  */
 export function parseDdgHtml(html: string, count: number): NormalizedHit[] {
   const snippets = collectDdgSnippets(html)
@@ -131,7 +140,11 @@ export class DdgEngine extends BaseEngine {
     super(descriptor)
   }
 
-  /** 搜索：出站必经安全管道（未接线抛统一 transport 错），解析失败不致命。 */
+  /**
+   * 搜索：出站必经安全管道（未接线抛统一 transport 错），解析失败不致命。
+   * @param req - 引擎层搜索请求。
+   * @returns 归一化响应（含 attempts 审计记录）。
+   */
   async search(req: EngineSearchRequest): Promise<EngineSearchResponse> {
     return await this.runSearch(req, async () => {
       const { outboundFetch } = await this.pipeline()

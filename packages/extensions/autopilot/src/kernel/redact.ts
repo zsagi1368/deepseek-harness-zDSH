@@ -14,6 +14,7 @@
 
 export type RedactProfile = 'standard' | 'strict'
 
+/** Hard caps applied by the redaction walk (see module doc). */
 export const REDACT_CAPS = {
   depth: 3,
   arrayItems: 25,
@@ -74,7 +75,15 @@ const STRICT_TEXT_PATTERNS: readonly TextPattern[] = [
   { name: 'connection-string', re: /\b[a-z][a-z0-9+.-]{2,30}:\/\/[^\s:@/"']+:[^\s@/"']+@[^\s"']+/g },
 ]
 
+/** Placeholder replacing every redacted token-shaped or secret-named value. */
 export const REDACTED_SECRET = '[redacted-secret]'
+
+/**
+ * Render the placeholder that collapses one bulk-content field.
+ * @param key - normalized key name the bulk content was stored under.
+ * @param length - character length of the original content.
+ * @returns a placeholder like `[redacted-text:1234-chars]`.
+ */
 export function redactedBulkPlaceholder(key: string, length: number): string {
   return `[redacted-${key}:${length}-chars]`
 }
@@ -95,6 +104,12 @@ function isBulkKey(key: string): boolean {
   return NORMALIZED_BULK_NAMES.includes(normalizeKey(key))
 }
 
+/**
+ * Redact secret-shaped substrings from free text, then truncate to the cap.
+ * @param text - raw string about to cross a model boundary.
+ * @param profile - `standard` or `strict` pattern set to apply.
+ * @returns the redacted (and possibly truncated) string.
+ */
 export function redactString(text: string, profile: RedactProfile): string {
   let out = text
   const patterns = profile === 'strict' ? STRICT_TEXT_PATTERNS : TOKEN_PATTERNS
@@ -105,6 +120,14 @@ export function redactString(text: string, profile: RedactProfile): string {
   return out
 }
 
+/**
+ * Structure-aware redaction of an arbitrary JSON-like value: secret-named keys
+ * are blanked, bulk string values collapse to placeholders, strings pass
+ * through `redactString`, and depth/array/key caps apply.
+ * @param value - payload about to cross a model boundary.
+ * @param profile - redaction profile; defaults to `standard`.
+ * @returns the redacted structure (input is never mutated).
+ */
 export function redact(value: unknown, profile: RedactProfile = 'standard'): unknown {
   function walk(node: unknown, depth: number): unknown {
     if (typeof node === 'string') return redactString(node, profile)

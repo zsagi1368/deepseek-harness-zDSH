@@ -11,6 +11,7 @@ import { PLUGIN_NAME, PluginCenterServices } from './services.js'
 
 const MAX_BODY_BYTES = 64 * 1024
 
+/** Registers exact-path HTTP routes and returns their dispose handle. */
 export interface RouteRegistrar {
   register(route: {
     kind: string
@@ -19,12 +20,14 @@ export interface RouteRegistrar {
   }): () => void
 }
 
+/** The webServer surface the host injects into the plugin. */
 export interface WebContextLike {
   webServer: RouteRegistrar
   effect?(teardown: () => unknown, label?: string): void
   logger?: { info?(message: string): void }
 }
 
+/** The host injection surface the plugin is applied with. */
 export interface HostContextLike {
   inject(dependencies: readonly string[], ready: (webCtx: WebContextLike) => void): void
   logger?: { info?(message: string): void }
@@ -64,7 +67,12 @@ function send(res: ServerResponse, response: RouterResponse): void {
   res.end(JSON.stringify(response.payload))
 }
 
-/** Adapt one raw node request into a router request and answer it. */
+/**
+ * Adapt one raw node request into a router request and answer it.
+ * @param services - the plugin-center services backing the API.
+ * @param req - the incoming node HTTP request.
+ * @param res - the node HTTP response to write.
+ */
 export async function serveRequest(
   services: PluginCenterServices,
   req: IncomingMessage,

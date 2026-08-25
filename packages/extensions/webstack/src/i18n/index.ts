@@ -47,6 +47,7 @@ export type {
   McpInfraI18nKey,
   VerticalsI18nKey,
 }
+/** 渲染语言闭包（zh/en 双语全覆盖）。 */
 export type Locale = 'zh' | 'en'
 
 /** 全部分册键的联合（新增分册 = 并入 union + 两张查找表）。 */
@@ -93,12 +94,20 @@ const TABLE_EN: Readonly<Partial<Record<WebstackI18nKey, string>>> = Object.free
 /**
  * 统一文案查找：任意分册键 → 双语文案。未知 locale 安全回落中文；
  * 未知 key 返回键本身（调用方可辨识，绝不伪造文案）。
+ * @param key - 任意分册的 i18n 键。
+ * @param locale - 语言（默认 zh）。
+ * @returns 文案文本。
  */
 export function text(key: WebstackI18nKey, locale: Locale = 'zh'): string {
   return locale === 'en' ? (TABLE_EN[key] ?? key) : (TABLE_ZH[key] ?? key)
 }
 
-/** 取统一错误码的处置文本（兼容入口，委托 text）。 */
+/**
+ * 取统一错误码的处置文本（兼容入口，委托 text）。
+ * @param code - 闭集错误码。
+ * @param locale - 语言（默认 zh）。
+ * @returns 错误处置文案。
+ */
 export function errorText(code: EngineErrorCode, locale: Locale = 'zh'): string {
   return text(`webstack.error.${code}`, locale)
 }

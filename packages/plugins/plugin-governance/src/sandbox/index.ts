@@ -11,6 +11,10 @@ import { InlineSandbox } from './inline-sandbox.js'
 
 /**
  * 创建沙箱实例
+ * @param pluginId - 插件 ID。
+ * @param config - 沙箱配置。
+ * @param entryPoint - 入口文件路径（process/worker 沙箱必填）。
+ * @returns 对应类型的沙箱上下文实例。
  */
 export function createSandbox(
   pluginId: string,
@@ -40,6 +44,8 @@ export function createSandbox(
 
 /**
  * 根据风险等级选择沙箱类型
+ * @param config - 原始沙箱配置。
+ * @returns 带选定沙箱类型的配置副本。
  */
 export function selectSandboxType(config: PluginSandboxConfig): PluginSandboxConfig {
   // 高风险插件使用进程隔离

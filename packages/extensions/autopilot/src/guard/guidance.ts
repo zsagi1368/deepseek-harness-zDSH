@@ -6,6 +6,7 @@
  * policy (split risky calls into visible literals, prefer reversible ops,
  * route sub-agent escalation requests upward). Compliance becomes
  * collaboration instead of adversarial whack-a-mole.
+ * @returns the assembled policy guidance text.
  */
 
 export function buildGuidanceText(): string {

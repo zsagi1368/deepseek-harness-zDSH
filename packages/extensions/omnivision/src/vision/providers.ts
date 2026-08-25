@@ -17,7 +17,11 @@ function baseAllowedRoots(): string[] {
   return [tmpdir()]
 }
 
-/** Effective readable roots for one execute call: base temp roots + extras. */
+/**
+ * Effective readable roots for one execute call: base temp roots + extras.
+ * @param allowedPaths - caller-declared additional roots, optional.
+ * @returns the resolved list of roots local image reads may come from.
+ */
 export function resolveAllowedRoots(allowedPaths?: readonly string[]): string[] {
   return [...baseAllowedRoots(), ...(allowedPaths ?? [])].map(root => resolve(root))
 }
@@ -30,6 +34,10 @@ export function resolveAllowedRoots(allowedPaths?: readonly string[]): string[] 
  * - best-effort TOCTOU re-check: `lstat` of the final component right before
  *   the read; symlinks/directories/devices are rejected (residual race window
  *   between check and open remains — see isPlainFileAt).
+ * @param path - the local image path to validate.
+ * @param allowedPaths - caller-declared additional readable roots.
+ * @returns the resolved path when readable.
+ * @throws an error tagged PATH_DENIED when outside the roots or not a plain file.
  */
 export function assertReadableImagePath(path: string, allowedPaths?: readonly string[]): string {
   const resolved = resolve(path)
@@ -78,7 +86,7 @@ function readFileAsBase64(path: string, allowedPaths?: readonly string[]): strin
   return buffer.toString('base64')
 }
 
-// OpenAI provider
+/** OpenAI vision provider (gpt-4-vision-preview, API category). */
 export const openaiProvider: VisionProvider = {
   name: 'openai',
   defaultModel: 'gpt-4-vision-preview',
@@ -127,7 +135,7 @@ export const openaiProvider: VisionProvider = {
   },
 }
 
-// Anthropic provider
+/** Anthropic vision provider (claude-3-5-sonnet, API category). */
 export const anthropicProvider: VisionProvider = {
   name: 'anthropic',
   defaultModel: 'claude-3-5-sonnet-20241022',
@@ -186,7 +194,7 @@ export const anthropicProvider: VisionProvider = {
   },
 }
 
-// Gemini provider
+/** Gemini vision provider (gemini-1.5-flash, API category). */
 export const geminiProvider: VisionProvider = {
   name: 'gemini',
   defaultModel: 'gemini-1.5-flash',
@@ -232,7 +240,7 @@ export const geminiProvider: VisionProvider = {
   },
 }
 
-// OVHcloud free provider
+/** OVHcloud free vision provider (Qwen2.5-VL-72B, free category). */
 export const ovhProvider: VisionProvider = {
   name: 'ovh-free',
   defaultModel: 'Qwen2.5-VL-72B-Instruct',
@@ -285,7 +293,7 @@ export const ovhProvider: VisionProvider = {
   },
 }
 
-// Zhipu provider
+/** Zhipu vision provider (glm-4.6v-flash, free category). */
 export const zhipuProvider: VisionProvider = {
   name: 'zhipu',
   defaultModel: 'glm-4.6v-flash',

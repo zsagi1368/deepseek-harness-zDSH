@@ -34,6 +34,9 @@ function normalizeHost(host: string): string {
  * 最长后缀匹配：返回命中的第一条规则（后缀最长者优先，等长取先声明者）。
  * 后缀必须整体落在点边界上——`example.com` 命中 `a.b.example.com` 与
  * `example.com` 本身，但不命中 `notexample.com`。host 为空永不匹配。
+ * @param rules - 选择器规则表（后缀最长者优先）。
+ * @param host - 待匹配的 hostname。
+ * @returns 命中的规则；无命中为 undefined。
  */
 export function matchRule(rules: readonly SelectorRule[], host: string): SelectorRule | undefined {
   const target = normalizeHost(host)
@@ -412,6 +415,10 @@ export interface SelectorExtractOutcome {
  * 按命中规则抽取 title/content。预算纪律：content 以 renderedChars 为上限、
  * title 以 errorChars 为上限，越界截断并置 truncated。任何一步拿不到产出
  * 都以 `content: ''` 收场（调用方据此落回默认抽取管线），绝不抛错。
+ * @param html - 原始 HTML 文档。
+ * @param rule - 命中的选择器规则。
+ * @param budgets - 内容与标题的字符预算。
+ * @returns 抽取结果（text/truncated 标志）。
  */
 export function applySelectorRules(
   html: string,

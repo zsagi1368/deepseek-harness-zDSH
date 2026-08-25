@@ -1,7 +1,10 @@
 // Core types for DSH Omnivision
 
+/** When the plugin analyzes images: automatic, interactive, or manual. */
 export type VisionMode = 'auto' | 'interactive' | 'manual'
+/** Where in the message pipeline vision analysis is inserted. */
 export type RoutingMode = 'pre-step' | 'tool-call' | 'hybrid'
+/** The taxonomy of vision request failures used for routing and advice. */
 export type FailureKind =
   | 'AUTH'
   | 'RATE_LIMIT'
@@ -17,6 +20,7 @@ export type FailureKind =
   | 'BUDGET'
   | 'OTHER'
 
+/** A vision backend adapter: executes requests and reports failures. */
 export interface VisionProvider {
   name: string
   defaultModel: string
@@ -27,6 +31,7 @@ export interface VisionProvider {
   healthCheck?(): Promise<boolean>
 }
 
+/** Options for a single vision provider execution. */
 export interface VisionExecuteOptions {
   images: ImageSource[]
   query?: string
@@ -42,6 +47,7 @@ export interface VisionExecuteOptions {
   allowedPaths?: readonly string[]
 }
 
+/** An image fed to vision: local path, remote URL, or inline base64. */
 export interface ImageSource {
   kind: 'local' | 'remote' | 'inline'
   path?: string
@@ -53,6 +59,7 @@ export interface ImageSource {
   height?: number
 }
 
+/** The outcome of a vision request with provider metadata and failures. */
 export interface VisionResult {
   ok: boolean
   data?: unknown
@@ -66,6 +73,7 @@ export interface VisionResult {
   errors?: VisionFailure[]
 }
 
+/** A classified vision failure with retry guidance. */
 export interface VisionFailure {
   kind: FailureKind
   code: string
@@ -75,6 +83,7 @@ export interface VisionFailure {
   attempted?: AttemptRecord[]
 }
 
+/** One provider attempt inside a failover sequence. */
 export interface AttemptRecord {
   provider: string
   ok: boolean
@@ -82,6 +91,7 @@ export interface AttemptRecord {
   error?: string
 }
 
+/** The process context a failure classifier inspects for advice. */
 export interface FailureContext {
   stdout: string
   stderr: string
@@ -89,6 +99,7 @@ export interface FailureContext {
   startedAt?: number
 }
 
+/** The structured description of what an image shows. */
 export interface VisionDescription {
   summary: string
   ocr?: string
@@ -98,6 +109,7 @@ export interface VisionDescription {
   raw?: unknown
 }
 
+/** A persisted image attachment with its verified content hash. */
 export interface ImageAttachment {
   path: string
   contentHash: string
@@ -107,12 +119,14 @@ export interface ImageAttachment {
   height?: number
 }
 
+/** Messages rewritten with vision descriptions replacing raw images. */
 export interface ProcessedMessages {
   messages: Array<{ role: string; content: string; attachments?: unknown[] }>
   imageCount: number
   descriptions: VisionDescription[]
 }
 
+/** The normalized runtime configuration of the omnivision plugin. */
 export interface PluginConfig {
   mode: VisionMode
   routing: RoutingMode

@@ -17,6 +17,7 @@ import { assessCommandLine } from './shelllex/assess.js'
 import { buildGuidanceText } from './guidance.js'
 import type { PathRoots } from './pathhard.js'
 
+/** Host adapter surface the guard module drives during pre-tool decisions. */
 export interface GuardAdapters {
   workspaceRoot(): string
   homePath(): string
@@ -29,6 +30,7 @@ export interface GuardAdapters {
   isAutoSession(sessionId: string): boolean
 }
 
+/** Everything the creation of the guard module needs from the composition root. */
 export interface CreateGuardModuleDeps {
   kernel: import('../kernel/facade.js').Kernel
   options: {
@@ -40,6 +42,7 @@ export interface CreateGuardModuleDeps {
   adapters: GuardAdapters
 }
 
+/** One tool-call context the guard evaluates before execution. */
 export interface PreToolExec {
   sessionId: string
   callId: string
@@ -49,12 +52,29 @@ export interface PreToolExec {
   shell?: 'bash' | 'pwsh'
 }
 
+/** Guard verdict for one tool call, with the reason for the decision. */
 export interface PreToolDecision {
   decision: 'allow' | 'deny' | 'ask' | 'delegate-to-official'
   reason: string
 }
 
-export function createGuardModule(deps: CreateGuardModuleDeps) {
+/** Surface returned by {@link createGuardModule}: the four-layer decision stack. */
+interface GuardModuleSurface {
+  readonly disposable: true
+  artifacts: SessionArtifacts
+  guidanceText: () => string
+  handlePreToolUse(exec: PreToolExec): Promise<PreToolDecision>
+  handleApprovalRequest(request: ApprovalRequestLike): 'allowed-once' | undefined
+  handleToolResult(exec: { callId: string }, ok: boolean, createdPaths: string[]): void
+}
+
+/**
+ * Build the guard module: fuse, deterministic rules, classifier ladder, and
+ * the one-shot escalation grant seam.
+ * @param deps - kernel, resolved options, and host adapters.
+ * @returns the guard module surface.
+ */
+export function createGuardModule(deps: CreateGuardModuleDeps): GuardModuleSurface {
   const { kernel, options, adapters } = deps
 
   const roots = (): PathRoots => ({

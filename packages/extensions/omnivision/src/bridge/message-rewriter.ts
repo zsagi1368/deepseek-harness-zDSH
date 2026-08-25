@@ -3,6 +3,7 @@
  */
 import type { ImageAttachment, VisionDescription } from '../config/types.js'
 
+/** A message whose image attachments were replaced with text markers. */
 export interface RewrittenMessage {
   role: string
   content: string
@@ -12,6 +13,10 @@ export interface RewrittenMessage {
 /**
  * Rewrite a message containing images into pure text.
  * Images are replaced with structured text markers.
+ * @param originalContent - the original message content.
+ * @param images - the image attachments that were processed.
+ * @param descriptions - the per-image vision descriptions to embed.
+ * @returns the rewritten user message with markers appended.
  */
 export function rewriteMessage(
   originalContent: string,
@@ -46,6 +51,9 @@ export function rewriteMessage(
 
 /**
  * Create text marker for a single image (for inline insertion)
+ * @param description - the vision description to summarize.
+ * @param index - the 1-based image number in the marker.
+ * @returns the marker text embedding the summary.
  */
 export function createTextMarker(description: VisionDescription, index: number): string {
   return `[已识图${index}: ${description.summary}]`
@@ -53,6 +61,8 @@ export function createTextMarker(description: VisionDescription, index: number):
 
 /**
  * Extract descriptions from rewritten content (for shadow history)
+ * @param content - the rewritten content containing marker syntax.
+ * @returns the descriptions parsed from the markers.
  */
 export function extractDescriptions(content: string): VisionDescription[] {
   const descriptions: VisionDescription[] = []
@@ -71,6 +81,8 @@ export function extractDescriptions(content: string): VisionDescription[] {
 
 /**
  * Sanitize content for DeepSeek (remove internal markers)
+ * @param content - the content to clean.
+ * @returns the content with internal vision markers removed.
  */
 export function sanitizeForDeepSeek(content: string): string {
   // Remove __vision__ markers that are internal implementation details

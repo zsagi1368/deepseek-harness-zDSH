@@ -23,6 +23,7 @@ import { isStrictlyInside } from './pathPolicy.js'
 import { sendError } from './httpUtil.js'
 import type { HttpHandler } from './upload.js'
 
+/** One TTL sweep's report: workspaces visited and files acted upon. */
 export interface SweepReport {
   /** Workspaces visited. */
   workspaces: number
@@ -34,6 +35,7 @@ export interface SweepReport {
   prunedDirs: number
 }
 
+/** Seams for the lifecycle domain: expiry age, meta store, workspace resolver, logging. */
 export interface LifecycleDeps {
   /** Expiry age in milliseconds. */
   ttlMs: number
@@ -134,6 +136,7 @@ async function pruneEmptyParents(root: string, deletedDir: string): Promise<numb
   return pruned
 }
 
+/** Lifecycle surface: TTL sweep, per-file delete endpoint, and interval control. */
 export interface LifecycleController {
   sweep(now?: number): Promise<SweepReport>
   deleteFile: HttpHandler
@@ -141,6 +144,11 @@ export interface LifecycleController {
   stop(): void
 }
 
+/**
+ * Build the lifecycle controller (TTL sweeper + delete endpoint).
+ * @param deps - expiry age, meta store, workspace resolver, and logging seams.
+ * @returns the controller implementing {@link LifecycleController}.
+ */
 export function createLifecycle(deps: LifecycleDeps): LifecycleController {
   let timer: ReturnType<typeof setInterval> | undefined
 

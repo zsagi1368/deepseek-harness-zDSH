@@ -9,12 +9,17 @@ interface CircuitState {
   lastFailure: VisionFailure | null
 }
 
+/** Tuning knobs for the per-provider circuit breaker. */
 export interface CircuitBreakerOptions {
   authTripTtlMs?: number
   defaultRateCooldownMs?: number
   maxEntries?: number
 }
 
+/**
+ * Tracks per-provider failure states and trips the provider for a cooling
+ * window so cascading failures cannot drain every fallback at once.
+ */
 export class VisionCircuitBreaker {
   private states = new Map<string, CircuitState>()
   private options: Required<CircuitBreakerOptions>
@@ -27,6 +32,11 @@ export class VisionCircuitBreaker {
     }
   }
 
+  /**
+   * Whether a provider is currently tripped.
+   * @param provider - the provider name to check.
+   * @returns true while the provider's cooldown is active.
+   */
   isBlocked(provider: string): boolean {
     const state = this.states.get(provider)
     if (!state) return false
@@ -35,6 +45,11 @@ export class VisionCircuitBreaker {
     return false
   }
 
+  /**
+   * Record an outcome for a provider, tripping it on failure.
+   * @param provider - the provider name the outcome belongs to.
+   * @param result - `success` clears the state; a failure sets the cooldown.
+   */
   record(provider: string, result: 'success' | VisionFailure): void {
     if (result === 'success') {
       this.states.delete(provider)
@@ -58,6 +73,11 @@ export class VisionCircuitBreaker {
     }
   }
 
+  /**
+   * Milliseconds until a tripped provider becomes ready again.
+   * @param provider - the provider name to query.
+   * @returns the remaining cooldown in milliseconds, 0 when not tripped.
+   */
   getTimeUntilReady(provider: string): number {
     const state = this.states.get(provider)
     if (!state || state.blockedUntil === 0) return 0
@@ -78,10 +98,15 @@ export class VisionCircuitBreaker {
     }
   }
 
+  /** Forget every tracked provider state. */
   clear(): void {
     this.states.clear()
   }
 
+  /**
+   * Current breaker occupancy.
+   * @returns the tripped provider names and the total tracked count.
+   */
   stats(): { blocked: string[]; total: number } {
     const blocked = Array.from(this.states.entries())
       .filter(([, s]) => s.blockedUntil > Date.now())
@@ -90,6 +115,11 @@ export class VisionCircuitBreaker {
   }
 }
 
+/**
+ * Build a circuit breaker with the given tuning options.
+ * @param options - cooldown and capacity knobs, all optional.
+ * @returns a fresh breaker instance.
+ */
 export function createVisionCircuitBreaker(options?: CircuitBreakerOptions): VisionCircuitBreaker {
   return new VisionCircuitBreaker(options)
 }

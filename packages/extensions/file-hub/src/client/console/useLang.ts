@@ -9,7 +9,10 @@ import { useSyncExternalStore } from 'react'
 import { getI18nLang, subscribeI18n } from '../i18n.js'
 import type { Lang } from '../util.js'
 
-/** Current UI language as reactive state. */
+/**
+ * Current UI language as reactive state.
+ * @returns the active language, re-rendering on switches.
+ */
 export function useI18nLang(): Lang {
   return useSyncExternalStore(subscribeI18n, getI18nLang)
 }

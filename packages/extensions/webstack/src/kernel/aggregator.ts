@@ -170,6 +170,7 @@ export class WebstackAggregator implements SeamWebSearchProvider, SeamWebFetchPr
   readonly id = WEBSTACK_PROVIDER_ID
 
   private snapshotField: AggregatorSnapshot
+  /** 已注册引擎注册表（fallback 候选顺序与状态查询的数据源）。 */
   readonly registry: EngineRegistry
   private cacheField: SearchCache
   private readonly bridge: SeamBridgeRuntime | undefined
@@ -195,6 +196,7 @@ export class WebstackAggregator implements SeamWebSearchProvider, SeamWebFetchPr
   /**
    * 热替换缓存实例（W9：`cache.persist` 热生效——memory↔durable 切换时由
    * 装配层重建 SearchCache 并经此挂载；旧实例就地废弃，无迁移语义）。
+   * @param cache - 新的缓存实例。
    */
   attachCache(cache: SearchCache): void {
     this.cacheField = cache
@@ -203,6 +205,7 @@ export class WebstackAggregator implements SeamWebSearchProvider, SeamWebFetchPr
   /**
    * 操作起点刷新快照（settings watch / 配置变化都走到这里）。整对象替换：
    * 快照字段在操作内必须一致（W-B-74），禁止部分更新造成混合态。
+   * @param snapshot - 新的运行快照（整对象替换）。
    */
   updateSnapshot(snapshot: AggregatorSnapshot): void {
     this.snapshotField = snapshot
@@ -229,6 +232,9 @@ export class WebstackAggregator implements SeamWebSearchProvider, SeamWebFetchPr
   /**
    * 归一化命中直出面（W9：web_batch_search 工具与垂类免费池回调共用同一条
    * 聚合管线——凭据解析/缓存/融合/fallback 全一致）；search() 是其 seam 映射。
+   * @param request - 搜索请求（查询/提示/条数上限）。
+   * @param signal - 可选中止信号。
+   * @returns 归一化命中列表。
    */
   async searchHits(
     request: SeamWebSearchRequest,

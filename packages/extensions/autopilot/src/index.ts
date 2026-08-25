@@ -33,6 +33,7 @@ export interface AutopilotHostContext {
   on?(event: string, listener: (...args: never[]) => unknown, options?: { prepend?: boolean }): () => void
 }
 
+/** The runtime mounted for one host context: kernel, console state, dispose. */
 export interface MountedRuntime {
   kernel: Kernel
   consoleState: ConsoleState
@@ -41,7 +42,11 @@ export interface MountedRuntime {
 
 const runtimes = new WeakMap<object, MountedRuntime>()
 
-/** Test/inspection hook: the runtime mounted for a given host context. */
+/**
+ * Test/inspection hook: the runtime mounted for a given host context.
+ * @param ctx - the host context that was passed to {@link apply}.
+ * @returns the mounted runtime, or undefined when nothing is mounted.
+ */
 export function runtimeFor(ctx: object): MountedRuntime | undefined {
   return runtimes.get(ctx)
 }

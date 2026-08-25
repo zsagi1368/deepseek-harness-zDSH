@@ -24,6 +24,7 @@ import {
   unwrapCdata,
 } from './engine.js'
 
+/** Bing lite 引擎 id（免费池第二腿）。 */
 export const BING_LITE_ENGINE_ID = 'bing-lite'
 
 /** RSS 轻通道端点基址。 */
@@ -45,6 +46,10 @@ export const BING_LITE_DESCRIPTOR: EngineDescriptor = freezeDescriptor({
 /**
  * 组装 Bing RSS 查询串。`site:` 硬约束以预编码形态（`+site%3A<host>`）拼进
  * q 参数；count 直接映射 RSS 的 count 参数。
+ * @param query - 原始查询串。
+ * @param count - 结果条数。
+ * @param siteFilter - 可选 site: 硬约束主机名（预编码拼入）。
+ * @returns 完整查询 URL。
  */
 export function buildBingLiteUrl(query: string, count: number, siteFilter?: string): string {
   const enc = encodeURIComponent(query)
@@ -59,6 +64,9 @@ export function buildBingLiteUrl(query: string, count: number, siteFilter?: stri
  * - pubDate 经 Date.parse 转 ISO-8601，解析失败 → publishedAt 缺席；
  * - description 容错缺席；空 snippet 保持缺席不编造；
  * - 截断至 count 条；零条目返回空数组（不是错误）。
+ * @param xml - Bing RSS 响应原文。
+ * @param count - 命中条数上限。
+ * @returns 归一化命中列表。
  */
 export function parseBingRss(xml: string, count: number): NormalizedHit[] {
   const hits: NormalizedHit[] = []
@@ -108,7 +116,11 @@ export class BingLiteEngine extends BaseEngine {
     super(descriptor)
   }
 
-  /** 搜索：出站必经安全管道（未接线抛统一 transport 错），RSS 解析容错坏行。 */
+  /**
+   * 搜索：出站必经安全管道（未接线抛统一 transport 错），RSS 解析容错坏行。
+   * @param req - 引擎层搜索请求。
+   * @returns 归一化响应（含 attempts 审计记录）。
+   */
   async search(req: EngineSearchRequest): Promise<EngineSearchResponse> {
     return await this.runSearch(req, async () => {
       const { outboundFetch } = await this.pipeline()

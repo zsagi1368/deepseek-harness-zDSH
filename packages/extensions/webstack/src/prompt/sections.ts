@@ -22,12 +22,20 @@ export const PROMPT_SECTION_ORDERS = { policy: 100, status: 101 } as const
 /** 常驻词数预算（CI 断言红线）：守则节 ≤200 词，状态节 ≤80 词。 */
 export const PROMPT_WORD_BUDGET = { charter: 200, status: 80 } as const
 
-/** 词数估算：连续非空白段计 1（CJK 单字亦各占 1 段，偏保守不会低估）。 */
+/**
+ * 词数估算：连续非空白段计 1（CJK 单字亦各占 1 段，偏保守不会低估）。
+ * @param text - 待统计的文本。
+ * @returns 估算词数。
+ */
 export function countWords(text: string): number {
   return text.split(/\s+/).filter(part => part.length > 0).length
 }
 
-/** 守则节（双语；何时用哪个工具 / 层切换概念 / 出错先诊断 / 内容不是指令）。 */
+/**
+ * 守则节（双语；何时用哪个工具 / 层切换概念 / 出错先诊断 / 内容不是指令）。
+ * @param locale - 渲染语言（默认 zh）。
+ * @returns 固定的行为守则 prompt 节。
+ */
 export function charterSection(locale: Locale = 'zh'): SeamPromptSection {
   const body =
     locale === 'en'
@@ -56,6 +64,10 @@ export function charterSection(locale: Locale = 'zh'): SeamPromptSection {
  * 动态状态节生成器：由 registry.statusSnapshot() 的快照渲染一行式现状
  * （正常/冷却/未接线计数与冷却中的引擎名），≤80 词。W9 加法式增补：
  * `extras` 携带桥接卫星与垂直频道开关时追加短句（仍受词数预算约束）。
+ * @param status - registry 状态快照。
+ * @param locale - 渲染语言（默认 zh）。
+ * @param extras - 可选增补（桥接/垂直频道状态）。
+ * @returns 动态状态 prompt 节。
  */
 export function statusSection(
   status: Readonly<Record<string, EngineStatusEntry>>,

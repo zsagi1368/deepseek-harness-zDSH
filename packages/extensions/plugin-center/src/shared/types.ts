@@ -17,6 +17,7 @@ export const CpErrorCode = {
   internal: 'internal',
 } as const
 
+/** The code values named in {@link CpErrorCode}. */
 export type CpErrorCode = (typeof CpErrorCode)[keyof typeof CpErrorCode]
 
 /** Closed result envelope used across every public surface. */
@@ -24,10 +25,21 @@ export type CpResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: { code: CpErrorCode; message: string } }
 
+/**
+ * Wrap a value in the success variant of the result envelope.
+ * @param data - the payload to carry.
+ * @returns a success result.
+ */
 export function cpOk<T>(data: T): CpResult<T> {
   return { ok: true, data }
 }
 
+/**
+ * Build the failure variant of the result envelope.
+ * @param code - the stable error code.
+ * @param message - the human-readable failure detail.
+ * @returns a failure result.
+ */
 export function cpErr<T = never>(
   code: CpErrorCode,
   message: string,
@@ -39,6 +51,8 @@ export function cpErr<T = never>(
  * Normalize a plugin id to the canonical `namespace/name` form.
  * Accepts `@scope/pkg`, `owner/repo` and bare names; rejects empties and any
  * character outside the safe identifier set (ids flow into command argv).
+ * @param raw - the plugin id to normalize.
+ * @returns the canonical `namespace/name` form, or an error result.
  */
 export function normalizePluginId(raw: string): CpResult<string> {
   const trimmed = raw.trim().replace(/^@/, '')
@@ -66,8 +80,10 @@ export type PlanState =
   | 'rolled-back'
   | 'restart-pending'
 
+/** How an audit entry resolved: success, error, or rolled back. */
 export type AuditOutcome = 'ok' | 'error' | 'rolled-back'
 
+/** One append-only audit log entry describing an engine step. */
 export interface AuditEvent {
   ts: string
   action: string

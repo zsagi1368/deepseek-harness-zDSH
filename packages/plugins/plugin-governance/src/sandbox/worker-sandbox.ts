@@ -16,6 +16,12 @@ interface WorkerHandle {
   pendingRequests: Map<number, { resolve: (v: unknown) => void; reject: (e: unknown) => void }>
 }
 
+/**
+ * WorkerSandbox - Worker Thread 沙箱
+ *
+ * 为中等风险插件提供 Worker Thread 隔离。
+ * 使用 Node.js worker_threads 创建独立执行环境。
+ */
 export class WorkerSandbox implements SandboxContext {
   private workers = new Map<string, WorkerHandle>()
   private pluginId: string
@@ -148,6 +154,7 @@ export class WorkerSandbox implements SandboxContext {
 
   /**
    * 检查 Worker 是否运行
+   * @returns 当前是否已有运行中的 Worker。
    */
   isRunning(): boolean {
     return this.workers.has(this.pluginId)

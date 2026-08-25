@@ -15,6 +15,9 @@ import { deriveSandboxEnvironment } from './env.js'
  * Strictly extract the base command (executable) from a command string.
  * Handles quoted arguments and shell metacharacters safely.
  * Returns undefined if the command contains dangerous characters.
+ * @param command - the raw command string to parse.
+ * @returns the extracted executable token, or `undefined` when the command
+ * carries dangerous shell operators or no token survives parsing.
  */
 export function extractCommandBase(command: string): string | undefined {
   // Reject commands with dangerous shell operators
@@ -59,6 +62,12 @@ interface ProcessHandle {
   signal: string | null
 }
 
+/**
+ * ProcessSandbox - 进程级沙箱
+ *
+ * 为高风险插件提供独立的进程隔离。
+ * 使用 Node.js child_process 创建独立进程，并通过 IPC 进行通信。
+ */
 export class ProcessSandbox implements SandboxContext {
   private processes = new Map<string, ProcessHandle>()
   private processIntervals = new Map<string, ReturnType<typeof setInterval>>()
@@ -124,6 +133,9 @@ export class ProcessSandbox implements SandboxContext {
     return Promise.resolve()
   }
 
+  /**
+   * 停止沙箱进程（先 SIGTERM，超时后 SIGKILL）
+   */
   async stop(): Promise<void> {
     const handle = this.processes.get(this.pluginId)
     if (!handle) return
@@ -279,6 +291,7 @@ export class ProcessSandbox implements SandboxContext {
 
   /**
    * 检查进程是否运行
+   * @returns 是否已有运行中的沙箱进程。
    */
   isRunning(): boolean {
     return this.processes.has(this.pluginId)
@@ -286,6 +299,7 @@ export class ProcessSandbox implements SandboxContext {
 
   /**
    * 获取内存使用
+   * @returns 最近一次采样的进程内存使用量（字节），无进程时为 0。
    */
   getMemoryUsage(): number {
     const handle = this.processes.get(this.pluginId)
@@ -296,6 +310,7 @@ export class ProcessSandbox implements SandboxContext {
    * 过滤环境变量
    * 安全修复：默认从运行必需项白名单派生（PATH/SYSTEMROOT/TEMP/NODE_* 等），
    * 不再下发全量宿主 env；显式白名单可点名提取，黑名单与敏感形状始终生效。
+   * @returns 派生的沙箱子进程环境。
    */
   filterEnvironment(): NodeJS.ProcessEnv {
     return deriveSandboxEnvironment(this.config)
@@ -303,6 +318,8 @@ export class ProcessSandbox implements SandboxContext {
 
   /**
    * 检查路径是否允许（与 InlineSandbox 共享同一 fail-closed 闸门）
+   * @param path - 待检查的路径。
+   * @returns 路径是否被允许访问。
    */
   isPathAllowed(path: string): boolean {
     return checkPathAllowed(this.config.filesystem, path)

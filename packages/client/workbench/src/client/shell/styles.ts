@@ -8,8 +8,10 @@
  */
 export const WORKBENCH_STYLE_ID = 'zdsh-workbench-styles'
 
+/** id of the dock root element the workbench mounts into. */
 export const DOCK_CONTAINER_ID = 'zdsh-workbench-dock-root'
 
+/** Full CSS text for the dock, palette, and theme tokens; injected once as a <style> element. */
 export const WORKBENCH_STYLES = `
 #zdsh-workbench-dock-root {
   position: fixed;

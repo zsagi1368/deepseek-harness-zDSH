@@ -77,6 +77,7 @@ async function probeOnce(): Promise<string | undefined> {
  * 探测 Windows 系统代理：命中（启用 + 服务器存在）返回形如
  * `127.0.0.1:8888` 的原始 ProxyServer 值；否则 undefined。
  * 非 win32 直接返回 undefined（不发子进程）。结果缓存 5 分钟。
+ * @returns 命中的代理串形如 `127.0.0.1:8888`；否则 undefined。
  */
 export async function getWindowsSystemProxy(): Promise<string | undefined> {
   if (process.platform !== 'win32') return undefined
@@ -92,6 +93,7 @@ export async function getWindowsSystemProxy(): Promise<string | undefined> {
  * 把代理串注入 HTTPS_PROXY / HTTP_PROXY 环境变量（尽力而为层，见模块头
  * 诚实边界说明）。proxy 为 undefined/空白时不动环境。仅应在用户配置开启时
  * 调用——本函数不判断开关，职责单一。
+ * @param proxy - 待注入的代理串；undefined/空白时不动环境。
  */
 export function applyProxyToEnv(proxy?: string): void {
   const trimmed = proxy?.trim()

@@ -36,7 +36,13 @@ export class EngineError extends Error implements EngineErrorShape {
   }
 }
 
-/** 构造统一错误的工厂函数。 */
+/**
+ * 构造统一错误的工厂函数。
+ * @param code - 闭集错误码。
+ * @param message - 人类可读的错误信息。
+ * @param extras - 可选附加字段（engineId/httpStatus/retryAfterMs/detail/cause）。
+ * @returns 统一的 EngineError 实例。
+ */
 export function engineError(
   code: EngineErrorCode,
   message: string,
@@ -45,7 +51,11 @@ export function engineError(
   return new EngineError(code, message, extras)
 }
 
-/** 运行时守卫：判定任意抛出值是否为统一错误对象。 */
+/**
+ * 运行时守卫：判定任意抛出值是否为统一错误对象。
+ * @param value - 任意抛出值。
+ * @returns 是 EngineError 时为 true。
+ */
 export function isEngineError(value: unknown): value is EngineError {
   return (
     value instanceof Error &&
@@ -58,6 +68,9 @@ export function isEngineError(value: unknown): value is EngineError {
  * 归一化任意未知抛出值：EngineError 原样返回；其余包一层 transport。
  * TODO(W2-KERNEL): fallback 链据此三分类决策——retryable 退避重试，
  * non-retryable 换候选，terminal 立即结算整场操作。
+ * @param value - 任意抛出值。
+ * @param engineId - 可选引擎 id（包装时标注）。
+ * @returns 归一化后的 EngineError。
  */
 export function normalizeThrown(value: unknown, engineId?: string): EngineError {
   if (isEngineError(value)) return value
@@ -65,7 +78,11 @@ export function normalizeThrown(value: unknown, engineId?: string): EngineError 
   return engineError('transport', message, engineId === undefined ? {} : { engineId })
 }
 
-/** 查询某错误码的三分类。映射表完整性由 tests/kernel-errors.test.ts 锁死。 */
+/**
+ * 查询某错误码的三分类。映射表完整性由 tests/kernel-errors.test.ts 锁死。
+ * @param code - 闭集错误码。
+ * @returns 所属错误分类。
+ */
 export function errorClass(code: EngineErrorCode): ErrorClass {
   return ERROR_CLASSIFICATION[code]
 }

@@ -19,6 +19,7 @@ import {
 } from '../vision/providers.js'
 import type { VisionProvider } from '../vision/provider.js'
 
+/** The runtime context a plugin instance is built from. */
 export interface PluginContext {
   config: OmniVisionConfig
   workspace: string
@@ -27,6 +28,10 @@ export interface PluginContext {
   extraProviders?: VisionProvider[]
 }
 
+/**
+ * The DSH plugin facade: rewrites image-bearing messages to pure text and
+ * exposes a vision tool, all behind the shared security and resilience layers.
+ */
 export class OmniVisionPlugin {
   private bridge: VisionBridge
   private circuitBreaker: VisionCircuitBreaker
@@ -73,6 +78,13 @@ export class OmniVisionPlugin {
     return providers
   }
 
+  /**
+   * Process a message's image attachments into text descriptions.
+   * @param content - the original message content.
+   * @param attachments - the raw attachment objects carrying image paths.
+   * @param eventId - the originating event id, used for shadow replacements.
+   * @returns the rewrite outcome with markers, counts, and error flags.
+   */
   async processMessage(
     content: string,
     attachments: unknown[] = [],
@@ -149,6 +161,12 @@ export class OmniVisionPlugin {
     }
   }
 
+  /**
+   * Run the vision tool over untrusted tool arguments.
+   * @param tool - the tool name being invoked.
+   * @param args - raw tool arguments, narrowed and path-gated before use.
+   * @returns the failover chain result for the request.
+   */
   async callTool(tool: string, args: Record<string, unknown>): Promise<unknown> {
     // PathPolicy gate: tool-supplied local image paths never reach a provider
     // unless they sit inside the workspace or temp locations.
@@ -192,6 +210,10 @@ export class OmniVisionPlugin {
     )
   }
 
+  /**
+   * Current plugin occupancy across cache, circuit, and provider count.
+   * @returns the aggregated stats snapshot.
+   */
   stats(): {
     cache: { cached: number }
     circuit: { blocked: string[]; total: number }
@@ -204,6 +226,7 @@ export class OmniVisionPlugin {
     }
   }
 
+  /** Drop all cached state held by the bridge and circuit breaker. */
   dispose(): void {
     this.bridge.clear()
     this.circuitBreaker.clear()
@@ -277,6 +300,11 @@ function createUnknownProvider(name: string, _baseUrl?: string, model?: string):
   }
 }
 
+/**
+ * Build a plugin instance for the given context.
+ * @param ctx - the runtime context with config and workspace.
+ * @returns a configured omnivision plugin instance.
+ */
 export function createOmnivisionPlugin(ctx: PluginContext): OmniVisionPlugin {
   return new OmniVisionPlugin(ctx)
 }

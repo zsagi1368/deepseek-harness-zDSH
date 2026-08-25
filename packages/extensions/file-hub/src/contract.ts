@@ -18,8 +18,10 @@ export const UploadResultSchema = z.object({
   /** M4: one-sentence image caption; present only when the vision waterfall produced one. */
   imageCaption: z.string().min(1).optional(),
 })
+/** Upload result record, inferred from {@link UploadResultSchema}. */
 export type UploadResult = z.infer<typeof UploadResultSchema>
 
+/** Zod schema of one file entry row (shared by list and search responses). */
 export const FileEntrySchema = z.object({
   path: z.string().min(1),
   relativePath: z.string(),
@@ -32,14 +34,17 @@ export const FileEntrySchema = z.object({
    */
   imageCaption: z.string().min(1).optional(),
 })
+/** File entry row, inferred from {@link FileEntrySchema}. */
 export type FileEntry = z.infer<typeof FileEntrySchema>
 
+/** Zod schema of the workspace listing response (bounded traversal). */
 export const ListResultSchema = z.object({
   sessionId: z.string().min(1),
   entries: z.array(FileEntrySchema),
   /** True when the bounded traversal hit maxFiles and stopped early. */
   truncated: z.boolean(),
 })
+/** Workspace listing response, inferred from {@link ListResultSchema}. */
 export type ListResult = z.infer<typeof ListResultSchema>
 
 /**
@@ -50,6 +55,7 @@ export const WorkspaceReferenceSchema = z.object({
   path: z.string().min(1),
   kind: z.enum(['file', 'directory']),
 })
+/** Structured send-time reference (path + kind only), inferred from {@link WorkspaceReferenceSchema}. */
 export type WorkspaceReference = z.infer<typeof WorkspaceReferenceSchema>
 
 /**
@@ -64,4 +70,5 @@ export const SearchResultSchema = z.object({
   entries: z.array(FileEntrySchema),
   truncated: z.boolean(),
 })
+/** Mention search response, inferred from {@link SearchResultSchema}. */
 export type SearchResult = z.infer<typeof SearchResultSchema>

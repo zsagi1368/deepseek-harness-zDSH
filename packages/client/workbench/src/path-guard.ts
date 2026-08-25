@@ -16,11 +16,16 @@
 import { lstat, realpath } from 'node:fs/promises'
 import { isAbsolute, parse, relative, resolve } from 'node:path'
 
+/** Verdict of the workspace path guard: an allowed target, or a refused code with message. */
 export type PathGuardResult =
   | { allowed: true; root: string; target: string }
   | { allowed: false; code: 'bad-request' | 'outside-workspace'; message: string }
 
-/** Resolve the authoritative workspace root once per session cwd value. */
+/**
+ * Resolve the authoritative workspace root once per session cwd value.
+ * @param cwd - the working directory to realpath.
+ * @returns the realpathed workspace root; throws when the cwd does not exist.
+ */
 export async function resolveWorkspaceRoot(cwd: string): Promise<string> {
   return realpath(cwd)
 }
@@ -41,6 +46,9 @@ function outside(message: string): PathGuardResult {
 /**
  * Judge one absolute candidate path against the workspace root. Purely
  * lexical; callers layer filesystem-aware checks (below) on top.
+ * @param root - the authoritative workspace root (already realpathed for full checks).
+ * @param requestedPath - the absolute candidate path to judge.
+ * @returns the allowed target or a refused verdict.
  */
 export function judgeInsideWorkspace(root: string, requestedPath: string): PathGuardResult {
   if (typeof requestedPath !== 'string' || requestedPath.length === 0) {
@@ -64,6 +72,9 @@ export function judgeInsideWorkspace(root: string, requestedPath: string): PathG
  * root: any symbolic link along that chain resolving outside fails. The walk
  * deliberately STOPS at the root — ancestry above the workspace belongs to
  * the deployment, not the request.
+ * @param root - the already-realpathed workspace root (see resolveWorkspaceRoot).
+ * @param requestedPath - the absolute candidate path to pre-flight.
+ * @returns the allowed target or a refused verdict.
  */
 export async function ensureRealPathInside(root: string, requestedPath: string): Promise<PathGuardResult> {
   const judged = judgeInsideWorkspace(root, requestedPath)

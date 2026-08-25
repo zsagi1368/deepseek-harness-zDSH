@@ -2,18 +2,21 @@
   "name": "@deepseek-ai/dsh-webstack",
   "description": "zDSH webstack: integrated web search + fetch kernel — multi-engine aggregation with fallback/fusion routing, SSRF-guarded outbound fetch, prompt-injection scrubbing, result caching and history, registered as an optional provider on the ctx.web seam",
   "version": "0.1.1-rc.2-zDSH20260824a",
-  "private": true,
   "type": "module",
-  "main": "lib/types/index.js",
+  "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
   "exports": {
     ".": {
       "types": "./lib/types/index.d.ts",
-      "default": "./lib/types/index.js"
+      "default": "./lib/index.js"
     },
     "./client": {
       "types": "./lib/types/client/index.d.ts",
       "default": "./lib/types/client/index.js"
+    },
+    "./invariant": {
+      "types": "./lib/types/invariant.d.ts",
+      "default": "./lib/invariant.js"
     },
     "./src/*": "./src/*",
     "./package.json": "./package.json"
@@ -33,11 +36,32 @@
     "@deepseek-ai/schemastery": "workspace:^",
     "@modelcontextprotocol/sdk": "^1.29.0"
   },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/dsh-invariants": "workspace:^"
+  },
   "devDependencies": {
+    "@deepseek-ai/dsh-client-ui-settings-plugins": "workspace:^",
+    "@deepseek-ai/dsh-invariants": "workspace:^",
     "@types/react": "~18.3.1",
     "@types/react-dom": "~18.3.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "@deepseek-ai/cordis": "workspace:^"
   },
-  "license": "MIT"
+  "files": [
+    "lib/index.js",
+    "lib/invariant.js",
+    "lib/types/**/*.js",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "directory": "packages/extensions/webstack"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
 }

@@ -33,6 +33,7 @@ export interface PanelComponentProps {
   close: () => void
 }
 
+/** A panel registration snapshot: descriptor plus the resolved `order` value. */
 export interface RegisteredPanel extends PanelDescriptor {
   readonly order: number
 }
@@ -96,6 +97,11 @@ function createIdMapStore<T>(kind: string) {
   }
 }
 
+/**
+ * Create the workbench registry serving the given plugin version.
+ * @param version - plugin version the registry reports to consumers.
+ * @returns the registry API face for registration and snapshot reads.
+ */
 export function createWorkbenchRegistry(version: string): WorkbenchRegistryApi {
   const panels = createIdMapStore<RegisteredPanel>('panel')
   const commands = createIdMapStore<CommandDescriptor>('command')

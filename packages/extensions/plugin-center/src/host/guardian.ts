@@ -11,6 +11,7 @@ import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+/** The operator-supplied watchdog configuration, verified before use. */
 export interface GuardianConfig {
   dataRoot: string
   /** TCP port of the DSH web host on 127.0.0.1. */
@@ -20,6 +21,7 @@ export interface GuardianConfig {
   intervalMs?: number
 }
 
+/** The watchdog state mirrored to disk every tick for the plugin surface. */
 export interface GuardianStatus {
   state: 'probing' | 'restarting' | 'healthy' | 'give-up'
   bootId: string
@@ -29,19 +31,38 @@ export interface GuardianStatus {
   restartsUsed: number
 }
 
+/**
+ * The data-root subdirectory holding watchdog artifacts.
+ * @param dataRoot - the guardian data root.
+ * @returns the guardian directory path.
+ */
 export function guardianDir(dataRoot: string): string {
   return join(dataRoot, 'guardian')
 }
 
+/**
+ * The status file the watchdog mirrors each tick.
+ * @param dataRoot - the guardian data root.
+ * @returns the status file path.
+ */
 export function statusPath(dataRoot: string): string {
   return join(guardianDir(dataRoot), 'status.json')
 }
 
+/**
+ * The pid file recording the running watchdog process.
+ * @param dataRoot - the guardian data root.
+ * @returns the pid file path.
+ */
 export function pidPath(dataRoot: string): string {
   return join(guardianDir(dataRoot), 'pid.txt')
 }
 
-/** Resolve the built guardian entrypoint next to this module. */
+/**
+ * Resolve the built guardian entrypoint next to this module.
+ * @returns the absolute path of the guardian entry script.
+ * @throws an error when no local entrypoint candidate exists.
+ */
 export function guardianEntryPath(): string {
   for (const candidate of ['../guardian-entry.js', '../../lib/guardian-entry.js']) {
     const path = fileURLToPath(new URL(candidate, import.meta.url))
@@ -70,7 +91,11 @@ function isAlive(pid: number): boolean {
   }
 }
 
-/** Spawn the detached watchdog; resolves with its pid. Idempotent per pidfile. */
+/**
+ * Spawn the detached watchdog; resolves with its pid. Idempotent per pidfile.
+ * @param config - the verified watchdog configuration to persist and launch.
+ * @returns the running or newly spawned pid, or an error reason.
+ */
 export async function startGuardian(config: GuardianConfig): Promise<PidResult> {
   const dir = guardianDir(config.dataRoot)
   const pidFile = pidPath(config.dataRoot)
@@ -108,7 +133,11 @@ export async function startGuardian(config: GuardianConfig): Promise<PidResult> 
   return result
 }
 
-/** Stop a running watchdog; safe when none is running. */
+/**
+ * Stop a running watchdog; safe when none is running.
+ * @param dataRoot - the data root whose pid file tracks the watchdog.
+ * @returns whether a watchdog was found and stopped.
+ */
 export function stopGuardian(dataRoot: string): { stopped: boolean } {
   const pidFile = pidPath(dataRoot)
   if (!existsSync(pidFile)) return { stopped: false }

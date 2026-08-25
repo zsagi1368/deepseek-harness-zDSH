@@ -21,8 +21,10 @@ export const SETTINGS_DEFAULTS: Readonly<FileHubSettings> = Object.freeze({
   'vision.mode': 'caption',
 })
 
+/** Save-lifecycle status of the settings form. */
 export type SettingsSaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
+/** One snapshot of the settings form: working copy, saved baseline, and save status. */
 export interface SettingsFormState {
   /** Editable working copy. */
   readonly values: FileHubSettings
@@ -32,6 +34,12 @@ export interface SettingsFormState {
   readonly errorMessage?: string | undefined
 }
 
+/**
+ * Field-by-field equality of two settings records.
+ * @param a - first settings record.
+ * @param b - second settings record.
+ * @returns true when every known setting matches.
+ */
 export function settingsEqual(a: FileHubSettings, b: FileHubSettings): boolean {
   return (
     a.enabled === b.enabled &&
@@ -43,17 +51,34 @@ export function settingsEqual(a: FileHubSettings, b: FileHubSettings): boolean {
   )
 }
 
+/**
+ * Whether the working copy diverges from the last persisted snapshot.
+ * @param state - the form state to test.
+ * @returns true when at least one setting is unsaved.
+ */
 export function isDirty(state: SettingsFormState): boolean {
   return !settingsEqual(state.values, state.savedValues)
 }
 
+/**
+ * Build a fresh form state around the initial record.
+ * @param initial - the starting settings (baseline and working copy).
+ * @returns an idle form state.
+ */
 export function createSettingsForm(initial: FileHubSettings): SettingsFormState {
   return { values: { ...initial }, savedValues: { ...initial }, status: 'idle' }
 }
 
+/** One editable settings key. */
 export type SettingsValueKey = keyof FileHubSettings
 
-/** Apply one field edit; clears stale error/saved flashes. */
+/**
+ * Apply one field edit; clears stale error/saved flashes.
+ * @param state - the current form state.
+ * @param key - the setting key to edit.
+ * @param value - the new value for that key.
+ * @returns the next form state (same reference when the value is unchanged).
+ */
 export function editValue<K extends SettingsValueKey>(
   state: SettingsFormState,
   key: K,
@@ -63,12 +88,21 @@ export function editValue<K extends SettingsValueKey>(
   return { ...state, values: { ...state.values, [key]: value }, status: 'idle', errorMessage: undefined }
 }
 
-/** Mark a save as in flight. */
+/**
+ * Mark a save as in flight.
+ * @param state - the current form state.
+ * @returns the next state with status 'saving'.
+ */
 export function beginSave(state: SettingsFormState): SettingsFormState {
   return { ...state, status: 'saving', errorMessage: undefined }
 }
 
-/** Persisted OK: advance the dirty baseline and flash success. */
+/**
+ * Persisted OK: advance the dirty baseline and flash success.
+ * @param state - the current form state.
+ * @param persisted - the settings record the server acknowledged.
+ * @returns the next state with an updated baseline and status 'saved'.
+ */
 export function saveSucceeded(
   state: SettingsFormState,
   persisted: FileHubSettings,
@@ -76,7 +110,12 @@ export function saveSucceeded(
   return { ...state, savedValues: { ...persisted }, status: 'saved' }
 }
 
-/** Persisted failed: keep the edits, surface the reason. */
+/**
+ * Persisted failed: keep the edits, surface the reason.
+ * @param state - the current form state.
+ * @param message - the failure reason to display.
+ * @returns the next state with status 'error' and the message attached.
+ */
 export function saveFailed(state: SettingsFormState, message: string): SettingsFormState {
   return { ...state, status: 'error', errorMessage: message }
 }
@@ -84,6 +123,9 @@ export function saveFailed(state: SettingsFormState, message: string): SettingsF
 /**
  * Restore values (defaults or a reloaded record) WITHOUT persisting — the
  * dirty baseline moves too, since restore is an explicit user act.
+ * @param state - the current form state.
+ * @param values - the record to restore (defaults or a reloaded record).
+ * @returns the next state with both copies replaced and status 'idle'.
  */
 export function resetValues(state: SettingsFormState, values: FileHubSettings): SettingsFormState {
   return { ...state, values: { ...values }, savedValues: { ...values }, status: 'idle', errorMessage: undefined }

@@ -61,11 +61,11 @@ import type {
   SearchLayer,
   SessionOnlineMode,
   TierMode,
-} from './kernel/types.js'
+} from './kernel/types.ts'
 import { SessionOnlineState } from './mode/online.js'
 import { charterSection, statusSection } from './prompt/sections.js'
 import { applyProxyToEnv, getWindowsSystemProxy } from './safety/winproxy.js'
-import type { EngineNodeSettings } from './settings/schema.js'
+import type { EngineNodeSettings } from './settings/schema.ts'
 import { buildBatchSearchTool, buildHistoryTool } from './tools/web-tools.js'
 
 export { renderDoctor, runDoctor } from './diag/doctor.js'
@@ -95,6 +95,7 @@ const VERTICAL_X_ENGINE_ID = 'x-vertical'
 /** 免费池垂类回调允许的引擎 id：杜绝垂类递归加发自身（vertical-x 治理纪律）。 */
 const VERTICAL_FREE_POOL_IDS: readonly string[] = ['ddg', 'bing-lite']
 
+/** 插件组合入口配置（缺省字段回落冻结默认值，见 {@link Config}）。 */
 export interface PluginConfig {
   /** 总开关；false 时聚合器 available()=false，行为等价回落原生。 */
   enabled?: boolean
@@ -167,6 +168,9 @@ const SETTINGS_NS = settingsNamespace('webstack')
  * 组合入口配置 → 聚合器运行快照（操作起点一致性的唯一装配点）。
  * W9：`sessionOnline === 'on'` 映射 forceFresh（跳缓存读）；`layerPools` /
  * `verticalEngineIds` 由调用方按注册矩阵注入（结构动态，静态配置无法表达）。
+ * @param config - 组合入口配置。
+ * @param extras - 注册矩阵动态注入口（层池与垂直腿 id）。
+ * @returns 聚合器运行快照。
  */
 export function composeSnapshot(
   config: PluginConfig,
@@ -198,6 +202,9 @@ export function composeSnapshot(
  * 凭据源视图（W9 凭据流贯通）：从组合入口配置抽取 keyed 六家的
  * `engines.<id>.key`（历史别名 `.apiKey` 兼容）与 `credentialRef`，加上宿主
  * credentials seam。每次搜索起点由聚合器调用一次（操作内一致 W-B-74）。
+ * @param config - 组合入口配置。
+ * @param seams - 宿主凭据接缝（可选）。
+ * @returns 凭据源视图（configValues/credentialsRef/seams）。
  */
 export function credsSourceViewFrom(
   config: PluginConfig,
@@ -247,6 +254,9 @@ export interface RegistryBuildResult {
  * 注册）→ keyed 六家（无键即 auth 结构化失败，交 fallback 换候选）→ 原生委托
  * （句柄缺位时同样可诊断地失败）→ MCP（逐条 validateMcpEntry，拒绝项静默跳过
  * 并回传清单供诊断）→ 垂直腿（显式开启才装配）。注册序即 fallback 候选序。
+ * @param config - 组合入口配置。
+ * @param hooks - 接线钩子（原生委托句柄与垂类假体注入）。
+ * @returns 注册矩阵构建结果。
  */
 export function buildEngineRegistry(
   config: PluginConfig,
@@ -394,6 +404,9 @@ export function apply(ctx: Context, config: PluginConfig = {}): void {
 /**
  * 全量装配（W9）：apply 的实体。独立导出以便回归测试直接观测注册矩阵、
  * 凭据流、缓存栈与会话联网状态机，而不必穿透 cordis 生命周期。
+ * @param ctx - 宿主上下文。
+ * @param config - 组合入口配置。
+ * @returns 装配产物（注册表/聚合器/历史/会话联网态）。
  */
 export function assembleWebstack(ctx: Context, config: PluginConfig = {}): WebstackAssembly {
   const capabilities: CapabilityBitmap = probeCapabilities(ctx)

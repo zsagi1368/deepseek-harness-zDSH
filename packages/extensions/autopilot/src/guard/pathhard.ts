@@ -22,6 +22,7 @@ const RESERVED_DEVICE_NAMES = new Set([
 /** POSIX critical prefixes judged on normalized separators too. */
 const POSIX_CRITICAL = ['/etc', '/bin', '/usr', '/sbin', '/boot', '/sys', '/proc', '/dev']
 
+/** Normalized form of one path plus the anomalies detected during folding. */
 export interface NormalizedPath {
   raw: string
   normalized: string
@@ -31,6 +32,11 @@ export interface NormalizedPath {
   reservedDeviceName: boolean
 }
 
+/**
+ * Normalize one path for Windows-first comparison (I/O-free).
+ * @param raw - the path string to normalize.
+ * @returns the normalized form with detected anomalies.
+ */
 export function normalizePath(raw: string): NormalizedPath {
   let p = raw.trim()
   // Strip Win32 trailing dots/spaces that the filesystem silently ignores.
@@ -59,6 +65,9 @@ export function normalizePath(raw: string): NormalizedPath {
  * Containment check. On win32, `path.relative` across drives returns an
  * ABSOLUTE path (no '..' prefix), which defeats naive startsWith('..')
  * checks — the isAbsolute guard below is therefore load-bearing, not style.
+ * @param root - the root path the candidate must stay inside.
+ * @param candidate - the path being tested.
+ * @returns whether the candidate is inside the root.
  */
 export function isWithin(root: string, candidate: string): boolean {
   const r = normalizePath(root)
@@ -91,6 +100,13 @@ function segments(norm: NormalizedPath): string[] {
   return norm.normalized.split(/[\\/]/).filter(Boolean)
 }
 
+/**
+ * Whether the candidate is a critical target destructive operations must
+ * never touch (device names, roots, homes, system dirs, POSIX prefixes).
+ * @param roots - the session's path roots.
+ * @param candidate - the path being tested.
+ * @returns true when the path is critical.
+ */
 export function isCriticalPath(roots: PathRoots, candidate: string): boolean {
   const c = normalizePath(candidate)
   if (!c.isAbsolute) return false
@@ -120,6 +136,11 @@ const CREDENTIAL_TREE_SEGMENTS = new Set([
   '.ssh', '.gnupg', '.aws', '.kube', '.config', 'gcloud', '.azure', '.docker',
 ])
 
+/**
+ * Whether any path segment lands inside a credential-material tree.
+ * @param candidate - the path being tested.
+ * @returns true when a credential tree segment appears in the path.
+ */
 export function isCredentialTree(candidate: string): boolean {
   const c = normalizePath(candidate)
   return segments(c).some(s => CREDENTIAL_TREE_SEGMENTS.has(s.toLowerCase()))
@@ -128,6 +149,12 @@ export function isCredentialTree(candidate: string): boolean {
 const PROTECTED_TOP_DIRS = new Set(['.git', '.vscode', '.idea', '.husky'])
 const PROTECTED_BASE_NAMES = new Set(['.gitconfig', '.bashrc', '.mcp.json'])
 
+/**
+ * Whether the candidate is protected project meta (VCS/config dirs, dotfiles).
+ * @param workspaceRoot - the session workspace root.
+ * @param candidate - the path being tested.
+ * @returns true when the path is protected project metadata.
+ */
 export function isProtectedProjectMeta(workspaceRoot: string, candidate: string): boolean {
   const c = normalizePath(candidate)
   if (!isWithin(workspaceRoot, c.normalized)) return false

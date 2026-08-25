@@ -11,22 +11,32 @@ import { spawn } from 'node:child_process'
 import type { RootCache } from './fs-routes.ts'
 import { ensureRealPathInside } from './path-guard.ts'
 
+/** One git process outcome: exit code plus captured stdout/stderr (byte-capped). */
 export interface GitRunResult {
   code: number
   stdout: string
   stderr: string
 }
 
+/** Tuning knobs for one git invocation: timeout and output byte cap. */
 export interface GitRunOptions {
   timeoutMs?: number
   maxOutputBytes?: number
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000
+/** Timeout granted to network operations (fetch/pull/push). */
 const NETWORK_TIMEOUT_MS = 120_000
 export { NETWORK_TIMEOUT_MS }
 const MAX_OUTPUT_BYTES = 8 * 1024 * 1024
 
+/**
+ * Run one git command with argv only and a sanitized environment.
+ * @param rootReal - the realpathed repository root used as the process cwd.
+ * @param args - the git argv (validated by callers; never a shell string).
+ * @param options - optional timeout and output byte cap overrides.
+ * @returns the exit code plus captured stdout and stderr.
+ */
 export async function runGit(
   rootReal: string,
   args: string[],
@@ -80,7 +90,13 @@ export async function runGit(
   })
 }
 
-/** Guard one repo-relative-or-absolute path against the workspace root. */
+/**
+ * Guard one repo-relative-or-absolute path against the workspace root.
+ * @param rootCache - shared workspace-root cache used to resolve the cwd.
+ * @param cwd - the working directory whose root anchors the guard.
+ * @param value - the path to guard (repo-relative or absolute).
+ * @returns the real root and repo-relative path, or null when the path escapes.
+ */
 export async function guardRepoPath(
   rootCache: RootCache,
   cwd: unknown,
@@ -107,44 +123,103 @@ const STATUS_ARGS = ['status', '--porcelain=v1', '-b', '--untracked-files=normal
 const BRANCHES_ARGS = ['branch', '--all', '--format=%(refname:short)%09%(objectname:short)']
 const LOG_PRETTY = '%h%x1f%an%x1f%at%x1f%s'
 
+/**
+ * Run `git status --porcelain` with branch tracking.
+ * @param rootReal - the realpathed repository root.
+ * @returns the git run result.
+ */
 export async function opStatus(rootReal: string): Promise<GitRunResult> {
   return runGit(rootReal, [...STATUS_ARGS])
 }
 
+/**
+ * Run `git remote -v`.
+ * @param rootReal - the realpathed repository root.
+ * @returns the git run result.
+ */
 export async function opRemotes(rootReal: string): Promise<GitRunResult> {
   return runGit(rootReal, ['remote', '-v'])
 }
 
+/**
+ * Run `git branch --all` with short ref names.
+ * @param rootReal - the realpathed repository root.
+ * @returns the git run result.
+ */
 export async function opBranches(rootReal: string): Promise<GitRunResult> {
   return runGit(rootReal, [...BRANCHES_ARGS])
 }
 
+/**
+ * Run a formatted `git log` limited to `limit` commits.
+ * @param rootReal - the realpathed repository root.
+ * @param limit - the maximum number of commits to request.
+ * @returns the git run result.
+ */
 export async function opLog(rootReal: string, limit: number): Promise<GitRunResult> {
   return runGit(rootReal, ['log', '-n', String(limit), '--date-order', '--pretty=format:' + LOG_PRETTY])
 }
 
+/**
+ * Run `git diff --no-color`, optionally scoped to one repo path.
+ * @param rootReal - the realpathed repository root.
+ * @param repoPath - optional repo-relative path to scope the diff.
+ * @returns the git run result.
+ */
 export async function opDiff(rootReal: string, repoPath?: string): Promise<GitRunResult> {
   return runGit(rootReal, repoPath === undefined ? ['diff', '--no-color'] : ['diff', '--no-color', '--', repoPath])
 }
 
+/**
+ * Run `git diff --cached --no-color`, optionally scoped to one repo path.
+ * @param rootReal - the realpathed repository root.
+ * @param repoPath - optional repo-relative path to scope the diff.
+ * @returns the git run result.
+ */
 export async function opDiffCached(rootReal: string, repoPath?: string): Promise<GitRunResult> {
   return runGit(rootReal, repoPath === undefined ? ['diff', '--cached', '--no-color'] : ['diff', '--cached', '--no-color', '--', repoPath])
 }
 
+/**
+ * Stage paths with `git add --`.
+ * @param rootReal - the realpathed repository root.
+ * @param repoPaths - the validated repo-relative paths to stage.
+ * @returns the git run result.
+ */
 export async function opStage(rootReal: string, repoPaths: string[]): Promise<GitRunResult> {
   return runGit(rootReal, ['add', '--', ...repoPaths])
 }
 
+/**
+ * Unstage paths with `git reset HEAD --`.
+ * @param rootReal - the realpathed repository root.
+ * @param repoPaths - the validated repo-relative paths to unstage.
+ * @returns the git run result.
+ */
 export async function opUnstage(rootReal: string, repoPaths: string[]): Promise<GitRunResult> {
   return runGit(rootReal, ['reset', 'HEAD', '--', ...repoPaths])
 }
 
+/**
+ * Commit with `git commit -m`.
+ * @param rootReal - the realpathed repository root.
+ * @param message - the validated commit message.
+ * @returns the git run result.
+ */
 export async function opCommit(rootReal: string, message: string): Promise<GitRunResult> {
   return runGit(rootReal, ['commit', '-m', message])
 }
 
+/** Network git operation names; each one requires explicit user confirmation. */
 export type NetworkAction = 'fetch' | 'pull' | 'push'
 
+/**
+ * Run one network operation with the network timeout.
+ * @param rootReal - the realpathed repository root.
+ * @param action - the network operation to run.
+ * @param remote - the validated remote name.
+ * @returns the git run result.
+ */
 export async function opNetwork(rootReal: string, action: NetworkAction, remote: string): Promise<GitRunResult> {
   const tail = action === 'push'
     ? [remote]

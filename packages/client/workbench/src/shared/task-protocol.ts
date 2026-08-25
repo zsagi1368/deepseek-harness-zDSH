@@ -4,6 +4,7 @@
 
 export type TaskStatus = 'todo' | 'doing' | 'done'
 
+/** One ledger task row. */
 export interface TaskItem {
   id: string
   title: string
@@ -12,24 +13,29 @@ export interface TaskItem {
   updatedAt: number
 }
 
+/** Full ledger snapshot: revision plus task rows. */
 export interface TaskSnapshot {
   revision: number
   tasks: TaskItem[]
 }
 
+/** RPC payload for creating a task. */
 export interface TaskCreateRequest {
   title: string
   status?: TaskStatus
 }
 
+/** RPC payload for updating a task. */
 export interface TaskUpdateRequest {
   id: string
   status?: TaskStatus
   title?: string
 }
 
+/** RPC payload for deleting a task. */
 export interface TaskDeleteRequest {
   id: string
 }
 
+/** Canonical task statuses in display order. */
 export const TASK_STATUSES: readonly TaskStatus[] = ['todo', 'doing', 'done']

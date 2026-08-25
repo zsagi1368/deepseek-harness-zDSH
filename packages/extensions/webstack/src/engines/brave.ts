@@ -24,6 +24,7 @@ import type {
 import { BaseEngine, freezeDescriptor, keyedHttpStatusError, requireCredential } from './engine.js'
 import { isoTimestampOrUndefined } from './pool.js'
 
+/** Brave 引擎 id（keyed 六家之一）。 */
 export const BRAVE_ENGINE_ID = 'brave'
 
 /** 凭据槽位名：请求级 credentials 通道与本引擎约定的字段键。 */
@@ -50,6 +51,9 @@ const FRESHNESS_TO_PERIOD = { day: 'pd', week: 'pw', month: 'pm', year: 'py' } a
 
 /**
  * 组装查询串：q 编码；count/freshness 存在时才拼接（缺席不带键）。
+ * @param query - 原始查询串。
+ * @param opts - count 与 freshness 可选参数。
+ * @returns 完整查询 URL。
  */
 export function buildBraveUrl(
   query: string,
@@ -69,6 +73,9 @@ export function buildBraveUrl(
  * - title 与 url 必须 narrowString 后非空，任一缺失 → 整条跳过；
  * - description → snippet；age 仅接受 ISO-8601 形态（相对时间一律缺席）；
  * - 截断至 count 条。
+ * @param value - 上游返回的原始载荷。
+ * @param count - 命中条数上限。
+ * @returns 归一化命中列表。
  */
 export function parseBraveJson(value: unknown, count: number): NormalizedHit[] {
   const root = narrowRecord(value)
@@ -102,7 +109,11 @@ export class BraveEngine extends BaseEngine {
     super(descriptor)
   }
 
-  /** 搜索：缺密钥即 auth（不打网）；出站必经安全管道；JSON 解析失败转 narrow-failed。 */
+  /**
+   * 搜索：缺密钥即 auth（不打网）；出站必经安全管道；JSON 解析失败转 narrow-failed。
+   * @param req - 引擎层搜索请求。
+   * @returns 归一化响应（含 attempts 审计记录）。
+   */
   async search(req: EngineSearchRequest): Promise<EngineSearchResponse> {
     return await this.runSearch(req, async () => {
       const apiKey = requireCredential(req, this.descriptor.id, BRAVE_CRED_SLOT)

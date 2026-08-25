@@ -8,7 +8,10 @@
 
 import type { CapabilityBitmap, TierMode } from './types.js'
 
-/** 全部位为 false 的空位图（诊断档基线）。 */
+/**
+ * 全部位为 false 的空位图（诊断档基线）。
+ * @returns 全 false 的能力位图。
+ */
 export function emptyBitmap(): CapabilityBitmap {
   return {
     webSeam: false,
@@ -25,6 +28,8 @@ export function emptyBitmap(): CapabilityBitmap {
  * 对未知宿主上下文做结构探测。只做 `typeof === 'function'` 级廉价检查，
  * 不触发任何服务实例化或网络行为。cordis 的未装载服务属性在访问时会
  * **抛错**而非返回 undefined——探测永不抛（W-B-47 缺失分支），逐项兜底。
+ * @param ctx - 宿主上下文（未知形状）。
+ * @returns 探测完成的能力位图。
  */
 export function probeCapabilities(ctx: unknown): CapabilityBitmap {
   const bitmap = emptyBitmap()
@@ -54,6 +59,8 @@ export function probeCapabilities(ctx: unknown): CapabilityBitmap {
  * - webSeam 且选择器可被 patch 指向 → 接管档；
  * - 仅 webSeam → 共存档（注册为可选 provider，用户手动选）;
  * - 其余 → 只读诊断档（仅命令与设置，提示升级）。
+ * @param bitmap - 探测完成的能力位图。
+ * @returns 运行档位（takeover/coexist/diagnostic）。
  */
 export function deriveTierMode(bitmap: CapabilityBitmap): TierMode {
   if (bitmap.webSeam && bitmap.selectorPatchable) return 'takeover'

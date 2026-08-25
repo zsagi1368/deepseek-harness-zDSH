@@ -31,12 +31,18 @@ export class SessionOnlineState {
   private mode: SessionOnlineMode = 'off'
   private readonly turnFlags = new Map<string, TurnOnlineFlags>()
 
-  /** 切换会话联网模式；任意时刻可切，立即影响后续判定。 */
+  /**
+   * 切换会话联网模式；任意时刻可切，立即影响后续判定。
+   * @param mode - 目标模式（off/on/ask）。
+   */
   setMode(mode: SessionOnlineMode): void {
     this.mode = mode
   }
 
-  /** 读当前模式（瘦读端：输入区按钮回显用）。 */
+  /**
+   * 读当前模式（瘦读端：输入区按钮回显用）。
+   * @returns 当前模式。
+   */
   getMode(): SessionOnlineMode {
     return this.mode
   }
@@ -44,6 +50,7 @@ export class SessionOnlineState {
   /**
    * 开启一轮：为 turnId 建立全新空白标志（覆盖同 id 残留，防串轮）。
    * `ask` 模式的「先征求用户」交互发生在更上层，这里只管状态记账。
+   * @param turnId - 轮次 id。
    */
   beginTurn(turnId: string): void {
     this.turnFlags.set(turnId, { searched: false })
@@ -52,6 +59,7 @@ export class SessionOnlineState {
   /**
    * 标记本轮已发起过搜索调用。无论该次调用成败都置位——宽松满足语义
    * （F-107）：模型已经尝试联网，就不必在本轮再强制一次。
+   * @param turnId - 轮次 id。
    */
   markSearched(turnId: string): void {
     const flags = this.turnFlags.get(turnId)
@@ -66,12 +74,17 @@ export class SessionOnlineState {
   /**
    * 是否应强制走在线路径：`mode === 'on'`（会话级强制）或本轮已搜过
    * （宽松满足）。`off` 且未搜过 → false；`ask` 由上层征询后落点同上。
+   * @param turnId - 轮次 id。
+   * @returns 应强制联网时为 true。
    */
   shouldForceOnline(turnId: string): boolean {
     return this.mode === 'on' || (this.turnFlags.get(turnId)?.searched ?? false)
   }
 
-  /** 结束一轮：回收轮级标志，防长会话内存累积与跨轮误判。 */
+  /**
+   * 结束一轮：回收轮级标志，防长会话内存累积与跨轮误判。
+   * @param turnId - 轮次 id。
+   */
   endTurn(turnId: string): void {
     this.turnFlags.delete(turnId)
   }

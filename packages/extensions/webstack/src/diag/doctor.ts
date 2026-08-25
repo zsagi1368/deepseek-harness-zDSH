@@ -18,6 +18,7 @@ import type { CapabilityBitmap, TierMode } from '../kernel/types.js'
 /** doctor 四态词汇保留（历史契约；当前报告的引擎态由 registry 快照派生）。 */
 export const DOCTOR_HEALTH_STATES = ['missing', 'broken', 'timeout', 'error'] as const
 
+/** doctor 引擎态词汇（与 registry 快照派生一致）。 */
 export type DoctorHealthState = (typeof DOCTOR_HEALTH_STATES)[number]
 
 /** 报告中的单引擎条目（与 registry.EngineStatusEntry 对齐 + 剩余冷却毫秒）。 */
@@ -51,6 +52,7 @@ export interface DoctorReport {
   readonly vertical?: DoctorVerticalState
 }
 
+/** runDoctor 的可注入依赖：能力位图、档位、注册表、缓存与可选增补状态。 */
 export interface DoctorDeps {
   readonly bitmap: CapabilityBitmap
   readonly tier: TierMode
@@ -70,6 +72,8 @@ export interface DoctorDeps {
 /**
  * 编排一次体检：registry 状态快照 ∪ 配置面已知引擎 → 统一条目；
  * 缓存计数直读；桥/垂类状态透传。全程本地数据，零副作用。
+ * @param deps - 体检所需的全部只读依赖。
+ * @returns 机器可读体检报告。
  */
 export function runDoctor(deps: DoctorDeps): DoctorReport {
   const now = Date.now()
@@ -111,7 +115,11 @@ export function runDoctor(deps: DoctorDeps): DoctorReport {
   }
 }
 
-/** 档位 → 处方键（数据化规则单一来源）。 */
+/**
+ * 档位 → 处方键（数据化规则单一来源）。
+ * @param tier - 能力档位。
+ * @returns 对应的 i18n 处方键。
+ */
 export function prescriptionKeyFor(tier: TierMode): DoctorI18nKey {
   return `webstack.doctor.rx.${tier}`
 }
@@ -128,6 +136,9 @@ function fill(template: string, args: readonly (string | number)[]): string {
 /**
  * 渲染双语体检文本：档位说明 + 处方 + 引擎状态行 + 缓存统计。
  * 纯函数；locale 未知值安全回落中文。
+ * @param report - 机器可读体检报告。
+ * @param locale - 渲染语言（默认 zh）。
+ * @returns 多行体检文本。
  */
 export function renderDoctor(report: DoctorReport, locale: Locale = 'zh'): string {
   const lines: string[] = []

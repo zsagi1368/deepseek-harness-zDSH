@@ -32,6 +32,7 @@ import {
 } from './engine.js'
 import { HTTP_POST_BRIDGED, isoTimestampOrUndefined } from './pool.js'
 
+/** AnySearch 引擎 id（keyed 六家之一）。 */
 export const ANYSEARCH_ENGINE_ID = 'anysearch'
 
 /** 凭据槽位名：请求级 credentials 通道与本引擎约定的字段键。 */
@@ -55,6 +56,9 @@ export const ANYSEARCH_DESCRIPTOR: EngineDescriptor = freezeDescriptor({
 
 /**
  * 组装请求体：count 原样透传（负数钳为 0，交上游自然空回）。
+ * @param query - 原始查询串。
+ * @param count - 结果条数。
+ * @returns POST JSON 载荷。
  */
 export function buildAnysearchPayload(query: string, count: number): Record<string, unknown> {
   return { query, count: Math.max(0, count) }
@@ -66,6 +70,9 @@ export function buildAnysearchPayload(query: string, count: number): Record<stri
  * - title 与 url 必须 narrowString 后非空，任一缺失 → 整条跳过；
  * - snippet 直用（空串保持缺席）；publishedAt 仅接受 ISO-8601 形态；
  * - 截断至 count 条。
+ * @param value - 上游返回的原始载荷。
+ * @param count - 命中条数上限。
+ * @returns 归一化命中列表。
  */
 export function parseAnysearchJson(value: unknown, count: number): NormalizedHit[] {
   const root = narrowRecord(value)
@@ -97,7 +104,11 @@ export class AnysearchEngine extends BaseEngine {
     super(descriptor)
   }
 
-  /** 搜索：缺密钥即 auth（不打网）；出站必经安全管道；JSON 解析失败转 narrow-failed。 */
+  /**
+   * 搜索：缺密钥即 auth（不打网）；出站必经安全管道；JSON 解析失败转 narrow-failed。
+   * @param req - 引擎层搜索请求。
+   * @returns 归一化响应（含 attempts 审计记录）。
+   */
   async search(req: EngineSearchRequest): Promise<EngineSearchResponse> {
     return await this.runSearch(req, async () => {
       const apiKey = requireCredential(req, this.descriptor.id, ANYSEARCH_CRED_SLOT)

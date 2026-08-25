@@ -60,6 +60,7 @@ export const DEFAULT_PROBE_TIMEOUT_MS = 3_000
 /** In-memory caption cache ceiling. */
 export const DEFAULT_CACHE_ENTRIES = 512
 
+/** Caption-producer channel: an explicit endpoint or the local Ollama probe. */
 export type VisionChannel = 'explicit' | 'ollama'
 
 /** Live settings snapshot the gates read per invocation. */
@@ -87,10 +88,12 @@ export interface LlmResolvedModelInfoLike {
   inputModalities?: readonly string[]
 }
 
+/** Host llm runtime face the FR-D1 gate interrogates. */
 export interface LlmRuntimeFaceLike {
   resolveModelInfo: (provider: string, model: string, signal?: AbortSignal) => Promise<LlmResolvedModelInfoLike>
 }
 
+/** Seams for the image-capable route gate: logger, llm face, and the route to interrogate. */
 export interface ImageCapableGateDeps {
   /** Host logger sink; degradation warnings only. */
   logWarn: (message: string) => void
@@ -106,6 +109,8 @@ export interface ImageCapableGateDeps {
 /**
  * Build the FR-D1 seam. Default (no llm face or no route): always false —
  * standalone hosts count as non-native and enter the waterfall.
+ * @param deps - logger, llm face, and the resolved native route.
+ * @returns a predicate answering whether the session model admits images.
  */
 export function createImageCapableGate(deps: ImageCapableGateDeps): () => Promise<boolean> {
   const { llm, nativeRoute, logWarn } = deps
@@ -133,16 +138,27 @@ export function createImageCapableGate(deps: ImageCapableGateDeps): () => Promis
 // Caption cache (sha256+channel → caption), KV-backed with memory fallback
 // ---------------------------------------------------------------------------
 
+/** Caption cache surface keyed by sha256(channel:digest). */
 export interface CaptionCacheStore {
   get(key: string): Promise<string | undefined>
   put(key: string, value: string): Promise<void>
 }
 
+/**
+ * Canonical caption cache key for one channel + image digest.
+ * @param channel - the producer channel.
+ * @param digestHex - sha256 hex digest of the image bytes.
+ * @returns the composite key.
+ */
 export function captionCacheKey(channel: VisionChannel, digestHex: string): string {
   return `${channel}:${digestHex}`
 }
 
-/** Bounded FIFO memory cache (single-process fallback). */
+/**
+ * Bounded FIFO memory cache (single-process fallback).
+ * @param maxEntries - entry ceiling; oldest entries evicted first.
+ * @returns a {@link CaptionCacheStore} backed by a Map.
+ */
 export function createMemoryCaptionCache(maxEntries: number = DEFAULT_CACHE_ENTRIES): CaptionCacheStore {
   const entries = new Map<string, string>()
   return {
@@ -215,6 +231,7 @@ function pickKvFacet(storage: unknown): KvFacetLike | undefined {
 // Waterfall
 // ---------------------------------------------------------------------------
 
+/** Seams for the vision service: gates, endpoints, cache, and test injections. */
 export interface VisionServiceDeps {
   logWarn: (message: string) => void
   /** Host storage hub (KV facet pick for the caption cache). Optional. */
@@ -250,6 +267,7 @@ export interface VisionServiceDeps {
   assertLoopbackUrl?: ((input: string | URL) => URL) | undefined
 }
 
+/** Vision waterfall surface: caption image bytes, or undefined when gated/degraded. */
 export interface VisionService {
   /**
    * Run the gated waterfall. Resolves undefined when native-gated, disabled
@@ -277,10 +295,16 @@ function extractCaption(payload: unknown): string | undefined {
 /** Ordered heuristic over Ollama model names, preferring vision families. */
 const VISION_MODEL_HINT = /(vision|llava|minicpm|moondream|qvq|internvl|glm-4v|-vl|\bvl)/i
 
+/**
+ * Ordered heuristic over Ollama model names, preferring vision families.
+ * @param names - model names reported by the local probe.
+ * @returns the first vision-suggesting name, else the first listed, else undefined.
+ */
 export function pickOllamaModel(names: readonly string[]): string | undefined {
   return names.find(name => VISION_MODEL_HINT.test(name)) ?? names[0]
 }
 
+/** Minimal fetch shape the vision service dials out with (redirects refused). */
 export interface FetchLike {
   (url: string, init?: {
     method?: string
@@ -305,6 +329,11 @@ export interface FetchLike {
 const defaultFetch: FetchLike = (url, init) =>
   fetch(url, { ...(init as RequestInit), redirect: 'error' })
 
+/**
+ * Build the M4 caption waterfall over the given seams.
+ * @param deps - gates, endpoints, cache, transport, and test injections.
+ * @returns the service object implementing {@link VisionService}.
+ */
 export function createVisionService(deps: VisionServiceDeps): VisionService {
   const logWarn = deps.logWarn
   const endpoint = deps.endpoint
@@ -485,6 +514,7 @@ export function createVisionService(deps: VisionServiceDeps): VisionService {
 // Upload hook: wrap the M1 handler additively (upload.ts untouched)
 // ---------------------------------------------------------------------------
 
+/** Seams for the additive upload wrapper: inner handler, vision service, and file read. */
 export interface UploadVisionDeps {
   /** The composed M1 upload handler. */
   inner: HttpHandler
@@ -508,6 +538,8 @@ export interface UploadVisionDeps {
  * sendJson/sendError → setHeader/statusCode/end), then — for sniffed images —
  * attach `imageCaption` before flushing to the real socket. Non-images and
  * every error path pass through byte-identical.
+ * @param deps - inner handler, vision service, and file reader.
+ * @returns the augmented HttpHandler.
  */
 export function augmentUploadHandlerWithCaption(deps: UploadVisionDeps): HttpHandler {
   const decoder = new TextDecoder()

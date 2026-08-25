@@ -15,6 +15,7 @@ interface CacheEntry {
   expiresAt: number
 }
 
+/** One queued image processing job with its lifecycle status. */
 export interface ImageProcessingTask {
   image: ImageAttachment
   query: string
@@ -25,6 +26,10 @@ export interface ImageProcessingTask {
 
 const MAX_CACHE_ENTRIES = 100
 
+/**
+ * Runs image processing before the model sees the request, caching results
+ * keyed by content hash and query intent.
+ */
 export class VisionBridge {
   private completedResults = new Map<string, CacheEntry>()
   private readonly defaultTtlMs = 3600_000 // 1 hour
@@ -39,6 +44,10 @@ export class VisionBridge {
   /**
    * Process images and return descriptions.
    * Failed images return error descriptions instead of throwing.
+   * @param images - the image attachments to describe.
+   * @param query - the intent text guiding each description.
+   * @param signal - optional abort signal for the processing chain.
+   * @returns one description per successfully processed image.
    */
   async processImages(
     images: ImageAttachment[],
@@ -66,6 +75,10 @@ export class VisionBridge {
 
   /**
    * Generate brief summary for interactive mode
+   * @param images - the image attachments to describe.
+   * @param query - the intent text guiding each description.
+   * @param signal - optional abort signal for the processing chain.
+   * @returns the summaries joined into one text, empty when nothing processed.
    */
   async processSummary(
     images: ImageAttachment[],
@@ -186,10 +199,15 @@ export class VisionBridge {
     }
   }
 
+  /** Drop all cached descriptions. */
   clear(): void {
     this.completedResults.clear()
   }
 
+  /**
+   * Current cache occupancy.
+   * @returns the number of cached description entries.
+   */
   stats(): { cached: number } {
     return { cached: this.completedResults.size }
   }

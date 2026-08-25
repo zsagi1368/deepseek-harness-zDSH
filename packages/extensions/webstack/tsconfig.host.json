@@ -1,10 +1,4 @@
 {
-  // Host face of a split-face client package (mirrors packages/client/workbench):
-  // everything except src/client, on the host base. The host aggregate must
-  // reference THIS project, never the package root or the client face — the
-  // client chain reaches remotes/tsconfig.client.json and other projects whose
-  // type-check consumes generated Typert artifacts that do not exist before
-  // the first tsdown pass (fresh-clone `pnpm build` would fail with TS2307).
   "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": "src",
@@ -24,6 +18,9 @@
     },
     {
       "path": "../../../vendor/schemastery"
+    },
+    {
+      "path": "../../runtime-diagnostics/invariants"
     },
     {
       "path": "../../core/tools"

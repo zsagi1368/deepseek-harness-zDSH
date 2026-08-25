@@ -37,10 +37,12 @@ import { isValidSessionId } from './pathPolicy.js'
 
 /** The five usage buckets of P01 §6-E byKind. */
 export const USAGE_KINDS = ['image', 'document', 'text', 'binary', 'media'] as const
+/** Usage bucket key, one of {@link USAGE_KINDS}. */
 export type UsageKind = (typeof USAGE_KINDS)[number]
 
 const UsageKindSchema = z.enum(USAGE_KINDS)
 
+/** Zod schema for one library entry row (wire shape of the per-file record). */
 export const LibraryEntrySchema = z.object({
   /** Absolute path inside the owning session workspace. */
   path: z.string().min(1),
@@ -54,8 +56,10 @@ export const LibraryEntrySchema = z.object({
   /** M6 caption passthrough: persisted vision caption when one exists. */
   imageCaption: z.string().min(1).optional(),
 })
+/** Library entry row, inferred from {@link LibraryEntrySchema}. */
 export type LibraryEntry = z.infer<typeof LibraryEntrySchema>
 
+/** Zod schema for the aggregate library response (sessions in recency order). */
 export const LibraryResultSchema = z.object({
   sessions: z.array(
     z.object({
@@ -68,24 +72,30 @@ export const LibraryResultSchema = z.object({
   totalBytes: z.number().int().nonnegative(),
   truncated: z.boolean(),
 })
+/** Aggregate library response, inferred from {@link LibraryResultSchema}. */
 export type LibraryResult = z.infer<typeof LibraryResultSchema>
 
+/** Zod schema for the storage-usage statistics response. */
 export const UsageResultSchema = z.object({
   totalBytes: z.number().int().nonnegative(),
   files: z.number().int().nonnegative(),
   byKind: z.record(UsageKindSchema, z.object({ files: z.number().int().nonnegative(), bytes: z.number().int().nonnegative() })),
   bySession: z.array(z.object({ sessionId: z.string(), files: z.number().int().nonnegative(), bytes: z.number().int().nonnegative() })),
 })
+/** Storage-usage statistics, inferred from {@link UsageResultSchema}. */
 export type UsageResult = z.infer<typeof UsageResultSchema>
 
+/** Zod schema for the cleanup POST request body. */
 export const CleanupRequestSchema = z.object({
   scope: z.enum(['expired', 'session']),
   sessionId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).optional(),
   ttlMs: z.number().int().positive().optional(),
   dryRun: z.boolean().optional(),
 })
+/** Cleanup request body, inferred from {@link CleanupRequestSchema}. */
 export type CleanupRequest = z.infer<typeof CleanupRequestSchema>
 
+/** Zod schema for the cleanup report (preview or executed, dry-run aware). */
 export const CleanupReportSchema = z.object({
   scope: z.enum(['expired', 'session']),
   dryRun: z.boolean(),
@@ -94,6 +104,7 @@ export const CleanupReportSchema = z.object({
   wouldFreeBytes: z.number().int().nonnegative(),
   freedBytes: z.number().int().nonnegative(),
 })
+/** Cleanup report, inferred from {@link CleanupReportSchema}. */
 export type CleanupReport = z.infer<typeof CleanupReportSchema>
 
 /**
@@ -101,6 +112,9 @@ export type CleanupReport = z.infer<typeof CleanupReportSchema>
  * kind:'binary' with an application/pdf mime — documents are common enough
  * that the mime refines the bucket; generic archives (zip/docx/xlsx/pptx all
  * carry kind:'archive') count as documents too.
+ * @param kind - the sniff verdict's kind.
+ * @param mime - the sniff verdict's mime type.
+ * @returns one of the five usage bucket keys.
  */
 export function usageBucketOf(kind: SniffKind, mime: string): UsageKind {
   if (kind === 'image' || mime.startsWith('image/')) return 'image'
@@ -132,6 +146,7 @@ function emptySessionIndex(): SessionIndexRecord {
   return { files: {} }
 }
 
+/** Per-session enrichment index: cached kind buckets plus the lazy-backfill stamp. */
 export interface ConsoleIndexStore {
   get(sessionId: string): Promise<SessionIndexRecord>
   putKind(sessionId: string, relPath: string, kind: UsageKind): Promise<void>
@@ -140,6 +155,10 @@ export interface ConsoleIndexStore {
   sessionIds(): Promise<string[]>
 }
 
+/**
+ * In-memory {@link ConsoleIndexStore} used when no storage KV facet exists.
+ * @returns a working store backed by a plain Map (dies with the process).
+ */
 export function createMemoryConsoleIndexStore(): ConsoleIndexStore {
   const records = new Map<string, SessionIndexRecord>()
   return {
@@ -264,6 +283,7 @@ export const MAX_LIBRARY_ENTRIES = 2000
 /** Head bytes read per unclassified file for kind detection. */
 const SNIFF_READ_BYTES = 65_536 + 8_192
 
+/** Injectable seams for the library service: meta store, workspace resolver, storage, logging. */
 export interface LibraryDeps {
   meta: MetaStore
   workspaces: WorkspaceResolver
@@ -301,6 +321,7 @@ async function detectKind(root: string, relativePath: string): Promise<UsageKind
   }
 }
 
+/** Library console service surface: aggregate listing, usage stats, deletion, cleanup. */
 export interface LibraryService {
   /** Aggregate entries across every known session (FR-E1). */
   listLibrary(opts: { q?: string; filter?: string }): Promise<LibraryResult>
@@ -313,6 +334,11 @@ export interface LibraryService {
   dispose(): void
 }
 
+/**
+ * Build the library console service over the given seams.
+ * @param deps - meta store, workspace resolver, and the remaining injectable seams.
+ * @returns the service object implementing {@link LibraryService}.
+ */
 export function createLibraryService(deps: LibraryDeps): LibraryService {
   const now = deps.now ?? (() => Date.now())
   const maxEntries = Math.max(1, deps.maxEntries ?? MAX_LIBRARY_ENTRIES)
@@ -754,11 +780,16 @@ function queryOf(req: IncomingMessage): URLSearchParams {
   }
 }
 
+/** Seams the M5 HTTP handlers consume: the library service itself. */
 export interface LibraryHandlersDeps {
   service: LibraryService
 }
 
-/** GET /api/filehub/library?filter=<kind|all>&q=<substring> */
+/**
+ * GET /api/filehub/library?filter=<kind|all>&q=<substring>
+ * @param deps - the handler's service seam.
+ * @returns an HttpHandler serving the aggregate library listing.
+ */
 export function createLibraryHandler(deps: LibraryHandlersDeps): HttpHandler {
   return async function handleLibrary(req, res) {
     if (req.method !== 'GET') {
@@ -774,7 +805,11 @@ export function createLibraryHandler(deps: LibraryHandlersDeps): HttpHandler {
   }
 }
 
-/** GET /api/filehub/usage */
+/**
+ * GET /api/filehub/usage
+ * @param deps - the handler's service seam.
+ * @returns an HttpHandler serving the storage-usage statistics.
+ */
 export function createUsageHandler(deps: LibraryHandlersDeps): HttpHandler {
   return async function handleUsage(req, res) {
     if (req.method !== 'GET') {
@@ -793,7 +828,11 @@ export type SessionRouteHandler = (
   sessionId: string,
 ) => Promise<void>
 
-/** DELETE /api/filehub/session/:sessionId — whole-session cleanup, idempotent. */
+/**
+ * DELETE /api/filehub/session/:sessionId — whole-session cleanup, idempotent.
+ * @param deps - the handler's service seam.
+ * @returns a session-route handler deleting every file of the session.
+ */
 export function createSessionDeleteHandler(deps: LibraryHandlersDeps): SessionRouteHandler {
   return async function handleSessionDelete(req, res, sessionId) {
     if (req.method !== 'DELETE') {
@@ -809,7 +848,11 @@ export function createSessionDeleteHandler(deps: LibraryHandlersDeps): SessionRo
   }
 }
 
-/** POST /api/filehub/cleanup — body {scope, sessionId?, ttlMs?, dryRun}. */
+/**
+ * POST /api/filehub/cleanup — body {scope, sessionId?, ttlMs?, dryRun}.
+ * @param deps - the handler's service seam.
+ * @returns an HttpHandler running (or previewing) the two-step cleanup.
+ */
 export function createCleanupHandler(deps: LibraryHandlersDeps): HttpHandler {
   return async function handleCleanup(req, res) {
     if (req.method !== 'POST') {

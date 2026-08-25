@@ -16,6 +16,7 @@
 
 export type SniffKind = 'image' | 'text' | 'binary' | 'archive' | 'media'
 
+/** Verdict of one sniff: mime, kind bucket, and a stable human label. */
 export interface SniffResult {
   /** IANA-ish mime type; text results carry an explicit charset parameter. */
   mime: string
@@ -167,6 +168,8 @@ function bomOf(bytes: Uint8Array): BomInfo | undefined {
  * double-byte pairs (lead 0x81–0xFE, trail 0x40–0x7E or 0x80–0xFE). Used as
  * the "high-frequency double-byte" gate: prose in a Chinese encoding pairs up
  * almost all of its high bytes; random binary data does not.
+ * @param sample - the bytes to analyze.
+ * @returns the paired-byte ratio and the number of complete pairs.
  */
 export function gb18030DoubleByteRatio(sample: Uint8Array): { ratio: number; pairs: number } {
   let paired = 0
@@ -262,6 +265,9 @@ function textVerdict(bytes: Uint8Array): SniffResult {
  * Sniff a byte buffer into `{ mime, kind, label }`. `fileName` only ever
  * refines a magic-bytes match (the ftyp anti-disguise gate); it can never
  * override a signature verdict.
+ * @param bytes - the buffer to sniff.
+ * @param fileName - optional file-name hint for the media anti-disguise gate.
+ * @returns the sniff verdict.
  */
 export function sniff(bytes: Uint8Array, fileName?: string): SniffResult {
   if (bytes.length === 0) {

@@ -100,6 +100,7 @@ async function readSheet(
   return { rows, columns }
 }
 
+/** Extraction options: sheet selector, row cap, and probe-mode dimensions. */
 export interface ExtractXlsxOptions {
   /** Sheet selector: 1-based index or workbook name. Undefined = first sheet. */
   sheet?: number | string
@@ -112,6 +113,13 @@ export interface ExtractXlsxOptions {
   allDimensions?: boolean
 }
 
+/**
+ * Extract text from a workbook: probe sheet names, then render the selected
+ * sheet's cells into lines.
+ * @param bytes - the xlsx file bytes.
+ * @param options - sheet selector, row cap, and probe-mode switch.
+ * @returns the sheet text plus format overview and warnings.
+ */
 export async function extractXlsx(
   bytes: Uint8Array,
   options: ExtractXlsxOptions = {},

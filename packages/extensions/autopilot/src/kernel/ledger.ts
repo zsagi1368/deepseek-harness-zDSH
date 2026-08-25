@@ -13,10 +13,12 @@ import type { FailureKind, ModuleId } from './types.js'
 // Ports (host capabilities injected by the facade)
 // ---------------------------------------------------------------------------
 
+/** Monotonic-enough wall clock port the ledger reads timestamps from. */
 export interface Clock {
   now(): number
 }
 
+/** Source of unguessable tokens used for correlation ids. */
 export interface RandomSource {
   /** Short unguessable token for correlation ids. */
   token(): string
@@ -28,8 +30,14 @@ export interface StatsPersistence {
   save(snapshot: StatsSnapshot): void
 }
 
+/** Default `Clock` reading the host's `Date.now()`. */
 export const systemClock: Clock = { now: () => Date.now() }
 
+/**
+ * Build a `RandomSource` from any `() => number` randomness.
+ * @param random - zero-argument randomness source; defaults to `Math.random`.
+ * @returns a `RandomSource` producing base36 timestamp-salted tokens.
+ */
 export function createTokenSource(random = Math.random): RandomSource {
   return {
     token: () => Math.floor(random() * 0xffffffff).toString(36) + Date.now().toString(36),
@@ -40,12 +48,19 @@ export function createTokenSource(random = Math.random): RandomSource {
 // Cooldown & backoff
 // ---------------------------------------------------------------------------
 
+/** Exponential-backoff shape: wait = min(cap, base × factor^consecutive). */
 export interface BackoffParams {
   baseMs: number
   factor: number
   capMs: number
 }
 
+/**
+ * Cooldown window that applies after a given run of consecutive resumes.
+ * @param consecutive - number of consecutive resumes booked so far.
+ * @param params - base delay, growth factor, and cap in milliseconds.
+ * @returns the cooldown window in milliseconds for the NEXT attempt.
+ */
 export function effectiveCooldown(consecutive: number, params: BackoffParams): number {
   const raw = params.baseMs * Math.pow(params.factor, Math.max(0, consecutive))
   return Math.min(params.capMs, raw)
@@ -55,6 +70,7 @@ export function effectiveCooldown(consecutive: number, params: BackoffParams): n
 // Dual budgets per open turn
 // ---------------------------------------------------------------------------
 
+/** Dual per-turn budget: one pool for real decisions, one for failures. */
 export class TurnBudgets {
   private decisionsUsed = 0
   private failuresUsed = 0
@@ -64,23 +80,30 @@ export class TurnBudgets {
     readonly maxFailures: number,
   ) {}
 
+  /** Decision slots still available this turn. */
   get decisionsRemaining(): number {
     return this.maxDecisions - this.decisionsUsed
   }
 
+  /** Failure slots still available this turn. */
   get failuresRemaining(): number {
     return this.maxFailures - this.failuresUsed
   }
 
+  /** True once no decision slots remain. */
   get decisionBudgetExhausted(): boolean {
     return this.decisionsRemaining <= 0
   }
 
+  /** True once no failure slots remain. */
   get failureBudgetExhausted(): boolean {
     return this.failuresRemaining <= 0
   }
 
-  /** Reserve one real decision slot. Returns false when exhausted. */
+  /**
+   * Reserve one real decision slot. Returns false when exhausted.
+   * @returns true when a slot was reserved, false when the budget was already exhausted.
+   */
   tryConsumeDecision(): boolean {
     if (this.decisionBudgetExhausted) return false
     this.decisionsUsed += 1
@@ -90,6 +113,7 @@ export class TurnBudgets {
   /**
    * Record a failed decision attempt. Cancelled failures do NOT burn the
    * failure budget (the user pulled the plug, not the reviewer).
+   * @param kind - failure classification deciding whether the budget is charged.
    */
   recordFailure(kind: FailureKind): void {
     if (countsAgainstFailureBudget(kind)) this.failuresUsed += 1
@@ -100,6 +124,7 @@ export class TurnBudgets {
 // Per-session ledger
 // ---------------------------------------------------------------------------
 
+/** Per-session cooldown bookkeeping: attempt timestamps and consecutive resumes. */
 export class SessionLedger {
   private lastAttemptAt = 0
   private consecutiveResumes = 0
@@ -114,6 +139,8 @@ export class SessionLedger {
   /**
    * Book the attempt BEFORE performing the side effect. The returned cooldown
    * applies from now on regardless of success.
+   * @param now - timestamp of the attempt, from the host clock.
+   * @returns the cooldown window in milliseconds now in force.
    */
   beginAttempt(now: number): number {
     this.lastAttemptAt = now
@@ -121,22 +148,34 @@ export class SessionLedger {
     return this.currentWindow()
   }
 
+  /** Clear the consecutive-resume streak after a successful outcome. */
   noteRecovery(): void {
     this.consecutiveResumes = 0
   }
 
+  /** Reset the streak because the user interacted (no penalty for their turn). */
   noteUserMessage(): void {
     this.consecutiveResumes = 0
   }
 
+  /** Current count of consecutive resumes without recovery. */
   get consecutive(): number {
     return this.consecutiveResumes
   }
 
+  /**
+   * Earliest timestamp at which the next attempt may proceed.
+   * @returns the cooldown expiry timestamp in milliseconds.
+   */
   readyAt(): number {
     return this.lastAttemptAt + this.currentWindow()
   }
 
+  /**
+   * Whether an attempt right now would still be inside the cooldown window.
+   * @param now - timestamp to test against, from the host clock.
+   * @returns true while `now` is before `readyAt`.
+   */
   inCooldown(now: number): boolean {
     return now < this.readyAt()
   }
@@ -146,8 +185,10 @@ export class SessionLedger {
 // Stats buckets
 // ---------------------------------------------------------------------------
 
+/** Which time window a stats counter read aggregates over. */
 export type StatsBucketName = 'today' | 'all'
 
+/** Serializable snapshot of all stats buckets, as persisted and restored. */
 export interface StatsSnapshot {
   dayKey: string
   today: Record<string, number>
@@ -163,6 +204,7 @@ function dayKeyOf(now: number): string {
   return new Date(now).toISOString().slice(0, 10)
 }
 
+/** Named counters with daily rollover, optional per-module attribution, and restore support. */
 export class StatsCounters {
   private snapshot: StatsSnapshot
 
@@ -181,6 +223,13 @@ export class StatsCounters {
         }
   }
 
+  /**
+   * Increment a named counter in the daily and all-time buckets, rolling the
+   * daily bucket over when the calendar date changes.
+   * @param name - counter name to increment.
+   * @param by - amount to add; defaults to 1.
+   * @param moduleId - module to additionally attribute the increment to.
+   */
   inc(name: string, by = 1, moduleId?: ModuleId): void {
     // Roll the daily bucket on date change.
     const key = dayKeyOf(this.clock.now())
@@ -195,11 +244,23 @@ export class StatsCounters {
     }
   }
 
+  /**
+   * Read one counter's current value.
+   * @param name - counter name to read.
+   * @param bucket - time window to aggregate over; defaults to today.
+   * @returns the counter value, or 0 when never incremented.
+   */
   get(name: string, bucket: StatsBucketName = 'today'): number {
     const source = bucket === 'today' ? this.snapshot.today : this.snapshot.all
     return source[name] ?? 0
   }
 
+  /**
+   * Read one module's counter bucket.
+   * @param moduleId - module whose counters to read.
+   * @param bucket - time window to aggregate over; defaults to today.
+   * @returns the module's counters for the requested window.
+   */
   moduleTotals(moduleId: ModuleId, bucket: StatsBucketName = 'today'): Record<string, number> {
     if (bucket === 'all') return this.snapshot.perModule[moduleId]
     // Today-per-module is derivable only if tracked; keep 'today' module view
@@ -209,6 +270,7 @@ export class StatsCounters {
     )
   }
 
+  /** Wipe every bucket and restart the day key at the current date. */
   reset(): void {
     this.snapshot = {
       dayKey: dayKeyOf(this.clock.now()),
@@ -218,6 +280,10 @@ export class StatsCounters {
     }
   }
 
+  /**
+   * Deep-copy the current snapshot for persistence.
+   * @returns a detached `StatsSnapshot` safe to store or mutate elsewhere.
+   */
   exportSnapshot(): StatsSnapshot {
     return JSON.parse(JSON.stringify(this.snapshot)) as StatsSnapshot
   }
@@ -227,6 +293,7 @@ export class StatsCounters {
 // Hub
 // ---------------------------------------------------------------------------
 
+/** Owns the session/turn ledger maps and routes them to shared stats. */
 export class LedgerHub {
   private sessions = new Map<string, SessionLedger>()
   private turns = new Map<string, TurnBudgets>()
@@ -235,6 +302,12 @@ export class LedgerHub {
     private readonly stats: StatsCounters,
   ) {}
 
+  /**
+   * Get or lazily create the cooldown ledger for a session.
+   * @param sessionId - session whose ledger to look up.
+   * @param backoff - backoff parameters applied when creating a fresh ledger.
+   * @returns the session's `SessionLedger`.
+   */
   session(sessionId: string, backoff: BackoffParams): SessionLedger {
     let ledger = this.sessions.get(sessionId)
     if (!ledger) {
@@ -244,6 +317,10 @@ export class LedgerHub {
     return ledger
   }
 
+  /**
+   * Drop a session's ledger and every turn budget opened under it.
+   * @param sessionId - session to close.
+   */
   closeSession(sessionId: string): void {
     this.sessions.delete(sessionId)
     // Deleting during Map iteration is safe per spec and cannot resurface keys.
@@ -252,6 +329,14 @@ export class LedgerHub {
     }
   }
 
+  /**
+   * Get or lazily create the dual budgets for one turn of a session.
+   * @param sessionId - session the turn belongs to.
+   * @param turnId - turn whose budgets to look up.
+   * @param maxDecisions - decision budget applied when creating fresh budgets.
+   * @param maxFailures - failure budget applied when creating fresh budgets.
+   * @returns the turn's `TurnBudgets`.
+   */
   turn(sessionId: string, turnId: string, maxDecisions: number, maxFailures: number): TurnBudgets {
     const key = `${sessionId}#${turnId}`
     let budgets = this.turns.get(key)
@@ -262,10 +347,16 @@ export class LedgerHub {
     return budgets
   }
 
+  /**
+   * Release a turn's budgets once the turn is over.
+   * @param sessionId - session the turn belongs to.
+   * @param turnId - turn to release.
+   */
   endTurn(sessionId: string, turnId: string): void {
     this.turns.delete(`${sessionId}#${turnId}`)
   }
 
+  /** Shared counters all sessions and turns feed into. */
   get statsCounters(): StatsCounters {
     return this.stats
   }

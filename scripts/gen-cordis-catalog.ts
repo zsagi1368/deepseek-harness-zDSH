@@ -110,6 +110,8 @@ export const SERVICE_PAGE: Record<string, string> = {
   typert: 'typert.md',
   typertGateway: 'typert.md',
   userQuestions: 'user-questions.md',
+  agentMemory: 'extensions.md',
+  pluginGovernance: 'extensions.md',
   web: 'web.md',
   workflowEngine: 'workflow.md',
   workspaceRegistry: 'workspace.md',
@@ -161,6 +163,7 @@ export const SERVICE_WALK_EXEMPTIONS: Record<string, string> = {
   slots: 'client-side interface-typed browser service — packages/client/runtime/README.md owns the API',
   theme: 'client-side interface-typed browser service — packages/client/ui-theme/README.md owns the API',
   workspaces: 'client-side interface-typed browser service — packages/client/runtime/README.md owns the API',
+  workbench: 'zDSH client-side interface-typed browser service — packages/client/workbench/README.md owns the API',
 }
 
 /**
@@ -625,6 +628,17 @@ export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   WorkflowAgentEndInfo: 'event-local snapshot is owned by packages/workflow/workflow/src/index.ts',
   WorkflowAgentInfo: 'event-local snapshot is owned by packages/workflow/workflow/src/index.ts',
   WorkflowResultInfo: 'event-local snapshot is owned by packages/workflow/workflow/src/index.ts',
+  GovernanceRosterSnapshot: 'governance gateway roster contract is owned by packages/host/plugin-governance-host/src/types.ts',
+  GovernanceResult: 'governance gateway envelope contract is owned by packages/host/plugin-governance-host/src/types.ts',
+  GovernanceAcknowledgement: 'governance gateway receipt contract is owned by packages/host/plugin-governance-host/src/types.ts',
+  GovernanceHealthReport: 'governance gateway health contract is owned by packages/host/plugin-governance-host/src/types.ts',
+  GovernedPluginDetail: 'governance gateway detail contract is owned by packages/host/plugin-governance-host/src/types.ts',
+  PluginIdRequest: 'governance gateway request contract is owned by packages/host/plugin-governance-host/src/types.ts',
+  PresetNameRequest: 'governance gateway request contract is owned by packages/host/plugin-governance-host/src/types.ts',
+  PresetApplicationReport: 'governance gateway preset contract is owned by packages/host/plugin-governance-host/src/types.ts',
+  InstallPluginRequest: 'governance gateway request contract is owned by packages/host/plugin-governance-host/src/types.ts',
+  DisablePluginRequest: 'governance gateway request contract is owned by packages/host/plugin-governance-host/src/types.ts',
+  MemoryEntry: 'memory store row contract is owned by packages/memory/zdsh-memory/src/index.ts',
 }
 
 /** Repository data policy consumed by the Cordis catalog projector. */

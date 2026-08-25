@@ -14,11 +14,12 @@ import { makeAuditEvent, buildMarker } from '../kernel/audit.js'
 import type { AuditEvent } from '../kernel/types.js'
 import type { FailureKind } from '../kernel/types.js'
 import { ReviewCircuit } from './circuit.js'
-import type { CircuitConfig } from './circuit.js'
+import type { CircuitConfig, CircuitState } from './circuit.js'
 import { FeedbackLoop } from './feedback.js'
 import { buildReviewPrompt, parseVerdict, resolvePolicy } from './reviewer.js'
 import type { ReviewRequestContext, RiskRule, ToolPolicy } from './reviewer.js'
 
+/** Host capabilities the review module needs, injected by the facade. */
 export interface ReviewAdapters {
   /** Session-level enablement (fold of ap/state events). */
   sessionEnabled(sessionId: string): boolean
@@ -35,6 +36,7 @@ export interface ReviewAdapters {
   appendAudit(event: AuditEvent): void
 }
 
+/** Dependency bundle for `createReviewModule`: kernel, options, and adapters. */
 export interface CreateReviewModuleDeps {
   kernel: Kernel
   options: {
@@ -53,6 +55,7 @@ export interface CreateReviewModuleDeps {
   adapters: ReviewAdapters
 }
 
+/** Minimal shape of a pending approval request the module judges. */
 export interface ApprovalRequestLike2 {
   sessionId: string
   agentSessionId: string
@@ -62,9 +65,23 @@ export interface ApprovalRequestLike2 {
   turnId: string
 }
 
+/** How a judged approval request settled. */
 export type ReviewOutcome = 'allowed-once' | 'rejected' | 'cancelled' | 'unavailable' | 'delegate'
 
-export function createReviewModule(deps: CreateReviewModuleDeps) {
+/**
+ * Assemble the review module: policy table, circuit, feedback loop, and the
+ * approval-request handler implementing the claim conjunction.
+ * @param deps - kernel handle, module options, and host adapters.
+ * @returns the module surface consumed by the facade.
+ */
+export function createReviewModule(deps: CreateReviewModuleDeps): {
+  disposable: true
+  handleApprovalRequest(request: ApprovalRequestLike2): Promise<ReviewOutcome>
+  approveNext(toolName: string): string
+  consumeFeedback(callId: string, isError: boolean): string | undefined
+  circuitState(): CircuitState
+  resetCircuit(): void
+} {
   const { kernel, options, adapters } = deps
 
   const circuit = new ReviewCircuit(options.circuit, kernel.rng, () => kernel.clock.now())

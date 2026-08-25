@@ -1,9 +1,11 @@
-# zDSH
+# zDSH（尚未完成，即将上线）
 
 [English](README.md) | 中文
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 [![Stage](https://img.shields.io/badge/Stage-Production-blue)](https://github.com/zsagi1368/deepseek-harness-zDSH)
+
 [![Tests](https://img.shields.io/badge/Tests-1029_passing-brightgreen.svg)](https://github.com/zsagi1368/deepseek-harness-zDSH/actions)
 
 **zDSH**（`deepseek-harness-zDSH`）是一个生产级 agent harness 发行版，具有第一方插件治理体系、多提供商视觉处理管线、跨会话记忆和移动端就绪的 Web 界面。开箱即用；所有增强功能均为第一方核心插件，设计为可承受上游升级。
@@ -26,42 +28,51 @@ zDSH 系统性地解决这些问题：
 ## 包含内容
 
 ### 插件治理体系
-三层沙箱（进程/Worker/内联）· 加载-运行-健康守卫（熔断语义）· fail-closed 准入+持久化审批账本 · Loader 镜像注册表填充 · 本地路径 install/uninstall。
+
+三层沙箱（进程 / Worker / 内联）· 加载-运行-健康守卫（熔断语义）· fail-closed 准入 + 持久化审批账本 · Loader 镜像注册表填充 · 经准入管线的本地路径与 npm 注册表 install/uninstall。
 
 ### Omnivision 视觉管线
-多提供商链（OpenAI / Anthropic / Gemini / OVH / 智谱）自动故障转移 · SSRF 防护（DNS 解析+私网段+IPv4 映射 IPv6 校验）· realpath 路径策略含符号链接穿越保护 · KV-safe Shadow History。
+
+多提供商链（OpenAI / Anthropic / Gemini / OVH / 智谱）自动故障转移 · SSRF 防护（DNS 解析 + 私网段 + IPv4 映射 IPv6 校验）· realpath 路径策略含符号链接穿越保护 · KV-safe Shadow History。
 
 ### 跨会话记忆
-从会话事件启发式抽取决策/事实/偏好 · 日分片 JSON 存储于 `.dsh-zdsh/memory/` · 新会话启动按关键词重叠度注入 Top-K · 零 LLM 调用零嵌入向量。
+
+从会话事件启发式抽取决策 / 事实 / 偏好 · 日分片 JSON 存储于 `.dsh-zdsh/memory/` · 新会话启动按关键词重叠度注入 Top-K · 零 LLM 调用零嵌入向量。
 
 ### Host 治理网关
-十个 Typert 直接 Remote 经 API 网关暴露：名册/详情/启停/健康/批准/预设保存加载删除 · 服务端 fail-closed 准入强制+补偿式持久化。
+
+Typert 直接 Remote 经 API 网关暴露：名册 / 详情 / 启停 / 健康 / 批准 / 预设保存加载删除 · 服务端 fail-closed 准入强制 + 补偿式持久化。
 
 ### Web 管理界面
-治理标签页与官方 inventory 标签页共存于设置页：名册表格（状态/版本/审批徽章）· 启停操作 · 健康概览条 · 预设管理 · 移动端响应式布局。
+
+治理标签页与官方 inventory 标签页共存于设置页：名册表格（状态 / 版本 / 审批徽章）· 启停操作 · 健康概览条 · 预设管理 · 移动端响应式布局。
 
 ### 额外改进
 
 | 领域 | 增强 |
 |---|---|
-| 网络 | web-fetch HTTP 代理支持（proxyUrl 配置 + HTTPS_PROXY 回退） |
+| 网络 | web-fetch HTTP 代理支持（`proxyUrl` 配置 + `HTTPS_PROXY` 回退） |
 | 会话 | headless `--resume <session-id>` 用于 CI 与长任务 |
 | 界面 | 会话置顶 · 在资源管理器中显示 · 移动端响应式布局（768px 断点） |
-| 文件 | EISDIR 原子写修复+清晰错误信息 |
+| 文件 | EISDIR 原子写修复 + 清晰错误信息 |
 | LLM | CJK 感知 token 计价（修复中文低估 3–4×） |
 | 治理 | LoadGuard semver 比较（消除字典序误判） |
 | 安全 | 沙箱子进程环境变量白名单派生 |
 | 路径 | Windows 跨盘符逃逸守卫 + ::ffff: IPv6 解包 SSRF 校验 |
 
-## 快速开始
+## Run from source
 
-### 前置条件
+想在发布前体验 `our/v2` 的最新改动，可直接克隆并本地构建：前置条件与完整命令见下文 Getting started 一节。
+
+## Getting started
+
+### Prerequisites
 
 - Node.js ≥ 22.19.0（或 ≥ 24.0.0）
 - pnpm ≥ 11.x
 - Git ≥ 2.40
 
-### 安装并运行
+### Install and run
 
 ```sh
 git clone https://github.com/zsagi1368/deepseek-harness-zDSH.git
@@ -71,11 +82,11 @@ pnpm run build
 pnpm dsh web
 ```
 
-Web UI 启动于 `http://127.0.0.1:3080`。前往 **设置 → 插件** 查看 governance 标签页。
+Web UI 启动于 `http://127.0.0.1:3080`。前往 **Settings → Plugins** 查看治理标签页。
 
-### 安装到指定目录
+### Install to a custom directory
 
-设置 `DSH_BRANCH_HOME` 环境变量后再首次启动：
+首次启动前设置 `DSH_BRANCH_HOME` 环境变量：
 
 ```sh
 # Linux / macOS
@@ -84,41 +95,112 @@ export DSH_BRANCH_HOME="$HOME/my-custom-zdsh"
 $env:DSH_BRANCH_HOME = "D:\my-custom-zdsh"
 ```
 
-所有持久化数据（记忆/审批/插件状态/预设）均存储在此目录下。
+所有持久化数据（记忆 / 审批 / 插件状态 / 预设）都存放在该目录下。
 
-### 卸载
+### Uninstall
 
 ```sh
+# 1. Remove the repository
 rm -rf deepseek-harness-zDSH
-rm -rf ~/.dsh-zdsh   # 或自定义 DSH_BRANCH_HOME 路径
+
+# 2. Remove the data directory
+rm -rf ~/.dsh-zdsh        # or your custom DSH_BRANCH_HOME path
+
+# 3. Remove git credentials (optional)
+# Settings → SSH keys → remove the deploy key you added for this repo
 ```
 
-不安装全局 npm 包；一切从仓库 checkout 运行。
+不安装任何全局 npm 包；一切均从仓库检出目录运行。
 
-### 环境变量
+### Environment variables
 
 | 变量 | 用途 | 默认值 |
 |---|---|---|
-| `DSH_BRANCH_HOME` | 数据根目录 | `~/.dsh-zdsh` |
+| `DSH_BRANCH_HOME` | 数据根目录（记忆 / 审批 / 插件状态） | `~/.dsh-zdsh` |
 | `OPENAI_API_KEY` | OpenAI 视觉提供商 | — |
 | `ANTHROPIC_API_KEY` | Anthropic 视觉提供商 | — |
 | `GEMINI_API_KEY` | Gemini 视觉提供商 | — |
 
-详见详细操作指南。
+高级配置与发布历史见 [远程访问指南](docs/dsh/remote-access.zh.md) 与 [变更记录](docs/dsh/CHANGELOG.zh.md)。
 
-## 远程访问
+## Architecture
 
-配合 Tailscale Serve 可从任何设备安全私网访问。响应式适配至 375px 视口。
+```
+packages/
+├── plugins/plugin-governance/       # Governance core (spec, registry, guards, sandbox)
+├── host/plugin-governance-host/     # Host-plane gateway service (10 Remotes)
+├── client/ui-plugin-manager/        # Web Settings governance tab
+├── client/workbench/                # IDE dock (terminal, git, file browser)
+├── extensions/omnivision/           # Vision pipeline (providers, bridge, security)
+├── extensions/webstack/             # Integrated search & fetch kernel
+├── extensions/file-hub/             # File management
+├── extensions/autopilot/            # Automation orchestration
+├── extensions/plugin-center/       # Plugin center UI
+├── memory/zdsh-memory/              # Cross-session memory plugin
+└── ...                              # All platform packages unchanged from upstream
+```
 
-## 许可证
+## Remote access
+
+配合 [Tailscale Serve](docs/dsh/remote-access.zh.md) 开箱即用，可从任何设备安全私网访问。响应式适配至 375px 视口。
+
+## Upstream sync
+
+```sh
+git remote add upstream https://github.com/deepseek-ai/deepseek-harness.git
+git fetch upstream
+git merge upstream/master
+```
+
+zDSH 与上游保持真实祖先关系——合并就是普通的 Git 操作。
+
+## Community
+
+- 报告问题或提交建议：[GitHub Issues](https://github.com/zsagi1368/deepseek-harness-zDSH/issues)
+
+## License
 
 [MIT](LICENSE)
 
 ---
 
 <details>
-<summary>关于上游项目 DeepSeek Harness</summary>
+<summary>关于 DeepSeek Harness（上游项目）</summary>
 
-DeepSeek Harness（`dsh`）是由 DeepSeek AI 开发的开源 agent harness。采用一切皆插件架构，由 Cordis 驱动。目前处于开发者预览阶段，详见官方仓库获取文档与社区资源。
+<br>
+
+# DeepSeek Harness
+
+DeepSeek Harness（`dsh`）是由 [DeepSeek AI](https://deepseek.com) 开发的开源 agent harness。
+
+采用一切皆插件架构，由 [Cordis](https://github.com/cordiverse/cordis) 驱动，其设计思想见论文 [_A Programming Paradigm for Spatiotemporal Composability_](https://github.com/cordiverse/paper)。
+
+## Developer preview
+
+DeepSeek Harness 当前处于开发者预览阶段，迭代迅速。**将存在破坏性兼容变更。**
+
+## Run
+
+```sh
+npx @deepseek-ai/dsh web
+```
+
+## Community and support
+
+- 通过 [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions) 提交反馈。
+- 加入 [Discord 社区](https://discord.gg/Ycq5dCaS4)。
+- 贡献规范见上游仓库的 CONTRIBUTING.md。
+
+## Development
+
+从[开发指南](docs/development.zh.md)与[架构文档](docs/architecture.zh.md)开始。
+
+代理开发请遵循 [AGENTS.md](AGENTS.md)。
+
+## License
+
+[MIT](LICENSE)
+
+第三方依赖披露见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 </details>

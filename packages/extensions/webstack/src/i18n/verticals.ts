@@ -53,7 +53,12 @@ export const verticalsMessagesEn: Readonly<Record<VerticalsI18nKey, string>> = O
     'Selector-extracted content exceeded its budget and was truncated.',
 })
 
-/** 取垂直频道提示文案；未知 locale 安全回落中文。 */
+/**
+ * 取垂直频道提示文案；未知 locale 安全回落中文。
+ * @param key - 垂直频道文案键。
+ * @param locale - 语言（默认 zh）。
+ * @returns 文案文本。
+ */
 export function verticalsText(key: VerticalsI18nKey, locale: 'zh' | 'en' = 'zh'): string {
   return locale === 'en' ? verticalsMessagesEn[key] : verticalsMessagesZh[key]
 }

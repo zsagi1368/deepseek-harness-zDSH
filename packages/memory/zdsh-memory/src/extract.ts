@@ -36,13 +36,23 @@ export const PREFERENCE_CUE = /(?:不要|不许|改成|别)/u
  */
 const BARE_BIE_COMPOUND_PRECEDING = /[特区判级差分作性]/u
 
-/** Normalize whitespace runs and truncate to {@link MEMORY_TEXT_MAX_CHARS}. */
+/**
+ * Normalize whitespace runs and truncate to {@link MEMORY_TEXT_MAX_CHARS}.
+ * @param text - the raw text to normalize and bound.
+ * @param max - the character cap including any ellipsis; defaults to
+ * {@link MEMORY_TEXT_MAX_CHARS}.
+ * @returns the normalized text, truncated with an ellipsis when over `max`.
+ */
 export function truncateMemoryText(text: string, max: number = MEMORY_TEXT_MAX_CHARS): string {
   const normalized = text.replace(/\s+/gu, ' ').trim()
   return normalized.length <= max ? normalized : `${normalized.slice(0, max - 1)}…`
 }
 
-/** Split one message into trimmed non-empty sentences. */
+/**
+ * Split one message into trimmed non-empty sentences.
+ * @param text - the message text to split.
+ * @returns the trimmed sentences, excluding empties.
+ */
 export function splitSentences(text: string): string[] {
   return text.split(SENTENCE_BREAK)
     .map(sentence => sentence.trim())
@@ -95,6 +105,8 @@ export interface CodeBlockStats {
 /**
  * Count fenced code blocks and their languages. Fence lines toggle open/closed
  * state; only opening fences count, so unterminated trailing fences still land.
+ * @param text - the text to scan for fenced code blocks.
+ * @returns the block count and, when any fence named a language, the dominant one.
  */
 export function codeBlockStats(text: string): CodeBlockStats {
   const counts = new Map<string, number>()

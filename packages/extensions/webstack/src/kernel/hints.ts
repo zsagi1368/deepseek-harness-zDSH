@@ -57,7 +57,11 @@ function matchFreshness(
   return undefined
 }
 
-/** 中文字符占比（去空白后分母）；>0.3 视为中文语境。 */
+/**
+ * 中文字符占比（去空白后分母）；>0.3 视为中文语境。
+ * @param query - 原始查询串。
+ * @returns 中文占比（0–1；空查询为 0）。
+ */
 export function chineseRatio(query: string): number {
   const compact = Array.from(query.replace(/\s+/g, ''))
   if (compact.length === 0) return 0

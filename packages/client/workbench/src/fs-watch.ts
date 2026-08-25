@@ -11,12 +11,15 @@ import { watch } from 'node:fs'
 import { join } from 'node:path'
 import type { FsChangeEvent, FsEventsFrame } from './shared/fs-protocol.ts'
 
+/** Opaque handle to an active filesystem watch. */
 export interface WatchHandle {
   close(): void
 }
 
+/** Kind of filesystem change the manager reports; one kind keeps the wire honest. */
 export type WatchEventKind = 'modify'
 
+/** Spawner seam producing a watch handle for one root; injectable for tests. */
 export type WatchFactory = (root: string, onChange: (kind: WatchEventKind, filename: string | null) => void) => WatchHandle
 
 function defaultWatchFactory(root: string, onChange: (kind: WatchEventKind, filename: string | null) => void): WatchHandle {
@@ -28,6 +31,7 @@ function defaultWatchFactory(root: string, onChange: (kind: WatchEventKind, file
   })
 }
 
+/** Tuning knobs for the watcher manager: debounce, concurrency cap, idle teardown, factory. */
 export interface FsWatcherManagerOptions {
   debounceMs?: number
   maxRoots?: number
@@ -50,6 +54,7 @@ export interface WatcherFrame {
   domain: string
 }
 
+/** Reference-counted debouncing watcher manager; the last subscriber leaving schedules teardown. */
 export class FsWatcherManager {
   private readonly roots = new Map<string, RootEntry>()
   private readonly listeners = new Set<(frame: WatcherFrame) => void>()
@@ -65,6 +70,11 @@ export class FsWatcherManager {
     this.factory = options.watchFactory ?? defaultWatchFactory
   }
 
+  /**
+   * Subscribe to relayed watcher frames.
+   * @param listener - callback invoked for every fs batch and foreign-domain frame.
+   * @returns a disposer that removes the listener and schedules idle sweeps.
+   */
   subscribe(listener: (frame: WatcherFrame) => void): () => void {
     this.listeners.add(listener)
     return () => {
@@ -73,7 +83,11 @@ export class FsWatcherManager {
     }
   }
 
-  /** Subscribe one consumer connection to a set of roots. */
+  /**
+   * Subscribe one consumer connection to a set of roots.
+   * @param roots - the root paths to watch (empty/invalid entries are skipped).
+   * @returns a disposer that releases one reference on each added root.
+   */
   addRoots(roots: string[]): () => void {
     const added: string[] = []
     for (const root of roots) {
@@ -101,19 +115,32 @@ export class FsWatcherManager {
     }
   }
 
-  /** Relay a foreign-domain frame (e.g. tasks revision pings) to all SSE clients. */
+  /**
+   * Relay a foreign-domain frame (e.g. tasks revision pings) to all SSE clients.
+   * @param frame - the frame to relay; domain is preserved verbatim.
+   */
   broadcast(frame: WatcherFrame): void {
     for (const listener of this.listeners) listener(frame)
   }
 
+  /**
+   * Number of roots currently under watch.
+   * @returns the count of live root entries.
+   */
   activeRootCount(): number {
     return this.roots.size
   }
 
+  /**
+   * Whether a root degraded to a shallow watch (recursive unsupported).
+   * @param root - the root path to query.
+   * @returns true when the root's watcher is degraded or unknown.
+   */
   isDegraded(root: string): boolean {
     return this.roots.get(root)?.degraded ?? false
   }
 
+  /** Force-flush pending debounce batches; test-only entry point. */
   flushForTests(): void {
     for (const entry of this.roots.values()) {
       if (entry.debounceTimer !== undefined) {

@@ -1,11 +1,4 @@
 {
-  // Client face of a split-face package (mirrors packages/client/workbench):
-  // full src on the client base — src/client carries React JSX while the
-  // host-side files still need node ambient types on top, so the client face
-  // keeps the node types override the single-project layout used before the
-  // split. References mirror every direct import of webstack sources;
-  // transitive graphs stay behind each referenced project's declaration
-  // boundary.
   "extends": "../../../tsconfig.base.client.json",
   "compilerOptions": {
     "rootDir": "src",
@@ -24,6 +17,9 @@
       "path": "../../../vendor/schemastery"
     },
     {
+      "path": "../../runtime-diagnostics/invariants"
+    },
+    {
       "path": "../../client/locale"
     },
     {
@@ -34,6 +30,9 @@
     },
     {
       "path": "../../client/ui-slots"
+    },
+    {
+      "path": "../../client/ui-settings-plugins"
     },
     {
       "path": "../../core/tools"

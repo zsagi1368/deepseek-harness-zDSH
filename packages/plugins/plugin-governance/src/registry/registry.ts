@@ -19,6 +19,11 @@ import {
 } from '../spec/index.js'
 import { semverCompare } from '../semver.js'
 
+/**
+ * DefaultPluginRegistry - 默认插件注册表实现
+ *
+ * 管理所有已加载的插件：注册、验证、启用/禁用、状态跟踪与清理。
+ */
 export class DefaultPluginRegistry implements PluginRegistry {
   private plugins = new Map<string, Plugin>()
   private statusMap = new Map<string, PluginStatus>()
@@ -288,6 +293,8 @@ export class DefaultPluginRegistry implements PluginRegistry {
 
   /**
    * Register a cleanup function for a plugin.
+   * @param pluginId - the plugin's normalized id.
+   * @param fn - the cleanup function to run on dispose.
    */
   registerDisposable(pluginId: string, fn: () => void): void {
     const disposables = this.disposables.get(pluginId)

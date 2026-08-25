@@ -29,6 +29,10 @@ function sleep(ms: number): Promise<void> {
  * data root. After normalization any escaping candidate loses the root
  * prefix, so a strict prefix comparison suffices on drive-letter and POSIX
  * layouts alike.
+ * @param dataRoot - the root directory artifacts must stay under.
+ * @param segments - the path segments joined below the root.
+ * @returns the resolved path, guaranteed inside the data root.
+ * @throws an error when the candidate path escapes the data root.
  */
 export function containedUnderRoot(dataRoot: string, ...segments: string[]): string {
   const root = resolve(dataRoot)
@@ -42,7 +46,12 @@ function statusFileFor(dataRoot: string): string {
   return containedUnderRoot(dataRoot, 'guardian', 'status.json')
 }
 
-/** Validate the operator-supplied config path before any IO touches it. */
+/**
+ * Validate the operator-supplied config path before any IO touches it.
+ * @param raw - the raw --config argument.
+ * @returns the resolved absolute path of the config file.
+ * @throws an error when the path is not an existing absolute file.
+ */
 export function validatedConfigPath(raw: string): string {
   const resolved = resolve(raw)
   const parentDir = resolve(resolved, sep)
@@ -70,7 +79,12 @@ async function loadConfig(rawPath: string): Promise<GuardianConfig> {
   return JSON.parse(text) as GuardianConfig
 }
 
-/** Probe the local web host; any HTTP response under 500 counts as alive. */
+/**
+ * Probe the local web host; any HTTP response under 500 counts as alive.
+ * @param port - the loopback port to probe.
+ * @param timeoutMs - the probe timeout in milliseconds.
+ * @returns true when the host answered below 500, false otherwise.
+ */
 export async function probeLoopback(port: number, timeoutMs = 2500): Promise<boolean> {
   try {
     const controller = new AbortController()
@@ -95,7 +109,11 @@ interface LaunchSpec {
   args: string[]
 }
 
-/** Boot the host command again as its own detached process (no shell). */
+/**
+ * Boot the host command again as its own detached process (no shell).
+ * @param launch - the validated launch command and arguments.
+ * @returns the new process pid, or null when spawning failed.
+ */
 export async function relaunchHost(launch: LaunchSpec): Promise<number | null> {
   return import('node:child_process').then(
     ({ spawn }) => {
@@ -113,6 +131,10 @@ export async function relaunchHost(launch: LaunchSpec): Promise<number | null> {
   )
 }
 
+/**
+ * The watchdog loop: probes the host each tick, persists status, and relaunches
+ * the host within the restart budget.
+ */
 export class Watchdog {
   private readonly budget = new RestartBudget()
   private readonly bootId = randomUUID()
@@ -134,6 +156,11 @@ export class Watchdog {
     }
   }
 
+  /**
+   * Run one watchdog tick: probe the host and act on the verdict.
+   * @param nowMs - the current time in milliseconds, used by the restart budget.
+   * @returns the persisted state, or `exit` when the watchdog gives up.
+   */
   async tick(nowMs: number): Promise<GuardianStatus['state'] | 'exit'> {
     const healthy = await probeLoopback(this.config.port)
     if (healthy) {
@@ -156,6 +183,10 @@ export class Watchdog {
   }
 }
 
+/**
+ * Run the watchdog loop indefinitely until it gives up.
+ * @param config - the verified watchdog configuration.
+ */
 export async function runWatchdog(config: GuardianConfig): Promise<void> {
   mkdirSync(containedUnderRoot(config.dataRoot, 'guardian'), { recursive: true })
   const statusFile = statusFileFor(config.dataRoot)
@@ -169,7 +200,11 @@ export async function runWatchdog(config: GuardianConfig): Promise<void> {
   }
 }
 
-// Auto-run only when invoked directly as the process script.
+/**
+ * Auto-run the watchdog only when invoked directly as the process script.
+ * @param argv - the process argument vector.
+ * @param isDirect - whether this module was invoked as the entry script.
+ */
 export function autoRunOnImport(argv: string[], isDirect: boolean): void {
   if (!isDirect) return
   const rawCfg = argAfter(argv, '--config')

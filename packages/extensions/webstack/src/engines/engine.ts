@@ -26,7 +26,11 @@ import { retryAfterMsFromHeaders } from './pool.js'
 /** 免费池引擎 id 固定顺序（探针准入后的公示顺序与此一致）。 */
 export const FREE_POOL_ENGINE_IDS = ['ddg', 'bing-lite', 'searxng'] as const
 
-/** 描述符深冻结工具：外层与嵌套 caps/cost 一并只读，防运行期篡改名片。 */
+/**
+ * 描述符深冻结工具：外层与嵌套 caps/cost 一并只读，防运行期篡改名片。
+ * @param value - 待冻结的值（对象递归冻结，其余原样返回）。
+ * @returns 冻结后的同一引用。
+ */
 export function freezeDescriptor<T>(value: T): T {
   if (typeof value === 'object' && value !== null) {
     for (const key of Object.keys(value)) {
@@ -40,6 +44,8 @@ export function freezeDescriptor<T>(value: T): T {
 /**
  * 单遍解码五个白名单 HTML 实体（&amp;&lt;&gt;&quot;&#x27;）。单遍替换避免
  * `&amp;lt;` 类双重解码把用户内容误当转义序列（解码输出不再二次扫描）。
+ * @param text - 含实体编码的原始文本。
+ * @returns 单遍解码后的文本。
  */
 export function decodeHtmlEntities(text: string): string {
   return text.replace(/&(amp|lt|gt|quot|#x27);/g, (_, name: string) => {
@@ -58,12 +64,20 @@ export function decodeHtmlEntities(text: string): string {
   })
 }
 
-/** 去 HTML 标签 + 白名单实体解码，得到纯文本（两端空白裁剪）。 */
+/**
+ * 去 HTML 标签 + 白名单实体解码，得到纯文本（两端空白裁剪）。
+ * @param fragment - 原始 HTML 片段。
+ * @returns 纯文本结果。
+ */
 export function stripHtmlToText(fragment: string): string {
   return decodeHtmlEntities(fragment.replace(/<[^>]*>/g, '')).trim()
 }
 
-/** 剥掉 RSS 节点常见的 CDATA 包裹；无包裹则原样返回。 */
+/**
+ * 剥掉 RSS 节点常见的 CDATA 包裹；无包裹则原样返回。
+ * @param raw - 原始节点文本。
+ * @returns 剥壳后的内容（无包裹时原样）。
+ */
 export function unwrapCdata(raw: string): string {
   const m = /^\s*<!\[CDATA\[([\s\S]*?)\]\]>\s*$/.exec(raw)
   return m === null ? raw : (m[1] ?? '')
@@ -222,6 +236,7 @@ function getPipeline(): Promise<SafetyPipeline> {
  * 3. 成功命中把 provenance.engine 盖章为本 descriptor.id（W-B-16 可解释性）。
  */
 export abstract class BaseEngine {
+  /** 引擎描述符（id/名称/能力/费用），构造时固定且只读。 */
   readonly descriptor: EngineDescriptor
 
   /** 最近一次尝试的审计记录（失败路径 response 无法承载，故挂在实例上供聚合器回读）。 */
@@ -302,6 +317,10 @@ export const KEYED_ENGINE_IDS = [
  * 从请求级凭据通道取本引擎密钥（W-B-55 的引擎侧唯一入口）：缺席或空串一律抛
  * auth——keyed 引擎没有「匿名降级」，缺键即结构化失败，交聚合器换候选引擎。
  * 密钥只进请求头，绝不拼入 URL、绝不落日志（调用方契约由 types.ts 锁定）。
+ * @param req - 引擎层请求，凭据通道位于 req.credentials。
+ * @param engineId - 本引擎 id（用于错误定位）。
+ * @param credSlot - 密钥所在的凭据槽位名。
+ * @returns 非空密钥；缺席或空串时抛 auth 错误。
  */
 export function requireCredential(
   req: EngineSearchRequest,
@@ -320,6 +339,10 @@ export function requireCredential(
  * （Retry-After 头换算 retryAfterMs，HTTP-date 形态不做时钟猜测）、
  * 401/403 → auth（键之过，交键池冷却）、其余 ≥400 → http-upstream。
  * 状态 <400 时不应调用本函数（非 2xx 的 3xx 已被出站层复验消化）。
+ * @param engineId - 本引擎 id（错误定位与键池冷却键）。
+ * @param status - 上游 HTTP 状态码。
+ * @param headers - 上游响应头（429 时读取 Retry-After）。
+ * @returns 归一化后的 EngineError。
  */
 export function keyedHttpStatusError(
   engineId: string,
@@ -350,6 +373,9 @@ export function keyedHttpStatusError(
  * 在统一出站请求上挂 POST JSON 体（与 pool.HTTP_POST_BRIDGED 同款桥接思路：
  * OutboundRequest 契约的 body 位尚未开放，先以运行期扩展位承载序列化载荷；
  * 集成侧放宽契约后此处收编为正式字段，六个 keyed 适配器零 diff 切换）。
+ * @param req - 统一出站请求（原地挂载 body 扩展位）。
+ * @param payload - 待序列化的 POST JSON 载荷。
+ * @returns 挂好 body 的同一请求对象。
  */
 export function attachPostBody(req: OutboundRequest, payload: unknown): OutboundRequest {
   (req as { body?: string }).body = JSON.stringify(payload)

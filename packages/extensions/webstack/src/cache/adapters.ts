@@ -40,7 +40,10 @@ function isEnvelope(value: unknown): value is StoredEnvelope {
   return typeof rec.storedAt === 'number' && typeof rec.ttlMs === 'number' && 'value' in rec
 }
 
-/** 默认文件缓存目录：<home>/.webstack/cache（win/linux 通用 path.join）。 */
+/**
+ * 默认文件缓存目录：<home>/.webstack/cache（win/linux 通用 path.join）。
+ * @returns 默认缓存目录绝对路径。
+ */
 export function defaultFileCacheDir(): string {
   return join(homedir(), '.webstack', 'cache')
 }
@@ -239,6 +242,9 @@ export interface PersistConfigView {
  * 持久层选择器：`persist==='durable'` 才启用 L1——优先宿主 storage seam
  * （能力探测到位时），否则回落文件适配器（<home>/.webstack/cache）。
  * 其余取值（默认 'memory'）返回 undefined = 纯内存 L0。
+ * @param config - 持久化配置视图。
+ * @param seams - 宿主接缝（storage seam 优先于文件适配器）。
+ * @returns L1 持久层适配器；非 durable 配置时为 undefined。
  */
 export function pickPersistence(
   config: PersistConfigView,

@@ -45,6 +45,7 @@ export type RiskLevel = 'low' | 'medium' | 'high'
 // Audit vocabulary (`ap/*`). Nine families, all appended ignorable.
 // ---------------------------------------------------------------------------
 
+/** Closed runtime list of the nine `ap/*` audit event names. */
 export const AUDIT_EVENTS = [
   'ap/state',
   'ap/resumed',
@@ -57,14 +58,17 @@ export const AUDIT_EVENTS = [
   'ap/override',
 ] as const
 
+/** Union of all audit event names, derived from `AUDIT_EVENTS`. */
 export type AuditEventName = (typeof AUDIT_EVENTS)[number]
 
+/** Emitted when AutoPilot's enabled state or module set changes. */
 export interface ApStatePayload {
   enabled: boolean
   modules: Record<ModuleId, boolean>
   source: string
 }
 
+/** Emitted on each automatic resume attempt after a turn goes idle. */
 export interface ApResumedPayload {
   sessionId: string
   attempt: number
@@ -73,17 +77,20 @@ export interface ApResumedPayload {
   backoffMs: number
 }
 
+/** Emitted instead of a resume when a turn is deliberately not continued. */
 export interface ApSkippedPayload {
   sessionId: string
   reason: SkipReason
 }
 
+/** Emitted when the loop guard detects idle-loop signals. */
 export interface ApLoopPayload {
   sessionId: string
   signals: LoopSignal[]
   restarted: boolean
 }
 
+/** Emitted for every guard decision on a pending tool call. */
 export interface ApDecisionPayload {
   sessionId: string
   toolName: string
@@ -92,6 +99,7 @@ export interface ApDecisionPayload {
   reasonDigest?: string
 }
 
+/** Emitted over a one-shot grant's lifecycle phases. */
 export interface ApGrantPayload {
   grantId: string
   phase: 'issued' | 'consumed' | 'settled' | 'expired'
@@ -99,6 +107,7 @@ export interface ApGrantPayload {
   sessionId?: string
 }
 
+/** Emitted with each reviewer verdict and any model failure fallback. */
 export interface ApVerdictPayload {
   verdictId: string
   decision: 'allow' | 'deny'
@@ -108,6 +117,7 @@ export interface ApVerdictPayload {
   fallback?: FailureKind
 }
 
+/** Emitted when consecutive denials trip the review circuit breaker. */
 export interface ApCircuitPayload {
   action: 'delegate' | 'reject' | 'abort-turn'
   consecutiveDenials: number
@@ -115,6 +125,7 @@ export interface ApCircuitPayload {
   windowSize: number
 }
 
+/** Emitted over a human one-shot override's lifecycle phases. */
 export interface ApOverridePayload {
   overrideId: string
   toolName: string
@@ -122,6 +133,7 @@ export interface ApOverridePayload {
   phase: 'issued' | 'consumed' | 'expired'
 }
 
+/** Event-name → payload-type mapping for every audit family. */
 export type AuditPayloadMap = {
   'ap/state': ApStatePayload
   'ap/resumed': ApResumedPayload
@@ -145,6 +157,7 @@ export const VISIBLE_AUDIT_EVENTS: readonly AuditEventName[] = [
   'ap/verdict',
 ]
 
+/** A single audit record whose payload type is keyed by the event name. */
 export interface AuditEventFor<N extends AuditEventName> {
   name: N
   /** Stable correlation id, embedded in any model-visible marker. */

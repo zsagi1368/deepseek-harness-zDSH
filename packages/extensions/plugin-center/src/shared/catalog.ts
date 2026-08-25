@@ -1,11 +1,16 @@
 import { normalizePluginId, type CpResult } from './types.js'
 import { assertSafeUrl } from './ssrc-guard.js'
 
+/** How strongly an entry is attested before it is shown as installable. */
 export type EvidenceLevel = 'discovered' | 'installable' | 'verified' | 'recommended'
+/** How precisely a pinned version is known to match the target environment. */
 export type CompatLevel = 'exact' | 'range-supported' | 'unknown'
+/** Whether an entry may run lifecycle scripts during install. */
 export type ScriptsPolicy = 'none' | 'allowlisted'
+/** Where an installable entry is fetched from. */
 export type CatalogSource = 'github' | 'npm'
 
+/** A short bilingual (zh/en) text payload. */
 export interface BilingualText {
   zh: string
   en: string
@@ -36,6 +41,11 @@ export interface CatalogEntry {
 
 const COMMIT_HEX = /^[0-9a-f]{40}$/
 
+/**
+ * Whether a string is a valid pinned commit: exactly 40 lowercase hex digits.
+ * @param commit - the candidate commit hash.
+ * @returns true when the string matches the pinned-commit shape.
+ */
 export function isValidCommit(commit: string): boolean {
   return COMMIT_HEX.test(commit)
 }
@@ -56,7 +66,9 @@ function textOk(value: unknown): value is BilingualText {
 }
 
 /** Structural validation; ids are normalized and every argv-bound field is
- * pinned to a strict charset (these values reach command construction). */
+ * pinned to a strict charset (these values reach command construction).
+ * @param raw - the untrusted catalog entry data to validate.
+ * @returns the normalized entry, or an error result. */
 export function validateCatalogEntry(raw: unknown): CpResult<CatalogEntry> {
   if (typeof raw !== 'object' || raw === null) {
     return { ok: false, error: { code: 'invalid_plan', message: 'entry is not an object' } }
@@ -195,7 +207,11 @@ const COMPAT_RANK: Record<CompatLevel, number> = {
   unknown: 0,
 }
 
-/** Default ordering: recommendation first, then evidence, exact compat, recency. */
+/**
+ * Default ordering: recommendation first, then evidence, exact compat, recency.
+ * @param entries - the entries to sort; the input array is not mutated.
+ * @returns a new array sorted by recommendation, evidence, compat, recency.
+ */
 export function sortEntries(entries: CatalogEntry[]): CatalogEntry[] {
   return [...entries].sort((a, b) => {
     const ev = EVIDENCE_RANK[b.evidence] - EVIDENCE_RANK[a.evidence]
@@ -206,6 +222,7 @@ export function sortEntries(entries: CatalogEntry[]): CatalogEntry[] {
   })
 }
 
+/** A single page of a larger listing with paging metadata. */
 export interface Page<T> {
   items: T[]
   page: number
@@ -213,7 +230,13 @@ export interface Page<T> {
   total: number
 }
 
-/** Bounded pagination; out-of-range pages clamp to the last non-empty page. */
+/**
+ * Bounded pagination; out-of-range pages clamp to the last non-empty page.
+ * @param items - the full item list to slice.
+ * @param page - the requested page number, clamped to a valid range.
+ * @param pageSize - the maximum number of items per page.
+ * @returns the paged slice with paging metadata.
+ */
 export function paginate<T>(items: T[], page: number, pageSize: number): Page<T> {
   const total = items.length
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
@@ -227,12 +250,19 @@ export function paginate<T>(items: T[], page: number, pageSize: number): Page<T>
   }
 }
 
+/** Filter terms for catalog search: free text, category, and evidence level. */
 export interface SearchQuery {
   text?: string | undefined
   category?: string | undefined
   evidenceOnlyRecommended?: boolean | undefined
 }
 
+/**
+ * Filter entries by category, evidence level, and free-text search.
+ * @param entries - the entries to filter.
+ * @param query - the search and filter terms, all optional.
+ * @returns the entries matching every supplied filter, in input order.
+ */
 export function searchEntries(entries: CatalogEntry[], query: SearchQuery): CatalogEntry[] {
   let result = entries
   if (query.category) {

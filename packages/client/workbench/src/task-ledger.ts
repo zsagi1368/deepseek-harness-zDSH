@@ -18,6 +18,7 @@ import type {
 } from './shared/task-protocol.ts'
 import { TASK_STATUSES } from './shared/task-protocol.ts'
 
+/** Constructor options for the ledger; `filePath` defaults to the user home. */
 export interface TaskLedgerOptions {
   /** Absolute file path of the backing document. */
   filePath?: string
@@ -39,6 +40,7 @@ interface StoredDocument {
   tasks: Array<{ id: string; title: string; status: TaskStatus; createdAt: number; updatedAt: number }>
 }
 
+/** Host-authoritative task ledger with atomic persistence and revision bumps. */
 export class TaskLedger {
   private snapshot: TaskSnapshot = { revision: 0, tasks: [] }
   private readonly listeners = new Set<(frame: { domain: 'tasks'; revision: number }) => void>()
@@ -48,6 +50,11 @@ export class TaskLedger {
     this.filePath = options.filePath ?? defaultFilePath()
   }
 
+  /**
+   * Subscribe to revision-change pings.
+   * @param listener - callback invoked with the tasks frame after every commit.
+   * @returns a disposer that removes the listener.
+   */
   subscribe(listener: (frame: { domain: 'tasks'; revision: number }) => void): () => void {
     this.listeners.add(listener)
     return () => {
@@ -55,6 +62,10 @@ export class TaskLedger {
     }
   }
 
+  /**
+   * Current ledger snapshot.
+   * @returns the in-memory snapshot (revision plus tasks).
+   */
   getSnapshot(): TaskSnapshot {
     return this.snapshot
   }
@@ -115,10 +126,19 @@ export class TaskLedger {
     return envelopeOk(this.snapshot)
   }
 
+  /**
+   * Current ledger snapshot as the envelope answer.
+   * @returns the ok envelope carrying the snapshot.
+   */
   list(): WorkbenchRouteEnvelope<TaskSnapshot> {
     return envelopeOk(this.snapshot)
   }
 
+  /**
+   * Create a task from the RPC payload.
+   * @param payload - the create request (title required, status optional).
+   * @returns the ok envelope with the new snapshot, or a failure envelope.
+   */
   create(payload: unknown): Promise<WorkbenchRouteEnvelope<TaskSnapshot>> {
     const request = payload as Partial<TaskCreateRequest>
     const title = typeof request.title === 'string' ? request.title.trim() : ''
@@ -137,6 +157,11 @@ export class TaskLedger {
     ])
   }
 
+  /**
+   * Update a task from the RPC payload.
+   * @param payload - the update request (id required, fields optional).
+   * @returns the ok envelope with the new snapshot, or a failure envelope.
+   */
   update(payload: unknown): Promise<WorkbenchRouteEnvelope<TaskSnapshot>> {
     const request = payload as Partial<TaskUpdateRequest>
     const id = typeof request.id === 'string' ? request.id : ''
@@ -158,6 +183,11 @@ export class TaskLedger {
     ))
   }
 
+  /**
+   * Delete a task from the RPC payload.
+   * @param payload - the delete request (id required).
+   * @returns the ok envelope with the new snapshot, or a failure envelope.
+   */
   remove(payload: unknown): Promise<WorkbenchRouteEnvelope<TaskSnapshot>> {
     const request = payload as Partial<TaskDeleteRequest>
     const id = typeof request.id === 'string' ? request.id : ''

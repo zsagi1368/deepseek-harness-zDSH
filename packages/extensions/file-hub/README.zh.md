@@ -7,10 +7,12 @@
 随处上传、`@` 引用万物、让模型读懂文档、为图片生成讲解——并在一个控制台里管理所有会话的文件。
 
 [![ci](https://github.com/zsagi1368/zdsh-filehub/actions/workflows/ci.yml/badge.svg)](https://github.com/zsagi1368/zdsh-filehub/actions/workflows/ci.yml)
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+
 [![Node](https://img.shields.io/badge/node-%E2%89%A522-blue.svg)](./package.json)
 
-[English](./README.md) · [简体中文](./README.zh.md)
+[English](README.md) | 中文
 
 </div>
 
@@ -65,7 +67,7 @@ FileHub 用一个开箱即用的插件补齐这些缺口：
 ## 安装
 
 ```sh
-dsh plugin --profile <你的profile> add https://github.com/zsagi1368/zdsh-filehub
+dsh plugin --profile <your-profile> add https://github.com/zsagi1368/zdsh-filehub
 ```
 
 完成——随包清单自动装配两端，无需手工配置，所有选项都有合理默认值。
@@ -76,31 +78,31 @@ dsh plugin --profile <你的profile> add https://github.com/zsagi1368/zdsh-fileh
 
 ```ts
 {
-  storageDirName: '.filehub',            // 会话工作区子目录名
+  storageDirName: '.filehub',            // session-workspace subdirectory
   upload: {
-    maxBytes: 50 * 1024 * 1024,          // 单文件上限（流式强制）
-    maxConcurrent: 4,                    // 并行传输闸
+    maxBytes: 50 * 1024 * 1024,          // single-file cap (streaming-enforced)
+    maxConcurrent: 4,                    // parallel transfer gate
     perSessionQuotaBytes: 512 * 1024 * 1024,
-    // dangerousExtensions: [...],       // 可选的危险扩展名名单覆盖
+    // dangerousExtensions: [...],       // optional deny-list override
   },
   lifecycle: {
-    ttlMs: 7 * 24 * 60 * 60 * 1000,      // 保留窗口
-    sweepIntervalMs: 60 * 60 * 1000,     // 清扫周期（遍历全部会话）
+    ttlMs: 7 * 24 * 60 * 60 * 1000,      // retention window
+    sweepIntervalMs: 60 * 60 * 1000,     // sweeper cadence (all sessions)
   },
   mention: {
-    indexMaxFiles: 5000,                 // 有界索引硬停阈值
-    indexTtlMs: 30_000,                  // 新鲜度兜底
+    indexMaxFiles: 5000,                 // bounded index hard stop
+    indexTtlMs: 30_000,                  // staleness fallback
     searchLimit: 50,
   },
   reading: {
-    budgets: { /* 按格式字符预算 */ },
+    budgets: { /* per-format char budgets */ },
     cacheEntries: 64,
     cacheBytes: 256 * 1024 * 1024,
   },
   vision: {
     mode: 'off' | 'caption' | 'analyze',
-    endpoint: undefined,                 // 公网 http(s) 讲解端点
-    ollamaProbe: true,                   // 仅环回的本地兜底
+    endpoint: undefined,                 // public http(s) captioning endpoint
+    ollamaProbe: true,                   // loopback-only local fallback
     timeoutMs: 20_000,
   },
   console: { maxEntries: 2000 },
@@ -116,13 +118,13 @@ FileHub 处理用户文件，因此这里的安全声明全部由具名测试背
 - **同源加固**——Origin 主机名比对加远端地址环回复核。
 - **资源限额**——流式大小上限、并发闸、会话配额、可证明遍历*全部*会话的 TTL 清扫。
 
-逐条证据映射见 [SECURITY.md](./SECURITY.md)。
+逐条证据映射见 `SECURITY.md`（随独立插件包分发，不在本 monorepo 内）。
 
 ## 开发
 
 ```sh
-pnpm install   # 宿主类型经 link:../Fork/* 解析（需同级存在 DeepSeek Harness 检出）
-pnpm run check # typecheck + test + build 三门
+pnpm install   # host types resolve via link:../Fork/* (needs a sibling DeepSeek Harness checkout)
+pnpm run check # typecheck + test + build
 ```
 
 构建产物为 ESM 宿主半与单文件客户端 bundle（由 harness web server 直接服务）。`docs/integration-playbook.md` 记录了将 FileHub 作为分发分支第一方扩展嵌入时的接缝清单。
@@ -130,3 +132,39 @@ pnpm run check # typecheck + test + build 三门
 ## 许可证
 
 [MIT](./LICENSE)
+
+## 模型体验
+
+### `@` 工作区引用
+
+#### 模型看到什么
+
+每条确认的提及都会以结构化 `<workspace-reference>` 消息注入对话，指明确切文件（路径、类型、会话工作区 `.filehub/<sessionId>/`）；候选在发送时做存在性校验，无效或穿越路径显式报错，绝不静默丢弃。
+
+#### Token 影响
+
+每个提及文件一个紧凑引用 token；候选清单本身（工作区索引 + 已上传文件，受 `mention.searchLimit` 50 条上限约束）从不进入上下文。
+
+#### KV 缓存影响
+
+引用集合不变时前缀稳定；增删一条提及会自首个变更的引用 token 起移动前缀。
+
+### 文档阅读工具
+
+#### 模型看到什么
+
+`read_document` 分页读 text/PDF/DOCX/XLSX（`offset`/`limit`），可选 `sheet` 定位表；`probe` 模式只返回结构概览（页数、表清单、体量）而不倾倒正文；`list_workspace_files` 列出有界会话工作区（带截断标志）。
+
+#### Token 影响
+
+读取按需进行且按格式设预算上限（`reading.budgets`）；截断必带显式续读标记，模型取下一片而不是整段重发。
+
+#### KV 缓存影响
+
+解析结果按内容寻址缓存——同一文件的重复读取零解析开销重发同一批切片；新读切片追加在可复用前缀之后。
+
+## 已知限制与暂缓事项
+
+- **图片讲解依赖用户自备端点** —— `vision.endpoint` 未设置且本地 Ollama 探测（仅环回，默认开启）不存在时，图片以无讲解状态上呈；原生多模态路由不受影响。
+- **清理按设计为破坏性操作** —— 移除经「试运行预览 + 二次确认」后同步删除服务端文件，无回收站或还原通道。
+- **保留期受限** —— TTL 清扫器（默认 `lifecycle.ttlMs` 7 天）可证明遍历*全部*会话，且没有逐文件豁免界面。

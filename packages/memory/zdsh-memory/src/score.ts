@@ -20,6 +20,8 @@ const CJK_RUN = /[\u4e00-\u9fff]+/gu
  * Tokenize one text into the comparison vocabulary: lowercase Latin/digit
  * words (length ≥ 2) plus, per CJK run, that run's adjacent character
  * bigrams (a lone character stays itself).
+ * @param text - the text to tokenize.
+ * @returns the deduplicated token set.
  */
 export function tokenize(text: string): Set<string> {
   const lowered = text.toLowerCase()
@@ -52,6 +54,7 @@ export interface ScoredEntry {
  * @param entries - candidate entries.
  * @param keywords - the current task's token set.
  * @param k - maximum selections; non-positive k selects nothing.
+ * @returns the up-to-K best-scoring entries, most relevant first.
  */
 export function selectTopK(entries: readonly MemoryEntry[], keywords: ReadonlySet<string>, k: number): ScoredEntry[] {
   if (!(k > 0)) return []
@@ -92,6 +95,7 @@ const KIND_LABEL: Record<MemoryKind, string> = {
  * all. The rendered text rides the assembled system prompt, which the agent
  * loop logs verbatim in `request/header.system` (model-visible ⟺ logged).
  * @param scored - selected entries, most relevant first.
+ * @returns the rendered section text, or `''` when `scored` is empty.
  */
 export function renderMemorySection(scored: readonly ScoredEntry[]): string {
   if (scored.length === 0) return ''

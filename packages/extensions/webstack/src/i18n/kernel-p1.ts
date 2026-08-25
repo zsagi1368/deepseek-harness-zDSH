@@ -59,7 +59,12 @@ export const kernelP1MessagesEn: Readonly<Record<KernelP1I18nKey, string>> = Obj
     '[WebStack] Engine {engine} exceeded its complexity budget and was trimmed from this fusion.',
 })
 
-/** 取本册文案；未知 locale 安全回落中文（与各分册同约定）。 */
+/**
+ * 取本册文案；未知 locale 安全回落中文（与各分册同约定）。
+ * @param key - 本册文案键。
+ * @param locale - 语言（默认 zh）。
+ * @returns 文案文本。
+ */
 export function kernelP1Text(key: KernelP1I18nKey, locale: Locale = 'zh'): string {
   return locale === 'en' ? kernelP1MessagesEn[key] : kernelP1MessagesZh[key]
 }

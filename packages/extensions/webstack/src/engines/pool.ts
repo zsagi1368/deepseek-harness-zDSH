@@ -64,6 +64,7 @@ export class KeyPool {
   /**
    * 取用一个健康键：健康键中在飞计数最小者，同数取轮换序。
    * @throws EngineError('auth', 'all keys unhealthy') 当无健康键可用（含空池）
+   * @returns 明文密钥。
    */
   acquire(): string {
     let chosen: string | undefined
@@ -94,6 +95,8 @@ export class KeyPool {
    * 归还键：`ok` 仅在飞减一（下限 0，重复归还安全）；`auth-failed` 打冷却
    * 标记且在飞清零（W-B-41）。未知键静默忽略（调用方只会传 acquire 的产物，
    * 容错以避免外部误用放大成崩溃）。
+   * @param key - 待归还的明文密钥。
+   * @param outcome - 本次请求的键结果（'ok' 或 'auth-failed'）。
    */
   release(key: string, outcome: KeyOutcome): void {
     const entry = this.entries.get(key)
@@ -106,7 +109,10 @@ export class KeyPool {
     entry.inflight = Math.max(0, entry.inflight - 1)
   }
 
-  /** 池快照（纯读取；inflight 含冷却键的历史清零后残值恒为 0）。 */
+  /**
+   * 池快照（纯读取；inflight 含冷却键的历史清零后残值恒为 0）。
+   * @returns 池统计（total/healthy/inflight）。
+   */
   stats(): KeyPoolStats {
     let healthy = 0
     let inflight = 0
@@ -133,6 +139,8 @@ export const HTTP_POST_BRIDGED = 'POST' as unknown as 'GET'
 /**
  * 从响应头解析 Retry-After 为毫秒数：仅接受秒数形态（RFC 7231 允许的
  * HTTP-date 形态不做时钟猜测，返回 undefined）。大小写不敏感扫描。
+ * @param headers - 上游响应头。
+ * @returns 折算的毫秒数；无有效指示时为 undefined。
  */
 export function retryAfterMsFromHeaders(
   headers: Readonly<Record<string, string>>,
@@ -151,6 +159,8 @@ export function retryAfterMsFromHeaders(
 /**
  * ISO-8601 形态宽松校验（日历日期起头即可直接采用）；其余形态一律缺席
  * （不猜测、不改写）。unknown 进、合法 ISO 出——供各家 published 字段收窄。
+ * @param raw - 待校验的原始值。
+ * @returns 合法的 ISO-8601 串；其余形态为 undefined。
  */
 export function isoTimestampOrUndefined(raw: unknown): string | undefined {
   if (typeof raw !== 'string' || raw.length === 0) return undefined

@@ -28,6 +28,10 @@ function sleepBusy(multiplier: number): void {
  * root and path must be a real directory. Junctions need no privileges on
  * Windows, so "predictable dir" plus "attacker-planted junction" equals
  * arbitrary write location.
+ * @param root - the root directory the path must stay under.
+ * @param segments - the path segments joined below the root.
+ * @returns the resolved target path.
+ * @throws an error when root or any segment is a symbolic link.
  */
 export function ensureNoReparse(root: string, ...segments: string[]): string {
   const target = resolve(join(resolve(root), ...segments))
@@ -51,11 +55,13 @@ function lstatSafe(path: string): import('node:fs').Stats | null {
   }
 }
 
+/** A command line: executable plus strictly allowlisted arguments. */
 export interface CommandSpec {
   cmd: string
   args: string[]
 }
 
+/** The captured result of a finished command run. */
 export interface CommandOutcome {
   code: number
   stdout: string
@@ -70,6 +76,7 @@ export interface EnginePorts {
   http: HttpPort
 }
 
+/** Filesystem operations the engine uses, all injectable in tests. */
 export interface FileSystemPort {
   readFile(path: string): string | null
   writeFileAtomic(path: string, contents: string): void
@@ -81,14 +88,17 @@ export interface FileSystemPort {
   removePath(path: string): void
 }
 
+/** Command execution port; resolves with the exit outcome. */
 export interface CommandPort {
   run(spec: CommandSpec): Promise<CommandOutcome>
 }
 
+/** Time source port, injectable for deterministic tests. */
 export interface ClockPort {
   now(): Date
 }
 
+/** Outbound HTTP port with fetch-timeout control. */
 export interface HttpPort {
   fetchText(url: string, timeoutMs?: number): Promise<CpResult<string>>
 }
@@ -109,6 +119,9 @@ function sha256File(path: string): string | null {
  * Containment check that survives Windows cross-drive paths: a cross-drive
  * `path.relative` degenerates into an absolute path, so an absolute result can
  * never count as "inside".
+ * @param root - the root directory to test containment against.
+ * @param target - the path to check.
+ * @returns true when the resolved target sits strictly inside the root.
  */
 export function isInsideRoot(root: string, target: string): boolean {
   const rel = relative(resolve(root), resolve(target))
@@ -148,6 +161,11 @@ function removePathSafe(path: string): void {
  */
 const SAFE_ARG = /^[A-Za-z0-9_@+=.,:\\/#\- ]+$/
 
+/**
+ * Refuse every argument that is not on the shelled-command allowlist.
+ * @param args - the candidate command arguments, including the executable.
+ * @throws an error naming the first argument outside the allowlist.
+ */
 export function assertSafeArgs(args: readonly string[]): void {
   for (const arg of args) {
     if (!SAFE_ARG.test(arg)) {
@@ -180,6 +198,10 @@ function runViaSpawn(spec: CommandSpec): Promise<{ code: number; stdout: string;
   })
 }
 
+/**
+ * The production port wiring backed by Node primitives (fs, spawn, fetch).
+ * @returns the engine ports bound to the node runtime.
+ */
 export function nodePorts(): EnginePorts {
   const clock: ClockPort = { now: () => new Date() }
   const fs: FileSystemPort = {

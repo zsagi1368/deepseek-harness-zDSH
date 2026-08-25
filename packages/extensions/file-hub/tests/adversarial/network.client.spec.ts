@@ -3,7 +3,8 @@
  *
  * urlPolicy bypass attempts, Origin-header forgery matrix additions, and
  * upload header-injection attempts. Successful breaks carry named fixes;
- * failed breaks are pinned as regressions. Log: docs/adversarial-log.md.
+ * failed breaks are pinned as regressions. 对抗日志归档于 FileHub 战役仓库
+ * （其仓库内 adversarial-log 文档，位于本仓库之外）。
  */
 import http from 'node:http'
 

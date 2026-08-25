@@ -10,6 +10,7 @@
 
 export type ShellKind = 'bash' | 'pwsh'
 
+/** One decomposed command-line piece: a word, or an opaque region. */
 export interface Segment {
   kind: 'word' | 'opaque'
   text: string
@@ -17,14 +18,17 @@ export interface Segment {
   joiner?: string | undefined
 }
 
+/** Full decomposition of one shell line into segments. */
 export interface Decomposition {
   segments: Segment[]
   /** Set when the whole line could not be statically decomposed. */
   opaqueReason?: string
 }
 
+/** Semantic decision for a decomposed segment or line. */
 export type Decision = 'allow' | 'classify' | 'deny'
 
+/** Decision plus the reason that drove it. */
 export interface Assessment {
   decision: Decision
   reason: string
@@ -32,7 +36,11 @@ export interface Assessment {
 
 const BASH_JOINERS = ['&&', '||', ';', '|', '>', '>>']
 
-/** Split on joiners while respecting quotes; $() `` $(()) << heredoc > opaque. */
+/**
+ * Split on joiners while respecting quotes; $() `` $(()) << heredoc > opaque.
+ * @param line - the bash command line to decompose.
+ * @returns the segment decomposition.
+ */
 export function decomposeBash(line: string): Decomposition {
   const segments: Segment[] = []
   let current = ''
@@ -95,6 +103,11 @@ export function decomposeBash(line: string): Decomposition {
   return { segments }
 }
 
+/**
+ * Decompose a PowerShell command line; subexpressions and splatting stay opaque.
+ * @param line - the pwsh command line to decompose.
+ * @returns the segment decomposition.
+ */
 export function decomposePwsh(line: string): Decomposition {
   const segments: Segment[] = []
   let current = ''
@@ -144,6 +157,12 @@ export function decomposePwsh(line: string): Decomposition {
   return { segments }
 }
 
+/**
+ * Decompose a command line for the given shell dialect.
+ * @param shell - the shell dialect ('bash' or 'pwsh').
+ * @param line - the command line to decompose.
+ * @returns the segment decomposition.
+ */
 export function decompose(shell: ShellKind, line: string): Decomposition {
   return shell === 'bash' ? decomposeBash(line) : decomposePwsh(line)
 }

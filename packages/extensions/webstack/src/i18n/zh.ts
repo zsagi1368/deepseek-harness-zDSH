@@ -7,6 +7,7 @@
 
 import type { EngineErrorCode } from '../kernel/types.js'
 
+/** 统一错误文案键联合（`webstack.error.<code>`，由错误码闭集机械派生）。 */
 export type ErrorI18nKey = `webstack.error.${EngineErrorCode}`
 
 /** 中文处置文案。 */

@@ -76,7 +76,11 @@ function stripNoise(html: string): string {
     .replace(/<(script|style|nav|footer|header)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, ' ')
 }
 
-/** 把 HTML 片段转纯文本：块级标签转换行、其余标签剔除、实体解码、压空白。 */
+/**
+ * 把 HTML 片段转纯文本：块级标签转换行、其余标签剔除、实体解码、压空白。
+ * @param html - 原始 HTML 片段。
+ * @returns 纯文本结果（已裁剪两端空白）。
+ */
 export function htmlToText(html: string): string {
   const flattened = stripNoise(html)
     .replace(/<\/?(br|p|div|li|h[1-6]|tr)\b[^>]*>/gi, '\n')
@@ -99,6 +103,8 @@ function firstBlock(html: string, tag: 'article' | 'main'): string | undefined {
  * 可读性启发式主内容抽取：收集 `<article>` / `<main>` 容器全文与全文
  * `<p>` 段落簇（过滤低于密度门槛的短段），按长度取最大簇——正文所在的
  * 容器几乎总是最长的那个候选。无任何候选命中时返回空串（交给回退链）。
+ * @param html - 原始 HTML 文档。
+ * @returns 抽取到的正文纯文本；无候选时为空串。
  */
 export function extractReadable(html: string): string {
   const candidates: string[] = []
@@ -149,6 +155,11 @@ function attemptRender(
  * 渲染抽取入口：先按请求 mode 出图；结果为空则沿 raw→fit 找「有内容者胜」，
  * 实际达成的 mode 写回；最后统一按 maxChars 裁剪并置 truncated。
  * 全链路皆空时返回空串（由管线注入解释性文案，绝不静默空白上呈）。
+ * @param html - 原始 HTML 文档。
+ * @param mode - 请求的抽取模式（raw/fit/citations）。
+ * @param sourceUrl - 来源 URL（citations 模式引用行使用）。
+ * @param maxChars - 输出字符上限。
+ * @returns 最终视图（text/mode/truncated）。
  */
 export function renderExtract(
   html: string,

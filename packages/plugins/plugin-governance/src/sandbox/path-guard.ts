@@ -24,6 +24,9 @@ type FilesystemConfig = PluginSandboxConfig['filesystem']
  * - allow-list entries must match as whole path segments (not raw string
  *   prefixes), so `/work` does not admit `/workshop`;
  * - an empty allow list denies every path — fail closed.
+ * @param config - the `filesystem` section of the sandbox config to enforce.
+ * @param path - the absolute-or-relative path a plugin wants to touch.
+ * @returns whether the path may be touched under the configured rules.
  */
 export function checkPathAllowed(config: FilesystemConfig, path: string): boolean {
   // 路径规范化：解析绝对路径并消除 .. 和 . 组件

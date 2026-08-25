@@ -4,6 +4,7 @@
  */
 import type { ModuleId } from '../kernel/types.js'
 
+/** Console-state surface the `/ap` command drives, implemented by bridge.ts. */
 export interface ConsoleStatePort {
   status(): {
     paused: boolean
@@ -18,15 +19,24 @@ export interface ConsoleStatePort {
   resetStats(): void
 }
 
+/** Named preset configurations selectable via `/ap preset`. */
 export type PresetName = 'conservative' | 'standard' | 'fullspeed'
 
 const PRESETS: readonly PresetName[] = ['conservative', 'standard', 'fullspeed']
 
+/** Lines returned by an `/ap` command for the host to print. */
 export interface CommandResult {
   /** Lines to print back to the user. */
   lines: string[]
 }
 
+/**
+ * Parse and execute one `/ap` command line against the console state port.
+ * @param input - the raw command text after the `/ap` prefix.
+ * @param state - the console-state surface the command mutates.
+ * @param t - locale translator for user-facing strings.
+ * @returns the lines to print back to the user.
+ */
 export function executeCommand(
   input: string,
   state: ConsoleStatePort,

@@ -48,6 +48,8 @@ export const DEFAULT_FUSION_PARAMS: FusionParams = Object.freeze({
 /**
  * 判定 host 是否命中内置权威域表。解析失败/空串一律 false——
  * 判定器自身绝不允许成为故障点。
+ * @param rawHost - 待判定的 host 串。
+ * @returns 命中内置权威域表时为 true。
  */
 export function isAuthoritativeHost(rawHost: string): boolean {
   const host = rawHost.trim().toLowerCase().replace(/\.+$/, '')
@@ -108,6 +110,10 @@ interface Group {
  *
  * 输出每条命中的 `provenance.score` 为归一化分（最高分组 = 1，6 位小数）；
  * 输入集合不被修改。
+ * @param resultSets - 逐引擎归一化命中集（顺序即 RRF 排名基准）。
+ * @param params - 融合参数（半衰期/权威加成/多样性折扣）。
+ * @param now - 时效衰减参考时刻（epoch 毫秒，测试注入固定时钟）。
+ * @returns 融合后的归一化命中列表（降序，分数写在 provenance.score）。
  */
 export function fuse(
   resultSets: readonly NormalizedHit[][],

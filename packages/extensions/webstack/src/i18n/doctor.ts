@@ -90,7 +90,12 @@ export const doctorMessagesEn: Readonly<Record<DoctorI18nKey, string>> = Object.
   'webstack.doctor.header': 'WebStack engine doctor report',
 })
 
-/** 取诊断文案；未知 locale 安全回落中文（与 errorText 同约定）。 */
+/**
+ * 取诊断文案；未知 locale 安全回落中文（与 errorText 同约定）。
+ * @param key - 诊断文案键。
+ * @param locale - 语言（默认 zh）。
+ * @returns 文案文本。
+ */
 export function doctorText(key: DoctorI18nKey, locale: Locale = 'zh'): string {
   return locale === 'en' ? doctorMessagesEn[key] : doctorMessagesZh[key]
 }

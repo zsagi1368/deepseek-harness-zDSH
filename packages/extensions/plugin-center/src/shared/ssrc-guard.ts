@@ -32,6 +32,8 @@ function inCidr4(ip: number, base: string, bits: number): boolean {
  * Decide whether a host (already lower-cased, brackets stripped) is safe for
  * outbound requests. Rejects loopback, private, link-local, CGNAT, multicast,
  * reserved and IPv4-mapped IPv6 forms.
+ * @param hostname - the host to judge, lower-cased with brackets stripped.
+ * @returns true when the host is safe for outbound requests.
  */
 export function isHostAllowed(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, '')
@@ -145,6 +147,8 @@ function judgeIpv4(ip: number): boolean {
  * `0x7f000001` and `0177.0.0.1` as loopback, so the guard must judge every
  * numeric form instead of letting it fall through to the DNS-name path.
  * Returns null when the string is not a numeric IPv4 form at all.
+ * @param host - the host string to parse under inet_aton semantics.
+ * @returns the 32-bit address value, or null when not a numeric IPv4 form.
  */
 export function parseFlexibleIpv4(host: string): number | null {
   if (!/^[0-9xXa-fA-F.]+$/.test(host) || !/\d/.test(host)) return null
@@ -179,7 +183,11 @@ export function parseFlexibleIpv4(host: string): number | null {
   return (high * 256 ** lastWidthBytes + last) >>> 0
 }
 
-/** Validate an outbound URL; returns the parsed URL or a closed error. */
+/**
+ * Validate an outbound URL; returns the parsed URL or a closed error.
+ * @param raw - the URL to validate, as a string or URL instance.
+ * @returns the parsed URL, or an error result with a closed code.
+ */
 export function assertSafeUrl(raw: string | URL): CpResult<URL> {
   let url: URL
   try {
@@ -208,6 +216,7 @@ export function assertSafeUrl(raw: string | URL): CpResult<URL> {
   return { ok: true, data: url }
 }
 
+/** Options controlling the guarded fetch: timeout, redirects, and headers. */
 export interface SafeFetchOptions {
   timeoutMs?: number | undefined
   maxRedirects?: number | undefined
@@ -221,6 +230,9 @@ const SENSITIVE_REDIRECT_HEADERS =
  * fetch wrapper that re-validates every hop (redirects are followed manually)
  * so a redirect cannot smuggle us onto a private address, and credential
  * headers are stripped the moment we leave the original origin.
+ * @param rawUrl - the URL to fetch, validated before every hop.
+ * @param options - timeout, redirect, and header controls.
+ * @returns the response status and body text, or an error result.
  */
 export async function safeFetch(
   rawUrl: string | URL,

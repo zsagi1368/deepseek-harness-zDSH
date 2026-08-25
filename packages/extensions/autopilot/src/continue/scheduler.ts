@@ -20,6 +20,7 @@ import type {
 } from '../kernel/types.js'
 import type { LoopGuard } from './loopguard.js'
 
+/** Host adapter surface the scheduler drives: gating, sending, timers, audit. */
 export interface SchedulerAdapters {
   /** Ask the kernel coordinator to gate and route this resume request. */
   requestResume(sessionId: string): DispatchOutcome[]
@@ -35,6 +36,7 @@ interface SessionState {
   pausedUntil: number
 }
 
+/** Per-session auto-resume state machine with two-gate discipline. */
 export class ContinueScheduler {
   private sessions = new Map<string, SessionState>()
 
@@ -59,31 +61,57 @@ export class ContinueScheduler {
   // State transitions
   // ------------------------------------------------------------------
 
+  /**
+   * Advance the session into a new turn, cancelling any pending resume.
+   * @param sessionId - the session that started a turn.
+   */
   beginTurn(sessionId: string): void {
     this.cancelPending(sessionId) // host healed itself — cancel quietly
   }
 
+  /**
+   * Record a user message, cancelling pending resumes for the session.
+   * @param sessionId - the session the user wrote into.
+   */
   noteUserMessage(sessionId: string): void {
     this.cancelPending(sessionId)
     this.ledgerHub.session(sessionId, this.backoff).noteUserMessage()
   }
 
+  /**
+   * Pause the session's auto-resume for the given duration.
+   * @param sessionId - the session to pause.
+   * @param durationMs - how long the pause lasts.
+   */
   pauseSession(sessionId: string, durationMs: number): void {
     const state = this.stateFor(sessionId)
     state.pausedUntil = this.clock.now() + durationMs
     this.cancelPending(sessionId)
   }
 
+  /**
+   * Lift a previously applied pause for the session.
+   * @param sessionId - the session to resume.
+   */
   resumeSession(sessionId: string): void {
     const state = this.sessions.get(sessionId)
     if (state) state.pausedUntil = 0
   }
 
-  /** Explicit human action — bypasses every gate except "agent exists". */
+  /**
+   * Explicit human action — bypasses every gate except "agent exists".
+   * @param sessionId - the session to resume now.
+   * @param text - the followup text to send.
+   * @returns whether the followup was actually sent.
+   */
   resumeNow(sessionId: string, text: string): boolean {
     return this.adapters.sendFollowup(sessionId, text, 'continue')
   }
 
+  /**
+   * Cancel the session's pending resume timer, if any.
+   * @param sessionId - the session to cancel.
+   */
   cancelPending(sessionId: string): void {
     const state = this.sessions.get(sessionId)
     if (state?.pendingTimer) {
@@ -92,6 +120,10 @@ export class ContinueScheduler {
     }
   }
 
+  /**
+   * Drop all scheduler state for a closed session.
+   * @param sessionId - the session being closed.
+   */
   closeSession(sessionId: string): void {
     this.cancelPending(sessionId)
     this.sessions.delete(sessionId)
@@ -104,6 +136,10 @@ export class ContinueScheduler {
   /**
    * Called after the detector decided a turn is resume-worthy.
    * Returns true when a grace timer was armed.
+   * @param sessionId - the session to schedule a resume for.
+   * @param template - which resume template the followup should use.
+   * @param buildText - builds the followup text when the grace timer fires.
+   * @returns true when a grace timer was armed.
    */
   schedule(
     sessionId: string,
@@ -179,17 +215,30 @@ export class ContinueScheduler {
     })
   }
 
-  /** Recovery bookkeeping after an assistant turn completes successfully. */
+  /**
+   * Recovery bookkeeping after an assistant turn completes successfully.
+   * @param sessionId - the session that recovered.
+   */
   noteRecoveredTurn(sessionId: string): void {
     this.ledgerHub.session(sessionId, this.backoff).noteRecovery()
   }
 
+  /**
+   * How long until the session may be resumed, per its backoff cooldown.
+   * @param sessionId - the session to query.
+   * @param loopGuard - reserved for the loop-guard tie-in.
+   * @returns the effective cooldown in milliseconds.
+   */
   nextReadyIn(sessionId: string, loopGuard: LoopGuard): number {
     void loopGuard
     const ledger = this.ledgerHub.session(sessionId, this.backoff)
     return effectiveCooldown(Math.max(0, ledger.consecutive - 1), this.backoff)
   }
 
+  /**
+   * Generate a unique attempt id for audit records.
+   * @returns the new attempt id.
+   */
   makeAttemptId(): string {
     return `att_${this.clock.now().toString(36)}_${this.rng.token()}`
   }

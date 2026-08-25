@@ -10,6 +10,8 @@ import type { CacheKeyInput } from '../kernel/types.js'
 /**
  * 规范化序列化：对象键递归排序、数组保序、undefined 字段整体缺席——
  * 同一逻辑输入永远得到同一字节串。
+ * @param value - 待序列化的任意值。
+ * @returns 规范化 JSON 字节串。
  */
 export function canonicalStringify(value: unknown): string {
   // oxlint-disable-next-line typescript/no-unnecessary-condition -- JSON.stringify 对 undefined/function/symbol 运行时返回 undefined，?? 是真实兜底。
@@ -25,7 +27,11 @@ export function canonicalStringify(value: unknown): string {
   return `{${body}}`
 }
 
-/** 由缓存键输入计算十六进制指纹。engineSet 先排序，消除集合顺序噪声。 */
+/**
+ * 由缓存键输入计算十六进制指纹。engineSet 先排序，消除集合顺序噪声。
+ * @param input - 全维度缓存键输入。
+ * @returns sha256 十六进制指纹。
+ */
 export function cacheKey(input: CacheKeyInput): string {
   const normalized: CacheKeyInput = {
     ...input,

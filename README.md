@@ -1,9 +1,11 @@
 # zDSH (Not finished, to be online soon)
 
-[English](README.md) | [中文](README.zh.md)
+English | [中文](README.zh.md)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 [![Stage](https://img.shields.io/badge/Stage-Production-blue)](https://github.com/zsagi1368/deepseek-harness-zDSH)
+
 [![Tests](https://img.shields.io/badge/Tests-1029_passing-brightgreen.svg)](https://github.com/zsagi1368/deepseek-harness-zDSH/actions)
 
 **zDSH** (`deepseek-harness-zDSH`) is a production-grade agent harness distribution with first-class plugin governance, multi-provider vision processing, cross-session memory, and a mobile-ready web interface. Works out of the box; every enhancement is a first-party core plugin designed to survive upstream upgrades.
@@ -53,6 +55,10 @@ Governance tab in Web Settings alongside the official inventory tab: roster tabl
 | Security | Sandbox child-process environment whitelist derivation |
 | Paths | Windows cross-drive escape guard + ::ffff: IPv6 unwrapping in SSRF checks |
 
+## Run from source
+
+Clone and build the repository yourself when you want the latest `our/v2` changes before they ship: see the Getting started section for prerequisites and the exact commands.
+
 ## Getting started
 
 ### Prerequisites
@@ -96,7 +102,7 @@ rm -rf deepseek-harness-zDSH
 rm -rf ~/.dsh-zdsh        # or your custom DSH_BRANCH_HOME path
 
 # 3. Remove git credentials (optional)
-# Settings → SSH keys → remove dsh-push-workbuddy-*
+# Settings → SSH keys → remove the deploy key you added for this repo
 ```
 
 No global npm packages are installed; everything runs from the repository checkout.
@@ -110,7 +116,7 @@ No global npm packages are installed; everything runs from the repository checko
 | `ANTHROPIC_API_KEY` | Anthropic vision provider | — |
 | `GEMINI_API_KEY` | Gemini vision provider | — |
 
-See the [detailed operations guide](docs/dsh/getting-started.md) for advanced configuration.
+See the [remote access guide](docs/dsh/remote-access.md) and the [CHANGELOG](docs/dsh/CHANGELOG.md) for advanced configuration and release notes.
 
 ## Architecture
 
@@ -178,7 +184,7 @@ npx @deepseek-ai/dsh web
 
 - Submit feedback through [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions).
 - Join the [Discord community](https://discord.gg/Ycq5dCaS4).
-- See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
+- Contribution guidelines: see CONTRIBUTING.md in the upstream repository.
 
 ## Development
 

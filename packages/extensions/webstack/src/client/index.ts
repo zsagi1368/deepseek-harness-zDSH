@@ -40,28 +40,13 @@ import {
 import { OnlineModeToggle } from './input-toggle.js'
 import { CARD_NS, cardEn, cardZh, TOGGLE_NS, toggleEn, toggleZh } from './locale.js'
 import { type CardViewState, WebstackSettingsCard } from './settings-card.js'
+import type { SettingsPluginItemOwnerProps } from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
 
 /** 必需服务：槽注册表与字典服务。settingsScope 为软依赖（缺席降级），不入清单。 */
 export const inject = ['slots', 'locale']
 
 /** 本插件的设置命名空间（宿主 settings.yaml 的 `webstack:` 段）。 */
 const SETTINGS_NS = 'webstack'
-
-/**
- * `settings.plugin.item` 的结构性声明合并。权威声明在
- * @deepseek-ai/dsh-client-ui-settings-plugins/client（不在本仓库 devDeps，
- * 见模块注释的降级梯）；此处按调研到的真实形状（keyed、root、按命名空间
- * 寻址）本地声明，使 register 站点获得完整类型检查。
- */
-declare module '@deepseek-ai/dsh-client-ui-slots' {
-  interface SlotMap {
-    'settings.plugin.item': {
-      kind: 'keyed'
-      scope: 'root'
-      keyProps: Record<'webstack', object>
-    }
-  }
-}
 
 /** settingsScope 服务暴露的最小结构面（运行时结构探测用）。 */
 interface ScopeBinderFace {
@@ -194,8 +179,13 @@ export function apply(ctx: ClientContext): void {
   }
 
   // ---- 设置卡：keyed slot，key = 设置命名空间 ------------------------------
-  ctx.slots.inject('settings.plugin.item', () =>
-    ctx.slots.register(
+  ctx.slots.inject('settings.plugin.item', () => {
+    const ownerProps = { kind: 'keyed', scope: 'root', owner: {} } satisfies {
+      kind: 'keyed'
+      scope: 'root'
+      owner: SettingsPluginItemOwnerProps
+    }
+    return ctx.slots.register(
       {
         name: 'settings.plugin.item',
         key: SETTINGS_NS,
@@ -206,10 +196,11 @@ export function apply(ctx: ClientContext): void {
           save,
           discard,
         }),
+        ...ownerProps,
       },
       WebstackSettingsCard,
-    ),
-  )
+    )
+  })
 
   // ---- 联网模式三态按钮：composer 工具行左端 ------------------------------
   // 写入通道仅在 scope 可写时接通；否则组件退化为会话内本地态。

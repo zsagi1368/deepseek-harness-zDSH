@@ -46,18 +46,35 @@ async function fetchJson<T>(input: string, init?: RequestInit): Promise<T> {
   return payload as T
 }
 
+/**
+ * Fetch the aggregate library listing.
+ * @returns the parsed library response.
+ */
 export async function fetchLibrary(): Promise<LibraryResponse> {
   return fetchJson<LibraryResponse>('/api/filehub/library')
 }
 
+/**
+ * Fetch the storage-usage statistics.
+ * @returns the parsed usage response.
+ */
 export async function fetchUsage(): Promise<UsageResponse> {
   return fetchJson<UsageResponse>('/api/filehub/usage')
 }
 
+/**
+ * Fetch the full merged settings view.
+ * @returns the parsed settings shape.
+ */
 export async function fetchConsoleSettings(): Promise<ConsoleSettingsShape> {
   return fetchJson<ConsoleSettingsShape>('/api/filehub/settings')
 }
 
+/**
+ * Persist a partial settings patch.
+ * @param patch - the settings keys to update.
+ * @returns the merged settings view after the write.
+ */
 export async function putConsoleSettings(patch: Partial<ConsoleSettingsShape>): Promise<ConsoleSettingsShape> {
   return fetchJson<ConsoleSettingsShape>('/api/filehub/settings', {
     method: 'PUT',
@@ -66,10 +83,20 @@ export async function putConsoleSettings(patch: Partial<ConsoleSettingsShape>): 
   })
 }
 
+/**
+ * Delete every file of one session (idempotent).
+ * @param sessionId - the session whose files to delete.
+ * @returns the deletion report (counts and freed bytes).
+ */
 export async function deleteSessionFiles(sessionId: string): Promise<{ sessionId: string; deleted: number; freedBytes: number }> {
   return fetchJson(`/api/filehub/session/${encodeURIComponent(sessionId)}`, { method: 'DELETE' })
 }
 
+/**
+ * Run (or preview) the two-step cleanup.
+ * @param body - cleanup scope, optional session id, and the dry-run flag.
+ * @returns the cleanup report.
+ */
 export async function postCleanup(body: {
   scope: 'expired' | 'session'
   sessionId?: string

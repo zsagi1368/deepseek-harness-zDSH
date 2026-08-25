@@ -6,6 +6,7 @@
 
 import { Plugin, PluginError, PluginTimeoutError, PluginHealthStatus } from '../spec/index.js'
 
+/** 监控器配置项 */
 export interface WatcherOptions {
   timeoutMs: number
   memoryLimitMb: number
@@ -13,7 +14,13 @@ export interface WatcherOptions {
   cpuLimit?: number | undefined
 }
 
+/**
+ * PluginWatcher - 插件监控器
+ *
+ * 记录单个插件的执行计数与错误，对每次 execute 施加超时与调用上限。
+ */
 export class PluginWatcher {
+  /** 被监控的插件 ID */
   readonly pluginId: string
   private readonly options: WatcherOptions
   private executionCount = 0
@@ -31,6 +38,13 @@ export class PluginWatcher {
     }
   }
 
+  /**
+   * 执行一次调用并施加超时与调用次数限制；超时抛出
+   * {@link PluginTimeoutError}，其余错误一律脱敏为局部错误。
+   * @param fn - 要执行的异步函数。
+   * @param _context - 预留的调用上下文（当前未使用）。
+   * @returns 函数执行结果。
+   */
   async execute<T>(fn: () => Promise<T>, _context?: Record<string, unknown>): Promise<T> {
     this.executionCount++
 
@@ -67,6 +81,10 @@ export class PluginWatcher {
     }
   }
 
+  /**
+   * 汇总当前健康状态（错误、告警、运行时长、调用统计）。
+   * @returns 插件健康状态快照。
+   */
   getHealthStatus(): PluginHealthStatus {
     const uptime = Date.now() - this.startTime
     const errorRate = this.executionCount > 0 ? this.errorCount / this.executionCount : 0

@@ -80,7 +80,12 @@ export const mcpInfraMessagesEn: Readonly<Record<McpInfraI18nKey, string>> = Obj
   'webstack.proxy.none': 'No Windows system proxy detected; outbound requests go direct.',
 })
 
-/** 取本册文案；未知 locale 安全回落中文（与其余分册同约定）。 */
+/**
+ * 取本册文案；未知 locale 安全回落中文（与其余分册同约定）。
+ * @param key - 本册文案键。
+ * @param locale - 语言（默认 zh）。
+ * @returns 文案文本。
+ */
 export function mcpInfraText(key: McpInfraI18nKey, locale: 'zh' | 'en' = 'zh'): string {
   return locale === 'en' ? mcpInfraMessagesEn[key] : mcpInfraMessagesZh[key]
 }

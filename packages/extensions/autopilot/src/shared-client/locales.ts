@@ -5,6 +5,7 @@
  */
 export const NS = 'autopilot'
 
+/** Chinese dictionary; the source of truth for the locale key set. */
 export const zh = {
   'tab.label': 'AutoPilot 自动领航',
   'tab.description': '断线续跑 · 沙箱优先自动审批 · 二模型复核',
@@ -39,8 +40,10 @@ export const zh = {
   'notify.denied.title': '操作已被复核驳回',
 } as const
 
+/** Every console string key, derived from the zh dictionary. */
 export type LocaleKey = keyof typeof zh
 
+/** English dictionary; keys must match `zh` exactly (parity-checked). */
 export const en: Record<LocaleKey, string> = {
   'tab.label': 'AutoPilot',
   'tab.description': 'Auto-resume · sandbox-first approvals · second-model review',

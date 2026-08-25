@@ -7,6 +7,7 @@
  */
 import type { RandomSource } from '../kernel/ledger.js'
 
+/** The five elements a one-shot escalation grant is bound to. */
 export interface GrantSpec {
   sessionId: string
   toolName: string
@@ -21,10 +22,12 @@ interface GrantRecord extends GrantSpec {
   expiresAt: number
 }
 
+/** Decision of the grant seam: `'allowed-once'`, or undefined when no grant matches. */
 export type GrantDecision = 'allowed-once' | undefined
 
 const DEFAULT_TTL_MS = 10 * 60_000
 
+/** One-shot escalation grant registry: single consumption, unconditional reclamation. */
 export class EscalationGrants {
   private readonly grants = new Map<string, GrantRecord>()
 
@@ -34,6 +37,11 @@ export class EscalationGrants {
     private readonly ttlMs: number = DEFAULT_TTL_MS,
   ) {}
 
+  /**
+   * Issue a grant bound to the spec's five elements.
+   * @param spec - the grant binding (session, tool, callId, level, justification).
+   * @returns the new grant id.
+   */
   issue(spec: GrantSpec): string {
     const grantId = `g_${this.now().toString(36)}_${this.rng.token()}`
     this.grants.set(spec.callId, {
@@ -46,7 +54,12 @@ export class EscalationGrants {
     return grantId
   }
 
-  /** Exact-match answer for the official approval seam. Consume on success. */
+  /**
+   * Exact-match answer for the official approval seam. Consume on success.
+   * @param callId - the call id the grant was issued for.
+   * @param toolName - the tool name the grant was issued for.
+   * @returns 'allowed-once' on an exact live match, undefined otherwise.
+   */
   decide(callId: string, toolName: string): GrantDecision {
     this.sweep()
     const record = this.grants.get(callId)
@@ -60,11 +73,15 @@ export class EscalationGrants {
     return 'allowed-once'
   }
 
-  /** Unconditional reclamation at settlement — consumed or not. */
+  /**
+   * Unconditional reclamation at settlement — consumed or not.
+   * @param callId - the call id whose grant is reclaimed.
+   */
   settle(callId: string): void {
     this.grants.delete(callId)
   }
 
+  /** Number of grants currently pending. */
   get size(): number {
     return this.grants.size
   }

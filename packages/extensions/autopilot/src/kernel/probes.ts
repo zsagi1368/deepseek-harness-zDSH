@@ -17,6 +17,7 @@ export interface ProbeResult {
   detail?: string
 }
 
+/** One registered host-seam assumption: description plus optional probe levels. */
 export interface Assumption {
   id: string
   /** What we assume about the host, phrased as a falsifiable statement. */
@@ -27,16 +28,22 @@ export interface Assumption {
   probe?: () => true | string
 }
 
+/** Cached verdict for one assumption after probing (or not) it. */
 export interface AssumptionStatus {
   id: string
   state: 'unprobed' | 'available' | 'degraded' | 'unavailable'
   detail?: string
 }
 
+/** Registry of falsifiable host assumptions with a cached three-level probe flow. */
 export class ProbeRegistry {
   private assumptions = new Map<string, Assumption>()
   private statuses = new Map<string, AssumptionStatus>()
 
+  /**
+   * Add an assumption to the registry, starting it out `unprobed`.
+   * @param assumption - the assumption description and optional probe levels.
+   */
   register(assumption: Assumption): void {
     this.assumptions.set(assumption.id, assumption)
     if (!this.statuses.has(assumption.id)) {
@@ -47,6 +54,8 @@ export class ProbeRegistry {
   /**
    * Run the three-level flow for one assumption and cache the verdict.
    * Safe to call repeatedly; only the first run performs work.
+   * @param id - id of the registered assumption to probe.
+   * @returns the cached `AssumptionStatus` after probing.
    */
   probe(id: string): AssumptionStatus {
     const cached = this.statuses.get(id)
@@ -97,12 +106,21 @@ export class ProbeRegistry {
     return status
   }
 
+  /**
+   * Read one assumption's cached status without probing.
+   * @param id - id to look up.
+   * @returns the cached status, or `unavailable` when never registered.
+   */
   status(id: string): AssumptionStatus {
     return (
       this.statuses.get(id) ?? { id, state: 'unavailable', detail: 'not registered' }
     )
   }
 
+  /**
+   * Snapshot every registered assumption's current status.
+   * @returns all cached statuses in registration order.
+   */
   all(): AssumptionStatus[] {
     return [...this.statuses.values()]
   }

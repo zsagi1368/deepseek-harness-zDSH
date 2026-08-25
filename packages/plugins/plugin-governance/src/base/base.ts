@@ -35,6 +35,9 @@ export abstract class BasePlugin implements Plugin {
     this._status = PluginStatus.ACTIVE
   }
 
+  /**
+   * 当前插件状态（只读）
+   */
   get status(): PluginStatus {
     return this._status
   }

@@ -1,5 +1,7 @@
 # dsh-webstack（WebStack / 网栈）
 
+[English](README.md) | 中文
+
 DeepSeek Harness（DSH）的集成式网页**搜索 + 抓取内核插件**。WebStack 以单一中性聚合器注册进宿主 `ctx.web` seam（search + fetch 双面），把全部路由决策——层级路由（`native` / `free` / `api` / `selfhosted` / `mcp`）、查询复杂度分档、多引擎 fallback、RRF 融合、缓存、凭据解析与 SSRF 四道闸安全管线——收拢在插件内部。捆绑的 cordis patch 为空表：默认共存档，不改写上游选择器，除非用户显式选择接管。
 
 ## 特性
@@ -29,7 +31,7 @@ DeepSeek Harness（DSH）的集成式网页**搜索 + 抓取内核插件**。Web
 WebStack 是 DSH 插件，以 npm 包 [`dsh-webstack`](https://www.npmjs.com/package/dsh-webstack) 分发。通过你的 DSH 插件机制（bundle 清单 / cordis patch 列表）接入：
 
 ```yaml
-# bundle 依赖
+# bundle dependency
 dependencies:
   - name: dsh-webstack
 ```
@@ -45,11 +47,8 @@ Node.js >= 22.19。零原生模块；运行时依赖仅 `@deepseek-ai/schemaster
 
 本 monorepo 附带两个可选伴生包：
 
-- **`dsh-webstack-bridge`** —— 浏览器扩展卫星，提供 T3 渲染兜底（静态抓取
-  失败/JS 空壳救援）。安装与配对指引：[`packages/bridge/extension/README.md`](../../packages/bridge/extension/README.md)。
-- **`dsh-webstack-verticals`** —— 实验性 X/Twitter 垂直腿（免费池 + oEmbed
-  合规链，免凭据）。经 `verticals.packEnabled` + `verticals.channels.x`
-  开启；开启需重载插件。
+- **`dsh-webstack-bridge`** —— 浏览器扩展卫星，提供 T3 渲染兜底（静态抓取失败/JS 空壳救援）。安装与配对指引见卫星包自带 README（`packages/bridge/extension/README.md`，随卫星包独立分发）。
+- **`dsh-webstack-verticals`** —— 实验性 X/Twitter 垂直腿（免费池 + oEmbed 合规链，免凭据）。经 `verticals.packEnabled` + `verticals.channels.x` 开启；开启需重载插件。
 
 ## 配置
 
@@ -101,62 +100,88 @@ Node.js >= 22.19。零原生模块；运行时依赖仅 `@deepseek-ai/schemaster
 
 ```
 query
-  → extractHints      # site:/引号短语/时效词/语言 → SearchHints（确定性）
+  → extractHints      # site:/quotes/freshness/locale → SearchHints (deterministic)
   → estimateBand      # simple | medium | complex
-  → planSearch        # 层池 × 分档宽度 × autoFallback → engineIds；命中垂类触发矩阵加发垂直腿
-  → creds             # 三级链每操作解析一次 → 快照 + 凭据指纹 + 明文按槽位进请求对象
-  → cache             # CacheKeyInput 全维度 sha256 指纹（含凭据指纹）；mode=on 强制 fresh 跳读
-  → fallback          # registry.runWithFallback：冷却剔除 / 重试一次 / 终态中止
-  ├─ 垂直腿            # 计划尾加发 dsh-webstack-verticals X 腿（实验性，随档位预算 race 结算）
-  → RRF               # fuse 按 URL 身份去重，Σ1/(60+rank)，三参加权，分数归一化
-  → seam              # 截断至 count，映射 NormalizedHit[] → SeamWebSearchResult
+  → planSearch        # layer pool × band width × autoFallback → engineIds
+  │                   # vertical trigger matrix hit → append the vertical leg
+  → creds             # 3-level chain resolved once per op → snapshot + fingerprint
+  → cache             # sha256 fingerprint over CacheKeyInput dims; mode=on skips reads
+  → fallback          # registry.runWithFallback: cooldown skip, retry-once, terminal abort
+  ├─ vertical leg     # experimental dsh-webstack-verticals X leg appended after the plan
+  → RRF               # fuse dedups by URL identity, Σ1/(60+rank), 3-param weighting
+  → seam              # truncate to count, map NormalizedHit[] → SeamWebSearchResult
 ```
 
 抓取操作走同一条出站通道：
 
 ```
 url
-  → budgets           # canonical = min(maxContentChars×4, 8 MiB)；三层独立互不挤占
-  → SSRF 四道闸        # G1 静态 → G2 DNS → G3 重定向逐跳复验 → G4 有界读体
-  → 站选规则           # selectorRules 命中 → 选择器抽取优先（mode=fit）
-  → 抽取回退链         # raw→fit 有内容者胜；JSON 分支 pretty-print
-  → 上呈              # 状态即数据 + 全空解释文案；T3：失败/过短单次 bridge.render 兜底
+  → budgets           # canonical = min(maxContentChars×4, 8 MiB); three independent layers
+  → SSRF four gates   # G1 static → G2 DNS → G3 per-hop redirect re-validation → G4 bounded body
+  → site rules        # selectorRules hit → selector extraction first (mode=fit)
+  → extract chain     # raw→fit first non-empty wins; JSON branch pretty-prints
+  → report            # status-as-data + never-silently-empty; T3: single bridge.render rescue
 ```
 
 桥接卫星在线时，管道故障或正文过短会单次 `bridge.render` 兜底（`statusCode=0`、`via='bridge'`）。
 
-各阶段性能包线与预算对照见 [`docs/BENCHMARK.md`](./docs/BENCHMARK.md)（本地复现：`pnpm --filter dsh-webstack bench`）。
+各阶段性能包线与预算对照见 `docs/BENCHMARK.md`（本地复现：`pnpm --filter dsh-webstack bench`）。
 
 ## 设置面板
 
 客户端半（`dsh-webstack/client`，构建产物 `lib/client.js`，经 ModuleLoader 握手注入 Web GUI）提供两块浏览器面：
 
-**设置卡（Settings → Plugins，keyed slot `settings.plugin.item`，key = `webstack`）**
-编辑字段与宿主设置 schema 对齐：总开关、默认路由层、结果条数上限（1–50）、候选展开、fusion 三参（timeDecayHalfLifeH / authorityBoost / diversityDiscount）、抓取字符上限、SSRF 豁免清单（每行一条 `host:port`）。所有改动先进暂存草稿状态机（clean / dirty / invalid / saving / failed 五态），校验通过才允许保存，保存按点路径逐条排队写入；引擎 `apiKey`/`credentialRef` 不在卡片编辑面内，密钥永不进入浏览器渲染树。
+**设置卡（Settings → Plugins，keyed slot `settings.plugin.item`，key = `webstack`）** —— 编辑字段与宿主设置 schema 对齐：总开关、默认路由层、结果条数上限（1–50）、候选展开、fusion 三参（timeDecayHalfLifeH / authorityBoost / diversityDiscount）、抓取字符上限、SSRF 豁免清单（每行一条 `host:port`）。所有改动先进暂存草稿状态机（clean / dirty / invalid / saving / failed 五态），校验通过才允许保存，保存按点路径逐条排队写入；引擎 `apiKey`/`credentialRef` 不在卡片编辑面内，密钥永不进入浏览器渲染树。
 
 达成层级（降级梯）：
 
 1. 宿主暴露可写的 `settingsScope` 服务 → 暂存草稿可编辑并落宿主设置文档；
 2. `settingsScope` 可达但不可写（memory 模式等）→ 只读展示生效值；
-3. `settingsScope` 不可达（当前版本即此形态：类型与服务面所在的
-   dsh-client-ui-settings 系列未随插件分发）→ 以内置默认值为基线的只读展示卡，
-   并在卡面注明改用配置档 `webstack:` 段修改。
+3. `settingsScope` 不可达（当前版本即此形态：类型与服务面所在的 dsh-client-ui-settings 系列未随插件分发）→ 以内置默认值为基线的只读展示卡，并在卡面注明改用配置档 `webstack:` 段修改。
 
 **联网模式按钮（composer 工具行左端，列表槽 `conversation.input.left`）**
 
 会话级三态循环 off → on → ask（对应 `mode.sessionOnline`）。`settingsScope` 可写时点击同步落宿主文档；不可达时退化为会话内本地态（刷新还原），按钮提示注明。
 
-## Roadmap TODO
-
-剩余真实 TODO：
-
-- native delegate 句柄捕获（平台侧），让 `native` 层真实转发到宿主内置 provider（当前已注册委托引擎，句柄缺位时可诊断失败）。
-- 宿主 locale 探测（当前守则/状态节固定中文）。
-- fetch 域缓存接线（`cache.ttlFetchMin` 已定义待消费）。
-- 垂直频道增量与站选选择器规则的设置面编辑器。
-- `selectorPatchable` 运行期回读验证；桥接卫星配对状态的主动心跳回读。
-- npm 发布自动化（发布 token 待办）。
-
 ## 许可证
 
 [MIT](./LICENSE)
+
+## 模型体验
+
+### 工具三件套
+
+#### 模型看到什么
+
+模型可调用 `web_backend_status`（零副作用诊断，含桥接/垂类状态行）、`web_batch_search`（≤10 条批量扇出走聚合管线，保序、逐项隔离、超限显式拒绝）与 `web_history`（list/clear 参数化回放最近搜索/抓取账本）；搜索结果以 `NormalizedHit[]` → `SeamWebSearchResult` 映射上呈，并按 `search.maxResults`（默认 8）截断。
+
+#### Token 影响
+
+诊断与历史回放体量小且形态固定；批量搜索输出随请求条数与渲染预算（`fetch.maxContentChars`，默认每抓取 12000 字符）伸缩。
+
+#### KV 缓存影响
+
+工具视图与渲染词汇不变时前缀稳定；缓存命中重发同一批已渲染结果，`mode.sessionOnline=on` 强制跳缓存 fresh 读而无需改动可复用前缀。
+
+### Prompt 守则与状态行
+
+#### 模型看到什么
+
+WebStack 经宿主 systemPrompt seam 注册 ≤200 词行为守则 + 动态 ≤80 词状态行（引擎态、桥接/垂类三态），配置范围内的每次请求都会携带。
+
+#### Token 影响
+
+每请求固定 ≤280 词贡献，与查询数据无关。
+
+#### KV 缓存影响
+
+守则与状态行文本不变时前缀稳定；词数变化自首个变更 token 起移动前缀。
+
+## 已知限制与暂缓事项
+
+- **native delegate 句柄捕获为平台侧 TODO** —— 宿主暴露句柄之前，`native` 层可诊断地失败并回退，绝不装成功。
+- **守则/状态节当前固定中文** —— 宿主 locale 探测暂缓，≤200 词守则与状态行不随界面语言切换。
+- **fetch 域缓存接线尚未落地** —— `cache.ttlFetchMin` 已定义待消费，fetch 缓存域尚未接线。
+- **垂直频道增量与站选选择器规则的设置面编辑器暂缓。**
+- **`selectorPatchable` 运行期回读与桥接配对状态主动心跳回读暂缓。**
+- **npm 发布自动化待办**（发布 token 未就绪）。

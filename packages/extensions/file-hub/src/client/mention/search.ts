@@ -13,6 +13,7 @@ export interface SearchEntry {
   readonly uploadedAtMs?: number | undefined
 }
 
+/** Wire shape of GET /api/filehub/search: entries, session id, truncation flag. */
 export interface SearchResponse {
   readonly sessionId: string
   readonly entries: readonly SearchEntry[]
@@ -26,6 +27,10 @@ export type SearchFetcher = (
   signal: AbortSignal,
 ) => Promise<SearchResponse>
 
+/**
+ * Build the production search fetcher hitting /api/filehub/search.
+ * @returns a {@link SearchFetcher} backed by fetch.
+ */
 export function makeHttpSearchFetcher(): SearchFetcher {
   return async (sessionId, query, signal) => {
     const url = `/api/filehub/search?sessionId=${encodeURIComponent(sessionId)}&q=${encodeURIComponent(query)}`
@@ -39,6 +44,9 @@ export function makeHttpSearchFetcher(): SearchFetcher {
  * Local refinement over the server page: keep entries whose basename or path
  * still contains the query (server already ranked them; we only drop obvious
  * misses caused by the debounce window lagging fast typing).
+ * @param entries - the server-returned search page.
+ * @param query - the current query to refine by.
+ * @returns entries still matching the query (basename or path contains).
  */
 export function refineEntries(
   entries: readonly SearchEntry[],
@@ -64,6 +72,10 @@ interface PendingCall {
  * every caller of a collapsed window shares the newest result. Latest query
  * wins; earlier callers of the same window resolve with its result (they were
  * rendering the same menu).
+ * @param fetcher - the underlying search page fetcher.
+ * @param sessionId - resolves the current session id at flush time (null = reject).
+ * @param delayMs - trailing debounce window in ms.
+ * @returns the debounced search function with latest-wins cancellation.
  */
 export function createDebouncedSearch(
   fetcher: SearchFetcher,

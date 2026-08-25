@@ -25,6 +25,7 @@ export interface SessionsLike {
   list(): ReadonlyArray<{ readonly id: string; readonly header: { readonly cwd?: string } }>
 }
 
+/** One resolved upload workspace: session id, cwd, and the derived upload root. */
 export interface Workspace {
   sessionId: string
   /** The session's working directory (relativePath in responses is relative to this). */
@@ -33,12 +34,19 @@ export interface Workspace {
   root: string
 }
 
+/** Resolution surface over the host session store: resolve one session or list all workspaces. */
 export interface WorkspaceResolver {
   resolve(sessionId: string): Workspace | undefined
   /** All live workspaces, for DELETE containment and the lifecycle sweeper. */
   list(): Workspace[]
 }
 
+/**
+ * Build the workspace resolver over the host session store.
+ * @param sessions - the host session store (optional; unbound → no workspaces).
+ * @param storageDirName - upload-workspace directory name joined under each session cwd.
+ * @returns the resolver mapping session ids to workspaces.
+ */
 export function createWorkspaceResolver(
   sessions: SessionsLike | undefined,
   storageDirName: string,
@@ -102,6 +110,7 @@ export const DEFAULT_IGNORE_DIRS: readonly string[] = [
   '.idea', '.vscode', '.cache', '.turbo', '.parcel-cache',
 ]
 
+/** Injectable seams for the workspace indexer: session store, limits, ignores, clock. */
 export interface WorkspaceIndexerDeps {
   /** Session store used to map ids to cwds at rebuild time. */
   sessions?: SessionsLike | undefined
@@ -118,6 +127,7 @@ export interface WorkspaceIndexerDeps {
   now?: (() => number) | undefined
 }
 
+/** Bounded per-session workspace index: fetch, invalidate, dispose. */
 export interface WorkspaceIndexer {
   /**
    * Current index for one session; builds (awaited) when missing, dirty, or
@@ -307,6 +317,8 @@ interface IndexSlot {
  *   (the host emits no general external-change event), so get() rebuilds when
  *   the cached snapshot is older than ttlMs even without a dirty flag;
  * - no event and no TTL expiry → zero rescans (cache hit returns as-is).
+ * @param deps - session store, storage dir name, and the remaining seams.
+ * @returns the indexer object implementing {@link WorkspaceIndexer}.
  */
 export function createWorkspaceIndexer(deps: WorkspaceIndexerDeps): WorkspaceIndexer {
   const sessions = deps.sessions
@@ -397,7 +409,12 @@ export function createWorkspaceIndexer(deps: WorkspaceIndexerDeps): WorkspaceInd
 // M2: candidate scoring (shared by GET /api/filehub/search)
 // ---------------------------------------------------------------------------
 
-/** Greedy subsequence test: every query char appears in order in the target. */
+/**
+ * Greedy subsequence test: every query char appears in order in the target.
+ * @param query - the subsequence to look for.
+ * @param target - the string to test.
+ * @returns true when query is a subsequence of target.
+ */
 export function isSubsequence(query: string, target: string): boolean {
   let cursor = 0
   for (let index = 0; index < target.length && cursor < query.length; index += 1) {
@@ -410,6 +427,9 @@ export function isSubsequence(query: string, target: string): boolean {
  * Score one candidate path against a query. Higher wins; undefined = no match.
  * Tiers: basename exact (4) > basename prefix (3) > basename contains (2) >
  * full-path contains (1) > basename subsequence (0.5).
+ * @param query - the raw search query (case-insensitive matching).
+ * @param relativePath - the candidate path relative to the session cwd.
+ * @returns the score tier, or undefined when nothing matches.
  */
 export function scoreWorkspaceCandidate(query: string, relativePath: string): number | undefined {
   const q = query.toLowerCase()
@@ -427,6 +447,10 @@ export function scoreWorkspaceCandidate(query: string, relativePath: string): nu
 /**
  * Rank candidates by score, then shorter path, then lexicographic. Stable and
  * allocation-light enough for the 50-entry response page.
+ * @param query - the search query to score against.
+ * @param items - candidate items carrying a relativePath.
+ * @param compareExtra - optional tie-breaker applied after path length and name.
+ * @returns matches with their score, ranked best first.
  */
 export function rankWorkspaceCandidates<T extends { readonly relativePath: string }>(
   query: string,

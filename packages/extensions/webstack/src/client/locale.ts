@@ -12,6 +12,7 @@ export const CARD_NS = 'webstack.card'
 /** 联网模式按钮字典命名空间（conversation.input.left 条目声明 locale 用）。 */
 export const TOGGLE_NS = 'webstack.toggle'
 
+/** 设置卡字典键清单（冻结顺序即类型来源）。 */
 export const CARD_KEYS = [
   'title',
   'subtitle',
@@ -46,8 +47,10 @@ export const CARD_KEYS = [
   'errLayer',
 ] as const
 
+/** 设置卡字典键联合类型。 */
 export type CardKey = (typeof CARD_KEYS)[number]
 
+/** 设置卡中文文案表。 */
 export const cardZh: Record<CardKey, string> = {
   title: '网栈（WebStack）',
   subtitle: '聚合搜索与抓取内核的运行参数；改动经暂存草稿统一保存。',
@@ -83,6 +86,7 @@ export const cardZh: Record<CardKey, string> = {
   errLayer: '路由层取值不合法。',
 }
 
+/** 设置卡英文文案表。 */
 export const cardEn: Record<CardKey, string> = {
   title: 'WebStack',
   subtitle:
@@ -119,6 +123,7 @@ export const cardEn: Record<CardKey, string> = {
   errLayer: 'Unknown routing layer value.',
 }
 
+/** 联网模式按钮字典键清单（冻结顺序即类型来源）。 */
 export const TOGGLE_KEYS = [
   'toggleLabel',
   'modeOff',
@@ -130,8 +135,10 @@ export const TOGGLE_KEYS = [
   'tipLocalOnly',
 ] as const
 
+/** 联网模式按钮字典键联合类型。 */
 export type ToggleKey = (typeof TOGGLE_KEYS)[number]
 
+/** 联网模式按钮中文文案表。 */
 export const toggleZh: Record<ToggleKey, string> = {
   toggleLabel: '联网',
   modeOff: '关',
@@ -143,6 +150,7 @@ export const toggleZh: Record<ToggleKey, string> = {
   tipLocalOnly: '当前会话本地生效；宿主写入通道不可用。',
 }
 
+/** 联网模式按钮英文文案表。 */
 export const toggleEn: Record<ToggleKey, string> = {
   toggleLabel: 'Web',
   modeOff: 'off',

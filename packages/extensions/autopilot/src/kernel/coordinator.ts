@@ -15,6 +15,7 @@ import type { ModuleId, SkipReason } from './types.js'
 // Event vocabulary crossing the kernel
 // ---------------------------------------------------------------------------
 
+/** Event vocabulary crossing the kernel coordination boundary. */
 export type CoordinationEvent =
   | { kind: 'turn-ended'; sessionId: string; reason: string }
   | { kind: 'approval-pending'; sessionId: string; callId: string; toolName: string }
@@ -23,8 +24,10 @@ export type CoordinationEvent =
   | { kind: 'circuit-change'; open: boolean }
   | { kind: 'pause-change'; paused: boolean }
 
+/** How a dispatch of one event to one module resolved. */
 export type DispatchStatus = 'dispatched' | 'suppressed' | 'deferred' | 'duplicate'
 
+/** One dispatch result plus the reason when it was not dispatched. */
 export interface DispatchOutcome {
   status: DispatchStatus
   /** Populated when status is suppressed/deferred. */
@@ -44,8 +47,10 @@ export interface CoordinationView {
   claimCall(callId: string): boolean
 }
 
+/** Module handler callback surface for coordination events. */
 export type CoordinationHandler = (event: CoordinationEvent, view: CoordinationView) => void
 
+/** Single subscription point and cross-module referee (see module header). */
 export class AutomationCoordinator {
   private handlers = new Map<ModuleId, { handler: CoordinationHandler; enabled: boolean }>()
   private pendingBySession = new Map<string, Set<string>>()
@@ -62,31 +67,57 @@ export class AutomationCoordinator {
     },
   }
 
+  /**
+   * Register a module's coordination handler.
+   * @param moduleId - the module id.
+   * @param handler - the handler invoked for every dispatched event.
+   */
   registerModule(moduleId: ModuleId, handler: CoordinationHandler): void {
     this.handlers.set(moduleId, { handler, enabled: true })
   }
 
+  /**
+   * Enable or disable dispatch to a module.
+   * @param moduleId - the module id.
+   * @param enabled - whether the module receives events.
+   */
   setModuleEnabled(moduleId: ModuleId, enabled: boolean): void {
     const entry = this.handlers.get(moduleId)
     if (entry) entry.enabled = enabled
   }
 
+  /**
+   * Set the global pause state.
+   * @param paused - whether automation is paused.
+   */
   setPaused(paused: boolean): void {
     this.view.paused = paused
   }
 
+  /**
+   * Set the review-circuit state.
+   * @param open - whether the circuit is open.
+   */
   setCircuitOpen(open: boolean): void {
     this.view.circuitOpen = open
   }
 
+  /** Whether automation is globally paused. */
   get paused(): boolean {
     return this.view.paused
   }
 
+  /** Whether the review circuit is currently open. */
   get circuitOpen(): boolean {
     return this.view.circuitOpen
   }
 
+  /**
+   * Dispatch one event: maintain state, gate resume requests centrally, then
+   * fan out to every enabled module.
+   * @param event - the coordination event to dispatch.
+   * @returns one outcome per enabled module (plus the central gate verdict).
+   */
   dispatch(event: CoordinationEvent): DispatchOutcome[] {
     // State maintenance first.
     switch (event.kind) {

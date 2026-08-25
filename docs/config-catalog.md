@@ -164,6 +164,24 @@ Depends on: [`AgentOptions`](subsystems/core.md) · [`SessionId`](subsystems/cor
 
 Source: [`packages/core/agent-loop/src/index.ts:255`](../packages/core/agent-loop/src/index.ts)
 
+<a id="deepseek-aidsh-agent-memory"></a>
+
+## `@deepseek-ai/dsh-agent-memory`
+
+```ts config-catalog
+/** Plugin config: storage placement, retention cap, and injection width. */
+export interface Config {
+  /** Explicit shard root overriding `<branch-home>/memory` (tests and deployments). */
+  storageRoot?: string
+  /** Global entry cap across shards; appending past it evicts the oldest entries FIFO. */
+  capacity?: number
+  /** Maximum entries injected into one prompt assembly (Top-K). */
+  topK?: number
+}
+```
+
+Source: [`packages/memory/zdsh-memory/src/index.ts:67`](../packages/memory/zdsh-memory/src/index.ts)
+
 <a id="deepseek-aidsh-agent-presets"></a>
 
 ## `@deepseek-ai/dsh-agent-presets`
@@ -436,6 +454,49 @@ export interface Config {
 
 Source: [`packages/client/hmr/src/index.ts:31`](../packages/client/hmr/src/index.ts)
 
+<a id="deepseek-aidsh-client-workbench"></a>
+
+## `@deepseek-ai/dsh-client-workbench`
+
+Requires: `webServer`
+
+```ts config-catalog
+/** Deployment options for the host half (cordis plugin row `config`). */
+export interface WorkbenchHostConfig {
+  /**
+   * Additional trusted authorities (`host` or `host:port`) allowed past the
+   * Host fence when DSH serves beyond loopback. Must mirror the deployment's
+   * own trusted-host posture; entries are validated loudly at load time.
+   */
+  trustedHosts?: string[]
+  /** Text read cap per `fs.read`. Clamped hard at 8 MiB. */
+  readLimitBytes?: number
+  /** Request-body byte cap (also bounds writes). */
+  writeBodyLimitBytes?: number
+  /** Directory listing row bound per level. */
+  listLimit?: number
+  /** Search result bound before truncation. */
+  searchLimit?: number
+  /** Watcher batch window in milliseconds. */
+  watchDebounceMs?: number
+  /** Terminals one session may hold open at once. */
+  terminalsPerSession?: number
+  /** How long a disconnected terminal survives awaiting a reconnect (ms). */
+  reconnectGraceMs?: number
+  /**
+   * Workspace clamp: when non-empty, every request-declared `cwd` must lie
+   * inside one of these directories (first match wins per request). Empty
+   * means unrestricted — acceptable only because the trust fence limits the
+   * API to the user's own machine and page origin; deployments that expose
+   * the port beyond loopback SHOULD set this. The branch-integration build
+   * derives it from the live session automatically.
+   */
+  allowedRoots?: string[]
+}
+```
+
+Source: [`packages/client/workbench/src/index.ts:27`](../packages/client/workbench/src/index.ts)
+
 <a id="deepseek-aidsh-code-runtime-worker-thread"></a>
 
 ## `@deepseek-ai/dsh-code-runtime-worker-thread`
@@ -635,6 +696,144 @@ export interface Config {
 
 Source: [`packages/experimental/tool-agent-team/src/index.ts:17`](../packages/experimental/tool-agent-team/src/index.ts)
 
+<a id="deepseek-aidsh-file-hub"></a>
+
+## `@deepseek-ai/dsh-file-hub`
+
+Requires: `fs` · `sessions` · `storage` · `webServer` · `tools` · `systemPrompt`
+
+```ts config-catalog
+/**
+ * Init-time override shape: every top-level group optional, applied over
+ * {@link filehubConfigDefaults} by the deep merge in `resolveConfig`.
+ * Catalog-friendly explicit shape (no mapped/utility types).
+ */
+export interface FileHubConfigInit {
+  /** See {@link FileHubConfig.storageDirName}. */
+  storageDirName?: string
+  /** Upload domain knobs; defaults from {@link filehubConfigDefaults.upload}. */
+  upload?: UploadDomainConfig
+  /** Lifecycle sweep knobs; defaults from {@link filehubConfigDefaults.lifecycle}. */
+  lifecycle?: LifecycleDomainConfig
+  /** Mention domain overrides; defaults apply per knob. */
+  mention?: MentionDomainOverrides
+  /**
+   * M3 document-reading domain; defaults apply when omitted.
+   * `budgets` overrides per-format character budgets,
+   * `cacheEntries`/`cacheBytes` the parse-cache LRU bounds.
+   */
+  reading?: {
+    /** Per-format character budget overrides; defaults from DEFAULT_BUDGETS. */
+    budgets?: ReadingBudgetsOverrides
+    /** Parse-cache LRU entry count. Default 256. */
+    cacheEntries?: number
+    /** Parse-cache LRU byte ceiling. Default 64 MiB. */
+    cacheBytes?: number
+  }
+  /**
+   * M5 console domain; `maxEntries` bounds one library/usage aggregation page.
+   */
+  console?: {
+    /** One library/usage aggregation page bound. Default 200. */
+    maxEntries?: number
+  }
+  /** M4 vision waterfall; defaults apply when omitted. */
+  vision?: VisionDomainConfig
+}
+
+/** M1 upload domain knobs: byte ceiling, concurrency, quota, deny list. */
+export interface UploadDomainConfig {
+  /** Per-file byte ceiling. Default 50 MiB. */
+  maxBytes: number
+  /** Simultaneous uploads admitted server-wide. Default 4. */
+  maxConcurrent: number
+  /** Per-session stored-bytes ceiling. Default 512 MiB. */
+  perSessionQuotaBytes: number
+  /** Override of the dangerous-extension deny list (lowercase, no dots). */
+  dangerousExtensions?: readonly string[]
+}
+
+/** M1 lifecycle domain knobs: upload expiry age and sweep cadence. */
+export interface LifecycleDomainConfig {
+  /** Upload expiry age. Default 7 days. */
+  ttlMs: number
+  /** Sweep cadence. Default 1 hour. */
+  sweepIntervalMs: number
+}
+
+/**
+ * Operator-facing mention overrides: every field optional, defaults applied
+ * per knob by the mention domain (catalog-friendly explicit shape).
+ */
+export interface MentionDomainOverrides {
+  /** See {@link MentionDomainConfig.indexMaxFiles}. */
+  indexMaxFiles?: number
+  /** See {@link MentionDomainConfig.indexTtlMs}. */
+  indexTtlMs?: number
+  /** See {@link MentionDomainConfig.searchLimit}. */
+  searchLimit?: number
+}
+
+/**
+ * Per-format reading budget overrides; every field optional, defaults from
+ * {@link DEFAULT_BUDGETS} (catalog-friendly explicit shape).
+ */
+export interface ReadingBudgetsOverrides {
+  /** Plain-text character budget. Default 8000. */
+  text?: number
+  /** XLSX cell-stream character budget. Default 6000. */
+  xlsx?: number
+  /** PDF extracted-text character budget. Default 4000. */
+  pdf?: number
+  /** DOCX extracted-text character budget. Default 6000. */
+  docx?: number
+  /** Binary placeholder character budget. Default 512. */
+  binary?: number
+}
+
+/**
+ * M4 vision waterfall knobs (P01 §6-D). All optional; defaults live in the
+ * service. Mode/privacy toggles are NOT here — they ride the settings center
+ * (`vision.mode`, `privacy.localFirstVision`).
+ */
+export interface VisionDomainConfig {
+  /**
+   * Level 1: explicit caption endpoint (http/https, public-only per
+   * urlPolicy). Absent = level skipped.
+   */
+  endpoint?: string
+  /**
+   * Privacy opt-in counterpart of the panel toggle: when settings
+   * privacy.localFirstVision is true (the default) this must be explicitly
+   * true before the outbound endpoint ever dials. Default false.
+   */
+  allowExternalVision?: boolean
+  /** Level 2 toggle: local Ollama probe. Default true. */
+  ollamaProbe?: boolean
+  /** Probe base URL; loopback-locked. Default http://127.0.0.1:11434. */
+  ollamaEndpoint?: string
+  /** Outbound/generate timeout in ms. Default 20 000. */
+  timeoutMs?: number
+  /** Tags-probe timeout in ms. Default 3 000. */
+  probeTimeoutMs?: number
+  /** Memory caption-cache bound (KV-backed caches are unbounded). Default 512. */
+  cacheEntries?: number
+  /**
+   * FR-D1 route hint: exact provider/model interrogated through the host llm
+   * face for inputModalities. Absent/faceless = non-native (waterfall runs).
+   * TODO(integration): replace with the host session-route seam once exposed.
+   */
+  nativeRoute?: {
+    /** Provider id interrogated on the host llm face (e.g. `openai`). */
+    readonly provider: string
+    /** Model id alongside the provider for the inputModalities probe. */
+    readonly model: string
+  }
+}
+```
+
+Source: [`packages/extensions/file-hub/src/index.ts:216`](../packages/extensions/file-hub/src/index.ts)
+
 <a id="deepseek-aidsh-file-reference-local"></a>
 
 ## `@deepseek-ai/dsh-file-reference-local`
@@ -721,10 +920,12 @@ Requires: `agentDefaultModel` · `agents` · `sessions`
 export interface Config {
   /** The prompt text for the single run. */
   task: string
+  /** Persisted session id to continue (`--resume`); omit to run a fresh session. */
+  resume?: string
 }
 ```
 
-Source: [`packages/bundle/headless/src/index.ts:31`](../packages/bundle/headless/src/index.ts)
+Source: [`packages/bundle/headless/src/index.ts:34`](../packages/bundle/headless/src/index.ts)
 
 <a id="deepseek-aidsh-hooks-claude-code"></a>
 
@@ -1533,6 +1734,31 @@ export interface PlanModeConfig {
 ```
 
 Source: [`packages/plan/plan-mode/src/index.ts:70`](../packages/plan/plan-mode/src/index.ts)
+
+<a id="deepseek-aidsh-plugin-governance-host"></a>
+
+## `@deepseek-ai/dsh-plugin-governance-host`
+
+```ts config-catalog
+/** Deployment configuration of the governance service. */
+export interface Config {
+  /**
+   * Persistence root for the registry snapshot, approvals ledger, presets,
+   * and npm-installed plugin trees; defaults to the governance package's own
+   * root (`~/.dsh-zdsh`, overridden by `DSH_BRANCH_HOME`).
+   */
+  storageRoot?: string
+  /**
+   * HTTPS origin of the npm registry `npm:` install sources resolve against;
+   * defaults to https://registry.npmjs.org. Mirrors behind a firewall point
+   * this at their proxy — every request and redirect hop is pinned to this
+   * single origin.
+   */
+  registryUrl?: string
+}
+```
+
+Source: [`packages/host/plugin-governance-host/src/index.ts:144`](../packages/host/plugin-governance-host/src/index.ts)
 
 <a id="deepseek-aidsh-pwsh-local"></a>
 
@@ -3107,10 +3333,17 @@ export interface Config {
   maxRedirects?: number
   /** `User-Agent` header sent on every request. */
   userAgent?: string
+  /**
+   * Outbound proxy URL for every fetch (pure `http://`; https targets are
+   * tunnelled via CONNECT). Omit to fall back to the environment, consulted in
+   * the order `HTTPS_PROXY` → `HTTP_PROXY` → `ALL_PROXY`; with no usable entry
+   * requests go out directly.
+   */
+  proxyUrl?: string
 }
 ```
 
-Source: [`packages/web/web-fetch-http/src/index.ts:34`](../packages/web/web-fetch-http/src/index.ts)
+Source: [`packages/web/web-fetch-http/src/index.ts:35`](../packages/web/web-fetch-http/src/index.ts)
 
 <a id="deepseek-aidsh-web-search-deepseek"></a>
 
@@ -3188,6 +3421,94 @@ export interface Config {
 
 Source: [`packages/web/web-search-perplexity/src/index.ts:32`](../packages/web/web-search-perplexity/src/index.ts)
 
+<a id="deepseek-aidsh-webstack"></a>
+
+## `@deepseek-ai/dsh-webstack`
+
+Requires: `web`
+
+```ts config-catalog
+/** 插件组合入口配置（缺省字段回落冻结默认值，见 {@link Config}）。 */
+export interface PluginConfig {
+  /** 总开关；false 时聚合器 available()=false，行为等价回落原生。 */
+  enabled?: boolean
+  /** 默认路由层（开箱 `free`：免 Key 引擎池）。 */
+  layer?: SearchLayer
+  /** 候选展开开关；false 只用首选单引擎。 */
+  autoFallback?: boolean
+  /** 结果条数上限（seam 仍握有最终截断权 W-B-95）。 */
+  maxResults?: number
+  /** 查询复杂度分档路由开关。 */
+  complexityRouting?: boolean
+  /** 多引擎 RRF 融合总开关。 */
+  fusionEnabled?: boolean
+  /** 抓取渲染视图字符上限（canonical 预算 ×4 派生封顶 8 MiB）。 */
+  maxContentChars?: number
+  /** SSRF G2 豁免清单（host:port / CIDR；永不影响 G1/G3/G4）。 */
+  ssrfExempts?: string[]
+  /** 自托管 SearXNG 实例根地址；空串 = 未配置（不注册该引擎）。 */
+  searxngBaseUrl?: string
+  /** 会话联网模式（mode.sessionOnline）：`on` 时搜索强制 fresh 跳缓存读。 */
+  sessionOnline?: SessionOnlineMode
+  /** 缓存持久层档位（cache.persist）：`durable` 启用 L1（storage seam 或文件）。 */
+  cachePersist?: 'memory' | 'durable'
+  /**
+   * Windows 系统代理兜底（advanced.winProxyFallback，默认 false）：开启时
+   * activate 早期探测系统代理并注入 HTTPS_PROXY/HTTP_PROXY（尽力而为层）。
+   */
+  winProxyFallback?: boolean
+  /** 引擎级配置节点（engines.<id>.key / credentialRef / enabled）。 */
+  engines?: Record<string, EngineNodeSettings>
+  /** MCP 服务器条目；过 validateMcpEntry 的才注册为 McpSearchEngine。 */
+  mcpServers?: McpServerEntry[]
+  /** 垂直卫星包总闸（实验性；默认 false）。 */
+  verticalsPackEnabled?: boolean
+  /** X 垂直频道开关键（受 verticalsPackEnabled 约束；默认 false）。 */
+  verticalsChannelX?: boolean
+}
+
+/** 路由层。`native` = 直接委托宿主内置 provider（不停用、不重写）。 */
+export type SearchLayer = 'native' | 'free' | 'api' | 'selfhosted' | 'mcp'
+
+/** 会话联网模式（W-B-94）：Host-owned 状态机的三态词汇。 */
+export type SessionOnlineMode = 'off' | 'on' | 'ask'
+
+/** 单引擎设置节点（`engines.<id>`）。缺字段 = 用全局默认。 */
+export interface EngineNodeSettings {
+  /** 引擎总开关（缺省 true，随注册表默认）。 */
+  enabled?: boolean
+  /**
+   * 遗留字面值密钥（三级解析链第 1 级；占位符保存时阻断）。
+   * `key` 是规范键位；`apiKey` 为历史别名，读取侧 `key ?? apiKey` 兼容。
+   */
+  key?: string
+  /** 历史别名字面值密钥（与 `key` 同层；新配置一律写 `key`）。 */
+  apiKey?: string
+  /** 宿主 credentials 域引用名（三级解析链第 2 级）。 */
+  credentialRef?: string
+}
+
+/** MCP 服务器条目（F-108）：预设目录承载样板、用户条目只存差异（W-B-72）。 */
+export interface McpServerEntry {
+  /** 稳定唯一标识：同名条目以 id 去重，预设与用户条目合并的键。 */
+  readonly id: string
+  /** 传输形态：stdio 走子进程 spawn；http 直连远端端点。 */
+  readonly transport: 'stdio' | 'http'
+  /** stdio 启动命令；必须含 `@version` 锁定形态，裸 npx 在校验层拒绝（W-A-02）。 */
+  readonly command?: string
+  /** stdio 参数向量：逐元素传入 spawn，不经 shell 拼接。 */
+  readonly args?: readonly string[]
+  /** http 传输的端点 URL；仅接受 https 且过 SSRF 四道闸校验。 */
+  readonly url?: string
+  /** 凭据引用名列表（经 credentials 域每操作解析，绝不存明文）。 */
+  readonly credentialRefs?: readonly string[]
+  /** stdio 子进程环境变量白名单：未列出的宿主变量不透传。 */
+  readonly env?: Readonly<Record<string, string>>
+}
+```
+
+Source: [`packages/extensions/webstack/src/index.ts:99`](../packages/extensions/webstack/src/index.ts)
+
 <a id="deepseek-aidsh-workflow-worker-thread"></a>
 
 ## `@deepseek-ai/dsh-workflow-worker-thread`
@@ -3226,6 +3547,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-api-gateway` — requires `typert` ([`packages/api/gateway/src/index.ts`](../packages/api/gateway/src/index.ts))
 - `@deepseek-ai/dsh-api-remotes` ([`packages/api/remotes/src/index.ts`](../packages/api/remotes/src/index.ts))
 - `@deepseek-ai/dsh-authorization` — requires `credentials` ([`packages/credentials/authorization/src/index.ts`](../packages/credentials/authorization/src/index.ts))
+- `@deepseek-ai/dsh-autopilot` ([`packages/extensions/autopilot/src/index.ts`](../packages/extensions/autopilot/src/index.ts))
 - `@deepseek-ai/dsh-client-locale` ([`packages/client/locale/src/index.ts`](../packages/client/locale/src/index.ts))
 - `@deepseek-ai/dsh-client-modules` — requires `webServer` · `loader` ([`packages/client/modules/src/index.ts`](../packages/client/modules/src/index.ts))
 - `@deepseek-ai/dsh-client-runtime` ([`packages/client/runtime/src/index.ts`](../packages/client/runtime/src/index.ts))
@@ -3246,6 +3568,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-client-ui-model-selection` ([`packages/client/ui-model-selection/src/index.ts`](../packages/client/ui-model-selection/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-permission-presets` ([`packages/client/ui-permission-presets/src/index.ts`](../packages/client/ui-permission-presets/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-plan` ([`packages/client/ui-plan/src/index.ts`](../packages/client/ui-plan/src/index.ts))
+- `@deepseek-ai/dsh-client-ui-plugin-manager` ([`packages/client/ui-plugin-manager/src/index.ts`](../packages/client/ui-plugin-manager/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-reference` ([`packages/client/ui-reference/src/index.ts`](../packages/client/ui-reference/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-renderer` ([`packages/client/ui-renderer/src/index.ts`](../packages/client/ui-renderer/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-settings` ([`packages/client/ui-settings/src/index.ts`](../packages/client/ui-settings/src/index.ts))
@@ -3337,7 +3660,10 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 - `@deepseek-ai/dsh-llm-mock-server` ([`packages/test-support/llm-mock-server/src/index.ts`](../packages/test-support/llm-mock-server/src/index.ts))
 - `@deepseek-ai/dsh-loader-smoke` ([`packages/test-support/loader-smoke/src/index.ts`](../packages/test-support/loader-smoke/src/index.ts))
 - `@deepseek-ai/dsh-native-command` ([`packages/util/native-command/src/index.ts`](../packages/util/native-command/src/index.ts))
+- `@deepseek-ai/dsh-omnivision` ([`packages/extensions/omnivision/src/index.ts`](../packages/extensions/omnivision/src/index.ts))
 - `@deepseek-ai/dsh-output-retention` ([`packages/util/output-retention/src/index.ts`](../packages/util/output-retention/src/index.ts))
+- `@deepseek-ai/dsh-plugin-center` ([`packages/extensions/plugin-center/src/index.ts`](../packages/extensions/plugin-center/src/index.ts))
+- `@deepseek-ai/dsh-plugin-governance` ([`packages/plugins/plugin-governance/src/index.ts`](../packages/plugins/plugin-governance/src/index.ts))
 - `@deepseek-ai/dsh-sandbox-windows-acl` ([`packages/sandbox/sandbox-windows-acl/src/index.ts`](../packages/sandbox/sandbox-windows-acl/src/index.ts))
 - `@deepseek-ai/dsh-scope` ([`packages/core/scope/src/index.ts`](../packages/core/scope/src/index.ts))
 - `@deepseek-ai/dsh-sdk-client` ([`packages/sdk/client/src/index.ts`](../packages/sdk/client/src/index.ts))

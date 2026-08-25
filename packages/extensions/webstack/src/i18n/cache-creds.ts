@@ -55,7 +55,12 @@ export const cacheCredsMessagesEn: Readonly<Record<CacheCredsI18nKey, string>> =
     'Session online mode is set to ask: you will be prompted for confirmation before each web search.',
 })
 
-/** 取本册文案；未知 locale 安全回落中文（与 i18n/index 的 errorText 同约定）。 */
+/**
+ * 取本册文案；未知 locale 安全回落中文（与 i18n/index 的 errorText 同约定）。
+ * @param key - 本册文案键。
+ * @param locale - 语言（默认 zh）。
+ * @returns 文案文本。
+ */
 export function cacheCredsText(key: CacheCredsI18nKey, locale: 'zh' | 'en' = 'zh'): string {
   return locale === 'en' ? cacheCredsMessagesEn[key] : cacheCredsMessagesZh[key]
 }

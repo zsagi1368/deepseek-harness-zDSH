@@ -20,6 +20,7 @@ import type {
 } from '../kernel/types.js'
 import { BaseEngine, freezeDescriptor } from './engine.js'
 
+/** 原生委托引擎 id（native 层唯一候选）。 */
 export const NATIVE_DELEGATE_ID = 'native'
 
 /** 静态名片：原生档无自身网络行为，预算继承宿主默认（冻结，防运行期篡改）。 */
@@ -63,6 +64,8 @@ export class NativeDelegateEngine extends BaseEngine {
    * 搜索：有委托则计时包裹转发 seam（SeamWebSearchRequest={query,maxResults}），
    * sources[] 映射为 NormalizedHit（title 缺席回落 url，W-B-93 最小字段集）；
    * 无委托在统一包装内抛 unrepresentable（non-retryable），attempt 照记。
+   * @param req - 引擎层搜索请求。
+   * @returns 归一化响应（含 attempts 审计记录）。
    */
   async search(req: EngineSearchRequest): Promise<EngineSearchResponse> {
     return await this.runSearch(req, async () => {

@@ -15,6 +15,7 @@ import type {
 } from './types.js'
 import type { RandomSource } from './ledger.js'
 
+/** All audit event names in vocabulary order. */
 export const AUDIT_EVENT_NAMES: readonly AuditEventName[] = AUDIT_EVENTS
 
 // ---------------------------------------------------------------------------
@@ -28,6 +29,12 @@ export interface IgnorableEnvelope<N extends AuditEventName = AuditEventName> {
   options: { ignorable: true }
 }
 
+/**
+ * Build the ignorable session-log append envelope for one event.
+ * @param name - the audit event name.
+ * @param data - the event payload.
+ * @returns the envelope ready for the session log.
+ */
 export function envelope<N extends AuditEventName>(
   name: N,
   data: AuditPayloadMap[N],
@@ -35,10 +42,25 @@ export function envelope<N extends AuditEventName>(
   return { type: name, data, options: { ignorable: true } }
 }
 
+/**
+ * Generate a stable event id from the clock and random source.
+ * @param prefix - the id prefix.
+ * @param rng - the random source for uniqueness.
+ * @param at - the wall-clock timestamp.
+ * @returns the event id.
+ */
 export function makeEventId(prefix: string, rng: RandomSource, at: number): string {
   return `${prefix}_${at.toString(36)}_${rng.token()}`
 }
 
+/**
+ * Build one audit event with its id resolved.
+ * @param name - the audit event name.
+ * @param data - the event payload.
+ * @param at - the wall-clock timestamp.
+ * @param rng - the random source for the event id.
+ * @returns the complete audit event.
+ */
 export function makeAuditEvent<N extends AuditEventName>(
   name: N,
   data: AuditPayloadMap[N],
@@ -54,15 +76,27 @@ export function makeAuditEvent<N extends AuditEventName>(
 
 const MARKER_RE = /\[autopilot:(ap\/[a-z]+)\/([A-Za-z0-9_-]+)\]/g
 
+/**
+ * Build the model-visible marker text for an event.
+ * @param name - the audit event name.
+ * @param id - the event id.
+ * @returns the marker string.
+ */
 export function buildMarker(name: AuditEventName, id: string): string {
   return `[autopilot:${name}/${id}]`
 }
 
+/** One marker parsed out of injected text. */
 export interface ParsedMarker {
   event: AuditEventName
   id: string
 }
 
+/**
+ * Extract all known audit markers from a text.
+ * @param text - the injected conversation text.
+ * @returns the parsed markers in order of appearance.
+ */
 export function parseMarkers(text: string): ParsedMarker[] {
   const out: ParsedMarker[] = []
   for (const match of text.matchAll(MARKER_RE)) {
@@ -77,26 +111,31 @@ export function parseMarkers(text: string): ParsedMarker[] {
 // Folds — pure functions from events to queryable state ("replay is state")
 // ---------------------------------------------------------------------------
 
+/** Circuit state derived from replaying ap/circuit events. */
 export interface CircuitStateFold {
   tripped: boolean
   action: 'delegate' | 'reject' | 'abort-turn' | undefined
 }
 
+/** Grant lifecycle phase derived from replaying ap/grant events. */
 export interface GrantStateFold {
   phase: 'issued' | 'consumed' | 'settled' | 'expired'
 }
 
+/** Override lifecycle phase derived from replaying ap/override events. */
 export interface OverrideStateFold {
   toolName: string
   phase: 'issued' | 'consumed' | 'expired'
 }
 
+/** One kept ap/verdict record. */
 export interface VerdictRecord {
   verdictId: string
   decision: 'allow' | 'deny'
   fallback?: string
 }
 
+/** Full fold of the audit stream: counters, grants, overrides, circuit, verdicts. */
 export interface AuditStateFold {
   enabled: boolean
   counters: Record<AuditEventName, number>
@@ -108,6 +147,10 @@ export interface AuditStateFold {
 
 const VERDICT_CAP = 50
 
+/**
+ * The empty audit fold with zeroed counters.
+ * @returns the initial fold state.
+ */
 export function initialAuditState(): AuditStateFold {
   const counters = {} as Record<AuditEventName, number>
   for (const name of AUDIT_EVENT_NAMES) counters[name] = 0
@@ -121,6 +164,12 @@ export function initialAuditState(): AuditStateFold {
   }
 }
 
+/**
+ * Fold one audit event into the queryable state ("replay is state").
+ * @param state - the previous fold state.
+ * @param event - the audit event to fold.
+ * @returns the next fold state.
+ */
 export function foldAudit(state: AuditStateFold, event: AuditEvent): AuditStateFold {
   const next: AuditStateFold = {
     ...state,
@@ -175,6 +224,7 @@ export function foldAudit(state: AuditStateFold, event: AuditEvent): AuditStateF
 // Visibility invariant
 // ---------------------------------------------------------------------------
 
+/** Result of the visibility invariant check in both directions. */
 export interface VisibilityReport {
   /** Markers present in injected text but no matching visible event was logged. */
   markersWithoutEvents: ParsedMarker[]
@@ -186,6 +236,10 @@ export interface VisibilityReport {
  * Two-directional check between injected texts and the audit stream. Only
  * events whose payload produced model-visible text participate; payloads mark
  * this via an accompanying `visible` list supplied by the caller.
+ * @param injectedTexts - the texts injected into model conversations.
+ * @param events - the recorded audit stream.
+ * @param visibleEventIds - ids of events that produced model-visible text.
+ * @returns both directions of marker/event mismatches.
  */
 export function checkVisibility(
   injectedTexts: readonly string[],

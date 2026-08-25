@@ -20,11 +20,19 @@ const CONTENT_TYPES: Record<string, string> = {
   txt: 'text/plain; charset=utf-8', md: 'text/plain; charset=utf-8',
 }
 
+/**
+ * Create the media byte handler for `/workbench/file`. Same fence, guard, and
+ * caps as the JSON API; the payload is raw bytes with a conservative content type.
+ * @param rootCache - shared workspace-root cache used to resolve request cwds.
+ * @param trustedHosts - deployment-configured host authorities allowed past the Host fence.
+ * @param rootAllowed - optional deployment clamp on resolved workspace roots.
+ * @returns the HTTP handler streaming the guarded file, or an error status.
+ */
 export function createMediaHandler(
   rootCache: RootCache,
   trustedHosts: readonly string[],
   rootAllowed?: (rootReal: string) => boolean,
-) {
+): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
   return async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     if (!isTrustedRequestHost(req.headers, trustedHosts)) {
       res.writeHead(403, { 'content-type': 'text/plain' })

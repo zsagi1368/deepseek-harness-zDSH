@@ -27,6 +27,7 @@ import type {
   FsWriteResult,
 } from './shared/fs-protocol.ts'
 
+/** Deployment-dependent limits and clamps for the fs route handlers. */
 export interface FsRouteConfig {
   readLimitBytes: number
   listLimit: number
@@ -44,11 +45,16 @@ const BINARY_EXTS = new Set([
   'otf', 'class', 'pyc', 'so', 'bin',
 ])
 
-/** LRU-ish cache of cwd → realpathed root (bounded; recomputed on overflow). */
+/** Bounded cache of workspace cwd → realpathed root, recomputed on overflow. */
 export class RootCache {
   private readonly map = new Map<string, string>()
   constructor(private readonly capacity = 32) {}
 
+  /**
+   * Resolve (and cache) the realpathed workspace root for one cwd.
+   * @param cwd - the working directory whose root to resolve.
+   * @returns the real root path, or a failure marker when the cwd does not exist.
+   */
   async rootOf(cwd: string): Promise<string | RootCacheFailure> {
     const cached = this.map.get(cwd)
     if (cached !== undefined) return cached
@@ -134,6 +140,12 @@ function truncateUtf8(buffer: Buffer, maxBytes: number): { text: string; truncat
   return { text: buffer.subarray(0, end).toString('utf8'), truncated: truncatedFullFile, size: buffer.byteLength }
 }
 
+/**
+ * Build the `/workbench/api/fs.*` handler map for the given root cache and config.
+ * @param rootCache - shared workspace-root cache used to resolve request cwds.
+ * @param config - deployment limits and clamps for the handlers.
+ * @returns the route method → handler map (all handlers return envelope values).
+ */
 export function createFsHandlers(rootCache: RootCache, config: FsRouteConfig): Map<string, Handler<unknown>> {
   const handlers = new Map<string, Handler<unknown>>()
 
@@ -347,7 +359,12 @@ async function writeFile2(path: string, data: Buffer): Promise<void> {
   await fs.writeFile(path, data)
 }
 
-/** Body reader shared by the router; enforces the configured byte cap. */
+/**
+ * Body reader shared by the router; enforces the configured byte cap.
+ * @param req - the incoming request whose body to drain.
+ * @param capBytes - hard byte cap; exceeding it throws 'body-too-large'.
+ * @returns the concatenated request body.
+ */
 export async function readBody(req: IncomingMessage, capBytes: number): Promise<Buffer> {
   const chunks: Buffer[] = []
   let total = 0

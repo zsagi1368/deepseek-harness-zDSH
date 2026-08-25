@@ -71,6 +71,8 @@ export const MCP_ERROR_KEYS = {
  *   `@version` 锁定形态——裸 npx/uvx 一律拒绝（W-A-02）；
  * - http：必须提供 http(s):// 形态的 url；
  * - credentialRefs（两种 transport 通用）：数组元素必须是非空引用名。
+ * @param entry - 待校验的服务器条目。
+ * @returns 非法时为 i18n 键字符串，合法时为 null。
  */
 export function validateMcpEntry(entry: McpServerEntry): string | null {
   if (typeof entry.id !== 'string' || entry.id.trim() === '') {
@@ -143,6 +145,8 @@ export interface SdkBundle {
  * win32 壳脚本解析：npx/npm/pnpm 等在 Windows 上是 .cmd 垫片，裸名直接 spawn
  * 会 ENOENT。已知命令补 `.cmd` 后缀，其余按用户原样透传（绝对路径/自定义
  * 可执行文件不做猜测改写）。
+ * @param command - 配置的启动命令名。
+ * @returns 直接可 spawn 的命令名。
  */
 export function resolveStdioCommand(command: string): string {
   if (process.platform !== 'win32') return command
@@ -217,6 +221,9 @@ async function guardedStage<T>(
  * 从 listTools 结果中选择搜索工具：显式指定优先精确采用（不做存在性猜测，
  * 服务端可能不在列表回显）；否则取第一个名称或描述匹配 SEARCH_TOOL_RE 者。
  * 描述命中但工具无名时继续向后扫描；找不到返回 undefined。
+ * @param tools - listTools 返回的工具列表。
+ * @param preferred - 显式指定的工具名（可选）。
+ * @returns 命中的工具名，找不到为 undefined。
  */
 export function pickMcpSearchTool(
   tools: readonly McpToolInfo[],
@@ -237,7 +244,11 @@ export function pickMcpSearchTool(
 /** JSON 载荷里可能承载结果数组的键（按序探测）。 */
 const RESULT_LIST_KEYS = ['results', 'items', 'data', 'organic', 'hits'] as const
 
-/** 把 unknown 载荷规约成候选条目数组：顶层数组直用，否则探测常见包裹键。 */
+/**
+ * 把 unknown 载荷规约成候选条目数组：顶层数组直用，否则探测常见包裹键。
+ * @param value - callTool 返回的未定型载荷。
+ * @returns 条目数组（无数组形态时为空数组）。
+ */
 export function collectResultItems(value: unknown): readonly unknown[] {
   if (Array.isArray(value)) return value
   const rec = narrowRecord(value)
@@ -270,6 +281,10 @@ function firstString(
 /**
  * MCP JSON 结果 → NormalizedHit[]（W-B-52 不信任形状）：逐条收窄，缺 url
  * 即跳过；标题缺失回落 url（绝不编造占位文案）；published 仅接受 ISO 形态。
+ * @param value - MCP 工具返回的原始载荷。
+ * @param engineId - provenance 盖章用的引擎 id。
+ * @param count - 命中条数上限。
+ * @returns 归一化命中列表（截断至 count）。
  */
 export function parseMcpJsonHits(value: unknown, engineId: string, count: number): NormalizedHit[] {
   const hits: NormalizedHit[] = []
@@ -312,6 +327,10 @@ const MD_LINK_HINT = ']('
  * MCP 纯文本结果 → NormalizedHit[]（行级启发式）：markdown 链接行优先
  * （锚文本作标题），其次裸 URL 行（URL 之外的残余文本作标题，空则回落
  * url）。同 URL 只保留首见；无任何 URL 的行忽略。
+ * @param text - MCP 工具返回的纯文本。
+ * @param engineId - provenance 盖章用的引擎 id。
+ * @param count - 命中条数上限。
+ * @returns 归一化命中列表（截断至 count）。
  */
 export function parseMcpTextHits(text: string, engineId: string, count: number): NormalizedHit[] {
   const seen = new Set<string>()
@@ -472,7 +491,11 @@ export class McpSearchEngine extends BaseEngine {
     return new Ctor(new URL(this.entry.url ?? 'http://localhost'))
   }
 
-  /** 统一搜索面：建连→选工具→调用→解析，全程阶段护栏 + caller 中止透传。 */
+  /**
+   * 统一搜索面：建连→选工具→调用→解析，全程阶段护栏 + caller 中止透传。
+   * @param req - 引擎层搜索请求。
+   * @returns 归一化响应（含 attempts 审计记录）。
+   */
   async search(req: EngineSearchRequest): Promise<EngineSearchResponse> {
     return await this.runSearch(req, async () => {
       const startedAt = Date.now()

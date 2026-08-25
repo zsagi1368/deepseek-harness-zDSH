@@ -38,6 +38,12 @@ class CheckFailed implements CheckResult {
   passed = false
 }
 
+/**
+ * LoadGuard - 加载守卫
+ *
+ * 在插件加载前按注册顺序执行一组预检查（清单完整性、版本兼容、
+ * 沙箱配置、能力声明、符号隔离），返回聚合的加载结果。
+ */
 export class LoadGuard {
   private checks: PreLoadCheck[] = [
     new ManifestIntegrityCheck(),
@@ -47,6 +53,12 @@ export class LoadGuard {
     new SymbolIsolationCheck(),
   ]
 
+  /**
+   * 执行全部预检查
+   * @param plugin - 待加载的插件。
+   * @param kernelVersion - 当前内核版本，用于版本兼容检查。
+   * @returns 聚合的加载结果（allowed/failures/warnings）。
+   */
   preLoad(plugin: Plugin, kernelVersion: string): Promise<LoadResult> {
     const results = this.checks.map(check => check.run(plugin, kernelVersion))
 

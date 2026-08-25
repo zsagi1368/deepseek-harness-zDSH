@@ -15,6 +15,7 @@ export interface ArtifactIdentity {
   isDirectory: boolean
 }
 
+/** Minimal `lstat` result surface the registry keys identities on. */
 export interface LstatLike {
   dev: number
   ino: number
@@ -22,6 +23,7 @@ export interface LstatLike {
   isDirectory: boolean
 }
 
+/** Filesystem probing surface the registry walks workspaces with. */
 export interface FsProbePort {
   lstat(path: string): LstatLike | undefined
   /** Directory entry names; undefined when unreadable. */
@@ -48,6 +50,7 @@ function sameIdentity(a: ArtifactIdentity, b: ArtifactIdentity): boolean {
   )
 }
 
+/** Session artifact registry: identity-keyed workspace files this session made. */
 export class SessionArtifacts {
   private readonly registered = new Map<string, ArtifactIdentity>()
   private planned = new Set<string>()
@@ -65,11 +68,21 @@ export class SessionArtifacts {
 
   // -- Editor-planned creates (two-phase) ----------------------------------
 
+  /**
+   * Plan a create the editor is about to make (two-phase settlement).
+   * @param path - the target path being planned.
+   */
   planCreate(path: string): void {
     this.planned.add(this.resolve(path))
   }
 
-  /** Settle succeeds only when the plan exists, nothing pre-existed, and the call succeeded. */
+  /**
+   * Settle succeeds only when the plan exists, nothing pre-existed, and the call succeeded.
+   * @param path - the planned target path.
+   * @param existedBefore - whether the path already existed before the call.
+   * @param callOk - whether the create call itself succeeded.
+   * @returns whether the artifact was registered.
+   */
   settleCreate(path: string, existedBefore: boolean, callOk: boolean): boolean {
     const key = this.resolve(path)
     if (!callOk || existedBefore || !this.planned.has(key)) return false
@@ -85,6 +98,7 @@ export class SessionArtifacts {
   /**
    * Bounded workspace walk. Returns undefined when the tree exceeds the limit
    * (prefer NOT tracking over mis-attributing old files).
+   * @returns identity-keyed snapshot of every object under the workspace root.
    */
   snapshot(): Map<string, ArtifactIdentity> | undefined {
     const out = new Map<string, ArtifactIdentity>()
@@ -108,6 +122,10 @@ export class SessionArtifacts {
   /**
    * New paths AND new identities only — an old inode moved into a fresh
    * directory must not pass itself off as session-created.
+   * @param before - the snapshot taken before the shell call.
+   * @param after - the snapshot taken after the shell call.
+   * @param snapshotTakenAt - wall-clock moment the before snapshot was taken.
+   * @returns the lower-cased keys of objects that qualify as created.
    */
   diffSnapshots(
     before: Map<string, ArtifactIdentity>,
@@ -123,6 +141,11 @@ export class SessionArtifacts {
     return created
   }
 
+  /**
+   * Register diffed paths as session-created artifacts.
+   * @param paths - the lower-cased keys from a diff to promote.
+   * @returns how many paths were actually registered.
+   */
   registerFromDiff(paths: Iterable<string>): number {
     let promoted = 0
     for (const key of paths) {
@@ -134,13 +157,21 @@ export class SessionArtifacts {
     return promoted
   }
 
-  /** Shell-created artifacts promote only on clean exits. */
+  /**
+   * Shell-created artifacts promote only on clean exits.
+   * @param ok - whether the shell call exited cleanly.
+   */
   settleShell(ok: boolean): void {
     void ok // promotion already happened via registerFromDiff gating upstream
   }
 
   // -- Queries ---------------------------------------------------------------
 
+  /**
+   * Whether the path still holds its registered identity.
+   * @param path - the path to check.
+   * @returns true when the object exists with its original identity.
+   */
   has(path: string): boolean {
     const key = this.resolve(path).toLowerCase()
     const recorded = this.registered.get(key)
@@ -150,6 +181,11 @@ export class SessionArtifacts {
     return true
   }
 
+  /**
+   * Whether every object in the directory tree is a registered artifact.
+   * @param dirPath - the directory to check.
+   * @returns true when the whole tree is session-created.
+   */
   hasTree(dirPath: string): boolean {
     const root = this.resolve(dirPath)
     // The anchor itself must be a REGISTERED DIRECTORY — otherwise an
@@ -176,6 +212,7 @@ export class SessionArtifacts {
     return true
   }
 
+  /** Number of artifacts currently registered. */
   get size(): number {
     return this.registered.size
   }

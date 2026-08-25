@@ -49,6 +49,10 @@ export { DocumentInputError }
  * Race `work` against `signal`'s abort. When the signal wins, the returned
  * promise REJECTS even though `work` may still be running — callers must not
  * treat that as completion; the underlying result is discarded.
+ * @param work - the promise to race.
+ * @param signal - the abort signal, or undefined to skip the race.
+ * @param label - the label used in the ParseAbortedError message.
+ * @returns the work's result, or rejects with ParseAbortedError on abort.
  */
 export function abortRace<T>(work: Promise<T>, signal: AbortSignal | undefined, label: string): Promise<T> {
   if (signal === undefined) return work
@@ -129,6 +133,10 @@ type Stage = {
 /**
  * Run the waterfall. Always resolves with a {@link ParsedDocument}; rejects
  * ONLY on cancellation (caller signal / timeout).
+ * @param bytes - the raw document bytes.
+ * @param fileName - the upload's file name (sniffing hint).
+ * @param options - parse options: timeout, pdf page cap, sheet selector, signal.
+ * @returns the parsed document.
  */
 export async function parseDocument(bytes: Uint8Array, fileName: string | undefined, options: ParseOptions = {}): Promise<ParsedDocument> {
   const verdict = sniff(bytes, fileName)

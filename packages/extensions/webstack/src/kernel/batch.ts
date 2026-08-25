@@ -34,6 +34,10 @@ export interface BatchSearchDeps {
  * 携带命中（attempts 由上层审计通道承载，此处恒空数组），要么 `ok:false`
  * 携带闭集错误码与脱敏消息。本函数只在「批次本身非法」（超上限）时抛出；
  * 单项失败一律进结构化条目。
+ * @param deps - 执行依赖（聚合器搜索入口）。
+ * @param queries - 待执行的查询列表（保序）。
+ * @param concurrency - 并发宽度（钳到 1..5，非法回落 1）。
+ * @returns 与输入一一对应的结构化条目数组。
  */
 export async function batchSearch(
   deps: BatchSearchDeps,

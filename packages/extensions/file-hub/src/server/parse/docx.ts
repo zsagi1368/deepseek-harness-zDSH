@@ -21,6 +21,11 @@ async function loadMammoth(): Promise<MammothModule> {
   return cachedMammoth
 }
 
+/**
+ * Extract text from a .docx buffer via mammoth, counting paragraphs.
+ * @param bytes - the docx file bytes.
+ * @returns the extracted text plus format overview and warnings.
+ */
 export async function extractDocx(bytes: Uint8Array): Promise<{
   text: string
   overview: DocumentOverview

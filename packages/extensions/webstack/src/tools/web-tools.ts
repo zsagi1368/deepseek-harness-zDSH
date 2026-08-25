@@ -45,8 +45,14 @@ type BatchItemValue = {
 /**
  * 构造 `web_batch_search` 工具定义。零副作用读工具（isConcurrencySafe=true）：
  * 只消费聚合管线，不改任何共享状态。
+ * @param deps - 批量搜索的执行依赖（聚合管线入口）。
+ * @param locale - 渲染文案语言（默认 zh）。
+ * @returns `web_batch_search` 工具定义。
  */
-export function buildBatchSearchTool(deps: BatchSearchToolDeps, locale: Locale = 'zh') {
+export function buildBatchSearchTool(
+  deps: BatchSearchToolDeps,
+  locale: Locale = 'zh',
+): ReturnType<typeof defineTool> {
   return defineTool({
     name: 'web_batch_search',
     description:
@@ -152,8 +158,14 @@ export interface HistoryToolDeps {
 /**
  * 构造 `web_history` 工具定义。`clear` 是唯一写路径（不做并发安全申报，
  * 缺省即独占执行）；`list` 只读本地环形账本，零网络零凭据。
+ * @param deps - 历史账本依赖。
+ * @param locale - 渲染文案语言（默认 zh）。
+ * @returns `web_history` 工具定义。
  */
-export function buildHistoryTool(deps: HistoryToolDeps, locale: Locale = 'zh') {
+export function buildHistoryTool(
+  deps: HistoryToolDeps,
+  locale: Locale = 'zh',
+): ReturnType<typeof defineTool> {
   return defineTool({
     name: 'web_history',
     description:

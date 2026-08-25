@@ -61,6 +61,8 @@ export type OfficialApprovalOutcome = 'allowed-once' | 'rejected' | 'cancelled' 
  * - 官方 @deepseek-ai/dsh-user-approval：仅 'allowed-once' 授权；
  *   'cancelled'/'unavailable' 必须 fail closed。
  * - 本地 spec ApprovalOutcome：额外接受 'allowed-always'。
+ * @param outcome - 待判定的审批结果字符串。
+ * @returns 是否属于授权结果。
  */
 export function isApprovalGranted(outcome: string): boolean {
   return outcome === 'allowed-once' || outcome === 'allowed-always'
@@ -74,6 +76,8 @@ export function isApprovalGranted(outcome: string): boolean {
  * 规则：
  * - '@scope/name' → 'scope/name'（与 spec 的 normalizePluginId 对齐）
  * - 其余形式原样返回（已是 namespace/name 或裸名）
+ * @param id - 原始 Cordis 插件 ID。
+ * @returns 规范化后的插件 ID。
  */
 export function normalizeCordisPluginId(id: string): string {
   const trimmed = id.trim()
@@ -357,6 +361,9 @@ export class CordisPluginWrapper implements Plugin {
     }
   }
 
+  /**
+   * 当前插件状态（只读）
+   */
   get status(): PluginStatus {
     return this._status
   }
@@ -364,6 +371,8 @@ export class CordisPluginWrapper implements Plugin {
 
 /**
  * isCordisPlugin - 检测是否为 Cordis 插件
+ * @param obj - 待检测的对象。
+ * @returns 是否为 CordisService 类型守卫结果。
  */
 export function isCordisPlugin(obj: unknown): obj is CordisService {
   if (!obj || typeof obj !== 'object') return false
@@ -388,6 +397,7 @@ export function isCordisPlugin(obj: unknown): obj is CordisService {
  * @param options.fullyAuthorized - 是否自动授权（默认 false，需要确认）
  * @param options.mirror - 治理镜像模式：服务已由 Cordis 挂载运行，
  *   install/uninstall 不再驱动其生命周期（用于治理注册表镜像 Loader 条目）。
+ * @returns 包装后的 Plugin 实例。
  */
 export function wrapCordisPlugin(
   service: CordisService,
@@ -419,8 +429,13 @@ export function wrapCordisPlugin(
  * createCordisAdapter - 创建适配器实例
  *
  * 用于 PluginRegistry 的自动适配。
+ * @param context - 插件上下文。
+ * @returns 包含 wrap 与 isCordis 的适配器实例。
  */
-export function createCordisAdapter(context: PluginContext) {
+export function createCordisAdapter(context: PluginContext): {
+  wrap: (service: CordisService, options?: Parameters<typeof wrapCordisPlugin>[2]) => Plugin
+  isCordis: typeof isCordisPlugin
+} {
   return {
     wrap: (service: CordisService, options?: Parameters<typeof wrapCordisPlugin>[2]) =>
       wrapCordisPlugin(service, context, options),

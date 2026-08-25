@@ -2,9 +2,9 @@
  * WebStack 契约总纲（CONTRACT FREEZE · Wave 1 定稿，非 stub）。
  *
  * 本文件是 dsh-webstack 全部跨模块公共词汇的唯一事实源。并行工程师只允许
- * 「消费」这里的类型；需要新增或修改公共类型必须走首席架构师（见
- * docs/CONTRACTS.md 协作规则）。所有导出均为冻结契约，字段语义一经发布
- * 不做破坏性变更，只能加可选字段。
+ * 「消费」这里的类型；需要新增或修改公共类型必须走首席架构师（协作规则
+ * 见战役规划 Plan/web-search-plugin，位于本仓库之外）。所有导出均为冻结
+ * 契约，字段语义一经发布不做破坏性变更，只能加可选字段。
  *
  * 设计溯源 id（G:\000Github\DSH\PluginR&D\docs\web-search\81-design-inspiration.md）：
  * - W-B-05 结构镜像契约：HostSeams 在本文件内以独立 interface 重述平台 API，
@@ -403,6 +403,7 @@ export interface PersistenceAdapter {
 /** 凭据三级解析链固定优先级：遗留字面 → credentialRef → env。 */
 export const CREDS_SOURCE_ORDER = ['legacy-literal', 'credential-ref', 'env'] as const
 
+/** 凭据来源（三级链优先级序，取自 {@link CREDS_SOURCE_ORDER}）。 */
 export type CredSource = (typeof CREDS_SOURCE_ORDER)[number]
 
 /**
@@ -512,6 +513,7 @@ export interface SeamWebSearchProvider {
   search(request: SeamWebSearchRequest, signal?: AbortSignal): Promise<SeamWebSearchResult>
 }
 
+/** 我们注册进 `ctx.web` 的抓取 provider 形状（镜像 WebFetchProvider）。 */
 export interface SeamWebFetchProvider {
   readonly id: string
   available(): boolean
@@ -531,6 +533,7 @@ export interface SeamPromptSection {
   readonly text: string
 }
 
+/** 宿主 prompt 注册面（镜像 ctx.systemPrompt.section：入参子集 + disposer 返回）。 */
 export interface SeamSystemPromptRuntime {
   section(section: SeamPromptSection): () => void
 }
@@ -547,6 +550,7 @@ export interface SeamSettingsHooks<T> {
   validate?(value: T): void
 }
 
+/** 宿主设置节安装面（镜像 dsh-settings installSettingsSection 的最小面）。 */
 export interface SeamSettingsRuntime {
   installSection<T>(ns: string, schema: unknown, entry: T, hooks: SeamSettingsHooks<T>): void
 }
@@ -594,14 +598,19 @@ export interface FusionParams {
 
 /** MCP 服务器条目（F-108）：预设目录承载样板、用户条目只存差异（W-B-72）。 */
 export interface McpServerEntry {
+  /** 稳定唯一标识：同名条目以 id 去重，预设与用户条目合并的键。 */
   readonly id: string
+  /** 传输形态：stdio 走子进程 spawn；http 直连远端端点。 */
   readonly transport: 'stdio' | 'http'
   /** stdio 启动命令；必须含 `@version` 锁定形态，裸 npx 在校验层拒绝（W-A-02）。 */
   readonly command?: string
+  /** stdio 参数向量：逐元素传入 spawn，不经 shell 拼接。 */
   readonly args?: readonly string[]
+  /** http 传输的端点 URL；仅接受 https 且过 SSRF 四道闸校验。 */
   readonly url?: string
   /** 凭据引用名列表（经 credentials 域每操作解析，绝不存明文）。 */
   readonly credentialRefs?: readonly string[]
+  /** stdio 子进程环境变量白名单：未列出的宿主变量不透传。 */
   readonly env?: Readonly<Record<string, string>>
 }
 

@@ -14,8 +14,12 @@ import type { PtyRegistry } from './pty-registry.ts'
  * Pure message handler: one client message in, zero or more server messages
  * out (plus side effects on the registry). Synchronous because `open`
  * resolves its lazy native-module load inside the spawner seam.
+ * @param registry - the PTY registry the messenger dispatches into.
+ * @returns a handle object with one `handle(socket, raw)` dispatch entry.
  */
-export function createTerminalMessenger(registry: PtyRegistry) {
+export function createTerminalMessenger(
+  registry: PtyRegistry,
+): { handle(socket: WebSocket, raw: unknown): void } {
   const send = (socket: WebSocket, message: TerminalServerMessage): void => {
     if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(message))
   }
@@ -87,7 +91,14 @@ export function createTerminalMessenger(registry: PtyRegistry) {
   }
 }
 
-/** Attach the terminal route to an upgraded socket. */
+/**
+ * Attach the terminal route to an upgraded socket.
+ * @param registry - the PTY registry backing the socket.
+ * @param req - the upgrade request.
+ * @param socket - the upgraded duplex socket.
+ * @param head - buffered bytes following the upgrade handshake.
+ * @param options - toggle for detaching all terminals on close.
+ */
 export function acceptTerminalSocket(
   registry: PtyRegistry,
   req: IncomingMessage,

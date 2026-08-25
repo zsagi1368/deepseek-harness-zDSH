@@ -16,6 +16,7 @@ import { spawnSync } from 'node:child_process'
 import { accessSync, constants as fsConstants } from 'node:fs'
 import { basename } from 'node:path'
 
+/** A live terminal process face: write, resize, and kill. */
 export interface PtyProcess {
   pid: number
   write(data: string): void
@@ -23,6 +24,7 @@ export interface PtyProcess {
   kill(): void
 }
 
+/** Spawner input describing the process to start. */
 export interface PtySpawnRequest {
   file: string
   args: string[]
@@ -37,11 +39,13 @@ export interface PtySpawnRequest {
 /** Spawner seam so unit tests never touch node-pty (or need it built). */
 export type PtySpawner = (request: PtySpawnRequest) => PtyProcess
 
+/** Resolved shell to spawn: executable file plus fixed argument prefix. */
 export interface ShellResolution {
   file: string
   args: string[]
 }
 
+/** Terminal event sinks the route wires to the socket. */
 export interface TerminalEvents {
   onData(base64Chunk: string): void
   onExit(exitCode: number): void
@@ -61,6 +65,8 @@ const WINDOWS_SHELL_BASENAMES = new Set(['pwsh.exe', 'powershell.exe', 'cmd.exe'
  * Validate a resolved shell before it may reach any spawn seam: on Windows
  * only the known shell basenames pass; elsewhere the value must be an
  * absolute, existing, executable path. Returns null when unusable.
+ * @param resolution - the resolved shell to validate.
+ * @returns the validated resolution, or null when unusable.
  */
 export function validateShellResolution(resolution: ShellResolution): ShellResolution | null {
   const file = resolution.file.trim()
@@ -118,7 +124,10 @@ function defaultSpawner(request: PtySpawnRequest): PtyProcess {
   }
 }
 
-/** Windows-first probe: configured override → pwsh 7 → inbox PowerShell → ComSpec. */
+/**
+ * Windows-first probe: configured override → pwsh 7 → inbox PowerShell → ComSpec.
+ * @returns the resolved shell file plus argument prefix.
+ */
 export function resolveShell(): ShellResolution {
   if (process.platform === 'win32') {
     const configured = process.env.DSH_WORKBENCH_SHELL?.trim()
@@ -133,6 +142,7 @@ export function resolveShell(): ShellResolution {
   return { file: process.env.SHELL ?? '/bin/bash', args: ['-l'] }
 }
 
+/** Owns terminal processes per session: quota, replay buffers, and reconnect grace. */
 export class PtyRegistry {
   private readonly terminals = new Map<string, TerminalRecord>()
   private readonly sessionCounts = new Map<string, number>()
@@ -159,18 +169,34 @@ export class PtyRegistry {
   private readonly spawnerFn: PtySpawner
   private readonly shellResolverFn: () => ShellResolution
 
+  /**
+   * Composite key for one terminal record.
+   * @param sessionId - the owning session id.
+   * @param termId - the terminal id within the session.
+   * @returns the `${sessionId}:${termId}` map key.
+   */
   static key(sessionId: string, termId: string): string {
     return `${sessionId}:${termId}`
   }
 
+  /**
+   * Live terminal count for one session.
+   * @param sessionId - the session to count.
+   * @returns the number of currently held terminals.
+   */
   countFor(sessionId: string): number {
     return this.sessionCounts.get(sessionId) ?? 0
   }
 
   /**
-   * Open or reattach. Reattach cancels any pending grace-period kill and
-   * answers with the replay buffer so scrollback survives the round trip.
-   */
+* Open or reattach. Reattach cancels any pending grace-period kill and
+ * answers with the replay buffer so scrollback survives the round trip.
+ * @param sessionId - the owning session id.
+ * @param termId - the terminal id within the session.
+ * @param events - the event sinks to wire to the terminal.
+ * @param options - optional spawn geometry (cwd, cols, rows).
+ * @returns the attach result, or an error code plus message.
+ */
   open(
     sessionId: string,
     termId: string,
@@ -234,7 +260,12 @@ export class PtyRegistry {
     return { pid: spawned.pid, shell: this.shellLabel, replayBase64: record.buffer.toString('base64') }
   }
 
-  /** Driver/test entry: push output through the live replay+stream path. */
+  /**
+   * Driver/test entry: push output through the live replay+stream path.
+   * @param sessionId - the owning session id.
+   * @param termId - the terminal id within the session.
+   * @param chunk - the output bytes to push (string is utf8-encoded).
+   */
   feedData(sessionId: string, termId: string, chunk: Buffer | string): void {
     const record = this.terminals.get(PtyRegistry.key(sessionId, termId))
     if (record === undefined) return
@@ -246,7 +277,12 @@ export class PtyRegistry {
     record.events?.onData(piece.toString('base64'))
   }
 
-  /** Driver/test entry: run the process-exit cleanup path. */
+  /**
+   * Driver/test entry: run the process-exit cleanup path.
+   * @param sessionId - the owning session id.
+   * @param termId - the terminal id within the session.
+   * @param exitCode - the exit code to report.
+   */
   feedExit(sessionId: string, termId: string, exitCode: number): void {
     const key = PtyRegistry.key(sessionId, termId)
     const record = this.terminals.get(key)
@@ -256,6 +292,13 @@ export class PtyRegistry {
     this.terminals.delete(key)
   }
 
+  /**
+   * Write stdin bytes into a live, attached terminal.
+   * @param sessionId - the owning session id.
+   * @param termId - the terminal id within the session.
+   * @param data - the input text to write.
+   * @returns true when the write reached a live terminal.
+   */
   input(sessionId: string, termId: string, data: string): boolean {
     const record = this.terminals.get(PtyRegistry.key(sessionId, termId))
     if (record?.process === null || record === undefined || !record.attached) return false
@@ -263,6 +306,14 @@ export class PtyRegistry {
     return true
   }
 
+  /**
+   * Resize a live terminal's viewport.
+   * @param sessionId - the owning session id.
+   * @param termId - the terminal id within the session.
+   * @param cols - the column count (minimum 2).
+   * @param rows - the row count (minimum 1).
+   * @returns true when the resize reached a live process.
+   */
   resize(sessionId: string, termId: string, cols: number, rows: number): boolean {
     const record = this.terminals.get(PtyRegistry.key(sessionId, termId))
     if (record === undefined || record.process === null) return false
@@ -270,7 +321,11 @@ export class PtyRegistry {
     return true
   }
 
-  /** Socket dropped for ONE terminal: mark detached and start the countdown. */
+  /**
+   * Socket dropped for ONE terminal: mark detached and start the countdown.
+   * @param sessionId - the owning session id.
+   * @param termId - the terminal id within the session.
+   */
   detach(sessionId: string, termId: string): void {
     const record = this.terminals.get(PtyRegistry.key(sessionId, termId))
     if (record === undefined || !record.attached) return
@@ -291,7 +346,11 @@ export class PtyRegistry {
     }
   }
 
-  /** Reattach path clears the countdown for exactly one terminal. */
+  /**
+   * Reattach path clears the countdown for exactly one terminal.
+   * @param sessionId - the owning session id.
+   * @param termId - the terminal id within the session.
+   */
   cancelGrace(sessionId: string, termId: string): void {
     const record = this.terminals.get(PtyRegistry.key(sessionId, termId))
     if (record?.graceTimer === undefined) return
@@ -299,6 +358,12 @@ export class PtyRegistry {
     record.graceTimer = undefined
   }
 
+  /**
+   * Close one terminal immediately, killing the process and releasing quota.
+   * @param sessionId - the owning session id.
+   * @param termId - the terminal id within the session.
+   * @returns true when a terminal was found and closed.
+   */
   close(sessionId: string, termId: string): boolean {
     const key = PtyRegistry.key(sessionId, termId)
     const record = this.terminals.get(key)
@@ -309,6 +374,7 @@ export class PtyRegistry {
     return true
   }
 
+  /** Kill every held terminal and clear all records (teardown path). */
   disposeAll(): void {
     for (const [key, record] of [...this.terminals.entries()]) {
       record.process?.kill()
@@ -346,6 +412,7 @@ function termPart(key: string): string {
   return index === -1 ? '' : key.slice(index + 1)
 }
 
+/** Successful open/reattach answer: pid, shell label, and replay buffer base64. */
 export interface AttachResult {
   pid: number
   shell: string

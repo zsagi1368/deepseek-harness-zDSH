@@ -9,11 +9,20 @@ import { createVisionCircuitBreaker } from '../resilience/circuit.js'
 import { getKnownSecrets, redactSecrets } from '../security/index.js'
 import type { VisionProvider, VisionResult } from './provider.js'
 
+/** Time budget knobs for one failover run. */
 export interface FailoverConfig {
   totalTimeoutMs?: number
   providerTimeoutMs?: number
 }
 
+/**
+ * Try providers in order until one succeeds, honoring the circuit breaker.
+ * @param providers - the ordered provider list to attempt.
+ * @param options - the vision request options shared by every provider.
+ * @param config - total and per-provider time budgets.
+ * @param circuitBreaker - the persistent breaker, or a fresh one when omitted.
+ * @returns the first successful result, or an aggregate failure result.
+ */
 export async function executeWithFailover(
   providers: VisionProvider[],
   options: VisionExecuteOptions,

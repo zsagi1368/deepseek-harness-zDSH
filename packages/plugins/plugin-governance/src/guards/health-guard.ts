@@ -6,12 +6,21 @@
 
 import { Plugin, PluginStatus, HealthReport, PluginRegistry } from '../spec/index.js'
 
+/**
+ * 健康检查配置项
+ */
 export interface HealthCheckOptions {
   intervalMs: number
   warningThreshold: number
   disableThreshold: number
 }
 
+/**
+ * HealthGuard - 健康检查守卫
+ *
+ * 定期执行注册的健康检查，并根据连续失败次数升级插件状态
+ * （警告 → 自动禁用）。
+ */
 export class HealthGuard {
   private healthChecks = new Map<string, HealthCheck>()
   private consecutiveFailures = new Map<string, number>()
@@ -26,10 +35,15 @@ export class HealthGuard {
 
   constructor(private registry: PluginRegistry) {}
 
+  /**
+   * 合并更新检查配置
+   * @param options - 要覆盖的配置项（部分配置允许）。
+   */
   setOptions(options: Partial<HealthCheckOptions>): void {
     this.options = { ...this.options, ...options }
   }
 
+  /** 开始定期健康检查 */
   startMonitoring(): void {
     if (this.monitoring) return
 
@@ -39,6 +53,7 @@ export class HealthGuard {
     }, this.options.intervalMs)
   }
 
+  /** 停止定期健康检查 */
   stopMonitoring(): void {
     this.monitoring = false
     if (this.timer) {
@@ -47,14 +62,28 @@ export class HealthGuard {
     }
   }
 
+  /**
+   * 注册某个插件的健康检查函数
+   * @param pluginId - 插件 ID。
+   * @param check - 健康检查函数。
+   */
   registerCheck(pluginId: string, check: HealthCheck): void {
     this.healthChecks.set(pluginId, check)
   }
 
+  /**
+   * 注销某个插件的健康检查函数
+   * @param pluginId - 插件 ID。
+   */
   unregisterCheck(pluginId: string): void {
     this.healthChecks.delete(pluginId)
   }
 
+  /**
+   * 查询某个插件的连续失败次数
+   * @param pluginId - 插件 ID。
+   * @returns 连续失败次数（无记录时为 0）。
+   */
   getConsecutiveFailures(pluginId: string): number {
     return this.consecutiveFailures.get(pluginId) || 0
   }
@@ -112,6 +141,10 @@ export class HealthGuard {
     console.log(`[HealthGuard] ${type.toUpperCase()}: Plugin ${pluginId} - ${error || 'Unknown error'}`)
   }
 
+  /**
+   * 汇总当前注册表内所有插件的健康报告
+   * @returns 聚合后的健康报告。
+   */
   getHealthReport(): HealthReport {
     const plugins = this.registry.getAll()
     const statusOf = (p: Plugin): PluginStatus => this.registry.getStatus(p.manifest.id)

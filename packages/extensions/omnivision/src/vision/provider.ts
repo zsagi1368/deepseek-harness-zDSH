@@ -5,6 +5,7 @@ import type { VisionExecuteOptions, VisionFailure, VisionResult } from '../confi
 
 export type { VisionFailure, VisionResult }
 
+/** A vision backend adapter contract shared by every provider implementation. */
 export interface VisionProvider {
   /** Unique provider name */
   name: string
@@ -32,6 +33,8 @@ export interface VisionProvider {
 
 /**
  * Resolve provider by name
+ * @param _name - the provider name to look up (unused pending plugin init).
+ * @returns the matching provider, or undefined when none is registered.
  */
 export function resolveProvider(_name: string): VisionProvider | undefined {
   // This will be populated by the plugin initialization
@@ -40,6 +43,7 @@ export function resolveProvider(_name: string): VisionProvider | undefined {
 
 /**
  * List all available providers
+ * @returns the names of the built-in providers.
  */
 export function listProviders(): string[] {
   return ['openai', 'anthropic', 'gemini', 'ovh-free', 'zhipu']

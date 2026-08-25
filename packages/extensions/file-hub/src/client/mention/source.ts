@@ -38,6 +38,11 @@ import { createDebouncedSearch, makeHttpSearchFetcher } from './search.js'
 /** localStorage key consulted per registration (M2 placeholder; M5 → Remote settings). */
 export const MENTION_DISABLED_STORAGE_KEY = 'zdsh-filehub.mentionDisabled'
 
+/**
+ * Whether the mention feature is disabled via the localStorage toggle.
+ * @param storage - the storage face to read (defaults to global localStorage).
+ * @returns true when the disabled flag is set to '1'; false on denied storage.
+ */
 export function readMentionDisabled(storage?: Storage): boolean {
   if (typeof storage === 'undefined') return false
   try {
@@ -70,6 +75,7 @@ function candidateToEntry(
   }
 }
 
+/** Injectable seams for the trigger source: search transport, session id, storage. */
 export interface FileHubTriggerDeps {
   /** Search transport override (tests). */
   readonly fetchSearch?: SearchFetcher | undefined
@@ -83,6 +89,8 @@ export interface FileHubTriggerDeps {
  * Build the FileHub `@` trigger source. Candidates come from the plugin's own
  * search endpoint (debounced), refined locally; picks insert plain text
  * aligned with the host grammar plus one trailing space.
+ * @param deps - search transport, session seam, and storage overrides.
+ * @returns the FileHub `@` trigger source.
  */
 export function buildFileHubTriggerSource(deps: FileHubTriggerDeps = {}): InputTriggerSource {
   const resolveId = deps.sessionId ?? fallbackSessionId
@@ -138,7 +146,10 @@ export function buildFileHubTriggerSource(deps: FileHubTriggerDeps = {}): InputT
 
 let currentSessionSeam: string | null = null
 
-/** Last session id reported by a mounted FileHub surface (mirrors upload/entries.tsx). */
+/**
+ * Last session id reported by a mounted FileHub surface (mirrors upload/entries.tsx).
+ * @param sessionId - the current session id, or null/'' to clear the seam.
+ */
 export function setMentionSessionSeam(sessionId: string | null): void {
   currentSessionSeam = sessionId !== null && sessionId !== '' ? sessionId : null
 }
@@ -150,6 +161,9 @@ function fallbackSessionId(): string | null {
 /**
  * Register the source with full degradation guards. Returns a disposer, or
  * undefined when registration was skipped (disabled flag / missing service).
+ * @param ctx - the client context to compose onto.
+ * @param deps - trigger-source seams (search transport, session id, storage).
+ * @returns the registration disposer, or undefined when skipped.
  */
 export function registerMentionTrigger(ctx: ClientContext, deps: FileHubTriggerDeps = {}): (() => void) | undefined {
   if (readMentionDisabled(deps.storage ?? (typeof localStorage === 'undefined' ? undefined : localStorage))) {

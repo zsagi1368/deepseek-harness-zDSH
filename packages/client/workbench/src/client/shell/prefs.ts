@@ -11,6 +11,7 @@ export interface WorkbenchPrefs {
   paletteHotkey: boolean
 }
 
+/** Default user preferences used before any stored value exists. */
 export const PREFS_DEFAULT: WorkbenchPrefs = {
   startCollapsed: false,
   paletteHotkey: true,
@@ -24,6 +25,12 @@ function isPrefs(value: unknown): value is WorkbenchPrefs {
   return typeof candidate.startCollapsed === 'boolean' && typeof candidate.paletteHotkey === 'boolean'
 }
 
+/**
+ * Load user preferences from storage, validating the shape and falling back
+ * to defaults (storage failures degrade to in-memory).
+ * @param storage - the storage backing, or undefined to skip persistence.
+ * @returns the loaded preferences, or defaults when absent or invalid.
+ */
 export function loadPrefs(
   storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | undefined,
 ): WorkbenchPrefs {
@@ -42,6 +49,11 @@ export function loadPrefs(
   }
 }
 
+/**
+ * Persist user preferences (no-op without storage or on storage failure).
+ * @param storage - the storage backing, or undefined to skip persistence.
+ * @param prefs - the preferences to save.
+ */
 export function savePrefs(
   storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | undefined,
   prefs: WorkbenchPrefs,

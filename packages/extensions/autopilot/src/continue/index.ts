@@ -15,6 +15,7 @@ import { ContinueScheduler } from './scheduler.js'
 import { buildResumeText } from './resumetext.js'
 import type { GuardTexts, TemplateContext } from './resumetext.js'
 
+/** Default resume-prompt texts; surfaces are merged over this base. */
 export const DEFAULT_TEXTS = {
   continue: 'Continue',
   continueMaxTokens: 'Continue',
@@ -23,6 +24,7 @@ export const DEFAULT_TEXTS = {
   guardDone: 'Note: the previous {tool} call already completed successfully — do NOT redo it, continue from its result.',
 } as const
 
+/** Resume-prompt texts, overridable per key via configuration. */
 export interface ContinueTexts {
   continue: string
   continueMaxTokens: string
@@ -31,6 +33,7 @@ export interface ContinueTexts {
   guardDone?: string
 }
 
+/** Host adapters the continue module drives: scheduler surface + session history. */
 export interface ContinueModuleAdapters extends SchedulerAdapters {
   /** Feed assistant/tool activity into the loop guard (host event adapter). */
   listActiveSessionIds(): string[]
@@ -42,6 +45,7 @@ export interface ContinueModuleAdapters extends SchedulerAdapters {
   } | undefined
 }
 
+/** Everything the creation of the continue module needs from the composition root. */
 export interface CreateContinueModuleDeps {
   kernel: Kernel
   options: {
@@ -61,6 +65,7 @@ export interface CreateContinueModuleDeps {
   adapters: ContinueModuleAdapters
 }
 
+/** Session-event surface the host adapter forwards to the continue module. */
 export interface ContinueModule {
   handleTurnStart(sessionId: string): void
   handleTurnEnd(
@@ -85,6 +90,12 @@ export interface ContinueModule {
   resumeNow(sessionId: string): boolean
 }
 
+/**
+ * Build the continue module: wires the scheduler, loop guard, and detector
+ * into one disposable surface for the host adapter.
+ * @param deps - kernel, resolved options, and host adapters.
+ * @returns the continue module surface.
+ */
 export function createContinueModule(deps: CreateContinueModuleDeps): ContinueModule & { disposable: true } {
   const { kernel, adapters } = deps
   const options = deps.options

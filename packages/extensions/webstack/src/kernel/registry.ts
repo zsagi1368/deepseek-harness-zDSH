@@ -66,7 +66,10 @@ export interface EngineStatusEntry {
   readonly lastCode?: string
 }
 
-/** 已知引擎 id 但未注册进注册表的占位条目构造器（doctor 合并配置面用）。 */
+/**
+ * 已知引擎 id 但未注册进注册表的占位条目构造器（doctor 合并配置面用）。
+ * @returns state='unwired' 的占位条目。
+ */
 export function unwiredEntry(): EngineStatusEntry {
   return { state: 'unwired' }
 }
@@ -107,7 +110,11 @@ export class EngineRegistry {
   readonly #states = new Map<string, EngineRuntimeState>()
   readonly #history = new Map<string, AttemptRecord[]>()
 
-  /** 注册引擎实例；返回随 fiber 释放的 disposer。id 冲突按契约拒绝。 */
+  /**
+   * 注册引擎实例；返回随 fiber 释放的 disposer。id 冲突按契约拒绝。
+   * @param engine - 待注册的引擎实例。
+   * @returns 注销该引擎的 disposer。
+   */
   register(engine: EngineLike): () => void {
     const id = engine.descriptor.id
     if (this.#engines.has(id)) {
@@ -125,17 +132,28 @@ export class EngineRegistry {
     }
   }
 
-  /** 全部已注册引擎 id（注册序）。 */
+  /**
+   * 全部已注册引擎 id（注册序）。
+   * @returns 引擎 id 数组。
+   */
   listIds(): string[] {
     return [...this.#engines.keys()]
   }
 
-  /** 引擎静态名片；未注册为 undefined。 */
+  /**
+   * 引擎静态名片；未注册为 undefined。
+   * @param id - 引擎 id。
+   * @returns 引擎描述符，未注册时为 undefined。
+   */
   describe(id: string): EngineDescriptor | undefined {
     return this.#engines.get(id)?.descriptor
   }
 
-  /** 按层过滤候选引擎（native→native 档；free→免费池；selfhosted→自托管…注册序）。 */
+  /**
+   * 按层过滤候选引擎（native→native 档；free→免费池；selfhosted→自托管…注册序）。
+   * @param layer - 路由层。
+   * @returns 该层可用的引擎实例列表。
+   */
   candidates(layer: SearchLayer): EngineLike[] {
     // oxlint-disable-next-line typescript/no-unnecessary-condition -- 运行期兜底：未知 layer 值安全回落空候选。
     const tiers = LAYER_TIERS[layer] ?? []
@@ -148,6 +166,9 @@ export class EngineRegistry {
    * 终态语义：候选清单为空 → transport/no-candidates；全部候选冷却中 →
    * cooldown/all-cooling；尝试过但无一成功 → 抛最后一个错误；
    * terminal 错误（aborted/ssrf-blocked）随时立即整场终止。
+   * @param req - 引擎层搜索请求。
+   * @param ids - 显式候选顺序（可选；缺省回落层内候选）。
+   * @returns 聚合后的响应（hits + attempts，可能带 warnings）；全部失败时抛错。
    */
   async runWithFallback(
     req: EngineSearchRequest,
@@ -202,7 +223,11 @@ export class EngineRegistry {
     return warnings.length === 0 ? { hits, attempts } : { hits, attempts, warnings }
   }
 
-  /** 最近一次尝试轨迹导出（doctor 与设置卡「测试」按钮的审计回显来源，最新在前）。 */
+  /**
+   * 最近一次尝试轨迹导出（doctor 与设置卡「测试」按钮的审计回显来源，最新在前）。
+   * @param engineId - 引擎 id。
+   * @returns 该引擎的审计记录（最新在前）。
+   */
   recentAttempts(engineId: string): readonly AttemptRecord[] {
     return [...(this.#history.get(engineId) ?? [])].reverse()
   }
@@ -210,6 +235,7 @@ export class EngineRegistry {
   /**
    * 运行状态快照（web_backend_status / doctor / prompt 状态节的数据源）。
    * 只读本地计时与错误码，绝不发探针（W-B-97 纪律对诊断面同样适用）。
+   * @returns 引擎 id → 状态条目映射。
    */
   statusSnapshot(): Record<string, EngineStatusEntry> {
     const out: Record<string, EngineStatusEntry> = {}
@@ -232,7 +258,11 @@ export class EngineRegistry {
     return out
   }
 
-  /** 引擎是否处于冷却期。 */
+  /**
+   * 引擎是否处于冷却期。
+   * @param id - 引擎 id。
+   * @returns 冷却未结束时为 true。
+   */
   inCooldown(id: string): boolean {
     const until = this.#states.get(id)?.cooldownUntil
     return until !== undefined && Date.now() < until

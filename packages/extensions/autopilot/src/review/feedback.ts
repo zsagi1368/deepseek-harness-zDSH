@@ -5,6 +5,7 @@
  */
 import { buildMarker } from '../kernel/audit.js'
 
+/** A pending denial reason awaiting injection into the failed tool result. */
 export interface FeedbackEntry {
   verdictId: string
   toolName: string
@@ -15,11 +16,17 @@ export interface FeedbackEntry {
 
 const FEEDBACK_TTL_MS = 5 * 60_000
 
+/** callId-keyed TTL store of denial reasons, each consumable at most once. */
 export class FeedbackLoop {
   private readonly entries = new Map<string, FeedbackEntry>()
 
   constructor(private readonly now: () => number = () => Date.now()) {}
 
+  /**
+   * Store the denial reason for a call, stamped with the feedback TTL.
+   * @param callId - tool-call id the entry is keyed by.
+   * @param entry - verdict linkage and denial text (expiry is added here).
+   */
   record(
     callId: string,
     entry: Omit<FeedbackEntry, 'expiresAt'>,
@@ -31,6 +38,9 @@ export class FeedbackLoop {
    * Build the model-visible replacement text for a FAILED (isError) tool
    * result. The marker guarantees "model-visible ⟺ recorded" pairing with the
    * corresponding ap/verdict event. Consumes the entry.
+   * @param callId - tool-call id whose entry to consume.
+   * @param isError - whether the tool result actually failed.
+   * @returns the injected feedback text, or undefined when unrecorded/expired/successful.
    */
   consume(callId: string, isError: boolean): string | undefined {
     const entry = this.entries.get(callId)
@@ -53,6 +63,7 @@ export class FeedbackLoop {
     return `${prefix} ${marker} Reason: ${entry.reason} Choose a safer alternative or ask the user; do not attempt to bypass this.`
   }
 
+  /** Number of entries currently held (pending or expired-but-unconsumed). */
   get size(): number {
     return this.entries.size
   }

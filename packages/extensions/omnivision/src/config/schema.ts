@@ -82,6 +82,8 @@ export const DEFAULT_CONFIG: OmniVisionConfig = {
 
 /**
  * Validate config and return warnings for problematic settings
+ * @param config - the configuration to validate.
+ * @returns the list of warnings for problematic settings.
  */
 export function validateConfig(config: OmniVisionConfig): string[] {
   const warnings: string[] = []

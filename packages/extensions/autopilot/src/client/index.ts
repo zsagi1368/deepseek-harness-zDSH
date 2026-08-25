@@ -17,6 +17,7 @@ interface BridgeResponse {
   ok?: boolean
 }
 
+/** Adapter surface the console fiber needs from the host connection. */
 export interface ConsoleClientAdapters {
   /** Fetch wrapper bound to the host connection (injected at build time). */
   fetchText(url: string, init?: { method?: string; body?: string }): Promise<string>
@@ -24,7 +25,36 @@ export interface ConsoleClientAdapters {
   actionToken(): string | undefined
 }
 
-export function createConsoleFiber(adapters: ConsoleClientAdapters) {
+/**
+ * Fiber surface returned by {@link createConsoleFiber}: locale helpers plus
+ * the status/action plumbing the host composition root binds to its routes.
+ */
+interface ConsoleFiberApi {
+  readonly disposable: true
+  readonly name: string
+  apply(ctx: {
+    locale?: {
+      register(ns: string, dict: { zh: typeof zh; en: typeof en }): void
+      bind(ns: string): (key: string, params?: Record<string, string>) => string
+    }
+    slots?: { inject(slot: string, register: () => unknown): void }
+    settingsScope?: unknown
+    effect?(fn: () => void | (() => void), name: string): void
+  }): void
+  t(key: LocaleKey, params?: Record<string, string>): string
+  refreshStatus(): Promise<unknown>
+  performAction(action: Record<string, unknown>): Promise<BridgeResponse>
+  setLocaleResolver(fn: (key: LocaleKey, params?: Record<string, string>) => string): void
+  getLocaleText(): string
+}
+
+/**
+ * Build the browser console fiber: registers dictionaries and slots and
+ * returns the API surface the composition root drives.
+ * @param adapters - host connection adapters (fetch wrapper and action token).
+ * @returns the console fiber API surface.
+ */
+export function createConsoleFiber(adapters: ConsoleClientAdapters): ConsoleFiberApi {
   let locale: ((key: LocaleKey, params?: Record<string, string>) => string) | undefined
 
   function lookup(dict: Record<string, string | undefined>, key: LocaleKey): string | undefined {

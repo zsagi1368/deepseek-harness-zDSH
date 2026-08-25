@@ -123,6 +123,14 @@ function assessWordSegment(
   return { decision: 'allow', reason: 'unrecognized command confined by the workspace-write sandbox' }
 }
 
+/**
+ * Assess one full shell command line, worst-segment-wins, denied stops early.
+ * @param shell - the shell dialect.
+ * @param line - the command line to assess.
+ * @param artifacts - session artifact registry for deletion judgment.
+ * @param roots - the session's path roots.
+ * @returns the assessment for the whole line.
+ */
 export function assessCommandLine(
   shell: ShellKind,
   line: string,
@@ -151,6 +159,9 @@ export function assessCommandLine(
 /**
  * Whole-line opaque fallback: only the small set of high-confidence semantic
  * markers escalates; everything else stays inside the OS sandbox.
+ * @param text - the opaque command text.
+ * @param roots - the session's path roots.
+ * @returns the assessment for the opaque region.
  */
 export function opaqueAssessment(text: string, roots: PathRoots): Assessment {
   if (NESTED_DELETE_IN_SOURCE.test(text)) {

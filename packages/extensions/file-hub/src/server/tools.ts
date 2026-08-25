@@ -106,21 +106,28 @@ export interface GenericResultView {
   title?: string
   content?: TextBlock[]
 }
+/** Minimal ToolResult subset the presentResult hooks read (content + error flag + meta). */
 export interface ToolResultLike {
   content: Array<{ type: string; text?: string }>
   isError: boolean
   meta?: JsonValue
 }
 
-/** Identity helper shaped exactly like the host's defineTool usage. */
+/**
+ * Identity helper shaped exactly like the host's defineTool usage.
+ * @param definition - the tool definition to adopt.
+ * @returns the same definition, registry-ready.
+ */
 export function defineTool(definition: FilehubToolDefinition): FilehubToolDefinition {
   return definition
 }
 
+/** Structural mirror of the host tool registry's register surface. */
 export interface ToolsRegistryLike {
   register(definition: FilehubToolDefinition): () => void
 }
 
+/** Structural mirror of the host system-prompt registry's section surface. */
 export interface SystemPromptRegistryLike {
   /** PromptSection { name, order, text } — verified system-prompt signature. */
   section(section: { name: string; order: number; text: string }): () => void
@@ -139,6 +146,7 @@ export interface ReadingBudgets {
   binary: number
 }
 
+/** Default per-format character budgets (FR-C6 defaults; overridable per call). */
 export const DEFAULT_BUDGETS: ReadingBudgets = {
   text: 8_000,
   xlsx: 6_000,
@@ -147,6 +155,11 @@ export const DEFAULT_BUDGETS: ReadingBudgets = {
   binary: 2_000,
 }
 
+/**
+ * Merge caller-provided budget overrides onto the defaults.
+ * @param overrides - per-format character budgets to prefer, if provided.
+ * @returns the merged budget set.
+ */
 export function resolveBudgets(overrides?: Partial<ReadingBudgets>): ReadingBudgets {
   return { ...DEFAULT_BUDGETS, ...overrides }
 }
@@ -155,13 +168,21 @@ function budgetFor(budgets: ReadingBudgets, format: DocumentFormat): number {
   return format in budgets ? budgets[format] : DEFAULT_BUDGETS.text
 }
 
+/** Prefix of the continuation marker appended to truncated windows. */
 export const TRUNCATION_MARKER_PREFIX = '[truncated at char '
 
-/** Explicit continuation guidance appended whenever a window cut content. */
+/**
+ * Explicit continuation guidance appended whenever a window cut content.
+ * @param _start - first included char index (reserved; not surfaced in the marker).
+ * @param end - one-past-last included char index.
+ * @param total - total character count of the document.
+ * @returns the marker text instructing the next read call's offset.
+ */
 export function truncationMarker(_start: number, end: number, total: number): string {
   return `${TRUNCATION_MARKER_PREFIX}${end} of total ${total} — call again with offset=${end}]`
 }
 
+/** One character window over a document body: the slice plus clamp/truncation facts. */
 export interface TextWindow {
   slice: string
   start: number
@@ -174,6 +195,10 @@ export interface TextWindow {
 /**
  * Char-window a body into [offset, offset+limit), clamped to the document,
  * with the explicit continuation marker when content remains beyond the cut.
+ * @param text - the full document body to window.
+ * @param offset - 0-based char offset to start from (clamped into range).
+ * @param limit - maximum chars to include, at least 1.
+ * @returns the window slice with start/end/total, truncation flag, and marker when truncated.
  */
 export function windowText(text: string, offset: number, limit: number): TextWindow {
   const total = text.length
@@ -203,6 +228,10 @@ export function windowText(text: string, offset: number, limit: number): TextWin
  * workspace) are readable. A future milestone may widen this to the whole
  * session cwd (the `tool-fs` read surface already covers plain project files);
  * widening means relaxing ONLY this function — every other layer keys off it.
+ * @param sessionCwd - the calling session's working directory.
+ * @param storageDirName - upload-workspace directory name under the session cwd.
+ * @param requested - tool-supplied path (absolute, or relative to the workspace root).
+ * @returns the resolved absolute target inside the workspace (throws PathPolicyError on escape).
  */
 export function resolveWorkspaceTarget(
   sessionCwd: string,
@@ -221,6 +250,7 @@ export function resolveWorkspaceTarget(
 // Registration
 // ---------------------------------------------------------------------------
 
+/** Injectable seams for reading-tool registration: logger, workspace dir, parse cache, budgets. */
 export interface ReadingToolsDeps {
   /** Optional; defaults to a no-op sink when the host logger is absent. */
   logWarn?: (message: string) => void
@@ -310,7 +340,11 @@ async function readWorkspaceFile(
   }
 }
 
-/** Model-facing text envelope for one non-probe read. */
+/**
+ * Model-facing text envelope for one non-probe read.
+ * @param value - path, parsed format, and the character window to render.
+ * @returns the `<document>` block with window slice and continuation marker.
+ */
 export function buildDocumentBody(value: {
   path: string
   format: DocumentFormat
@@ -325,7 +359,11 @@ export function buildDocumentBody(value: {
   return lines.join('\n')
 }
 
-/** Model-facing overview block for probe calls (structure only, never body). */
+/**
+ * Model-facing overview block for probe calls (structure only, never body).
+ * @param value - path, format, and the computed structure overview.
+ * @returns the `<document-overview>` block per format.
+ */
 export function buildProbeBody(value: {
   path: string
   format: DocumentFormat
@@ -364,6 +402,8 @@ export function buildProbeBody(value: {
 /**
  * Compose and register the M3 reading tools + prompt section. Returns the
  * disposers so wiring code stays effect-shaped.
+ * @param deps - host registries plus the injectable seams from {@link ReadingToolsDeps}.
+ * @returns disposer functions, one per registered tool / prompt section.
  */
 export function registerReadingTools(
   deps: ReadingToolsDeps & {

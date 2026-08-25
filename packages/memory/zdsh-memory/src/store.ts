@@ -27,7 +27,11 @@ const SHARD_NAME = /^\d{4}-\d{2}-\d{2}\.json$/u
 /** Valid memory kinds, guarding deserialization. */
 const KINDS: readonly MemoryKind[] = ['decision', 'fact', 'preference']
 
-/** UTC day key (`YYYY-MM-DD`) of one epoch timestamp — the shard a file groups by. */
+/**
+ * UTC day key (`YYYY-MM-DD`) of one epoch timestamp — the shard a file groups by.
+ * @param timestamp - the epoch-millisecond timestamp to key.
+ * @returns the UTC `YYYY-MM-DD` day key.
+ */
 export function dateKeyOf(timestamp: number): string {
   return new Date(timestamp).toISOString().slice(0, 10)
 }
@@ -76,7 +80,12 @@ function parseShard(raw: string, expectedDate: string): MemoryEntry[] {
   return entries
 }
 
-/** Split an ordered list into kept survivors and FIFO-evicted heads. */
+/**
+ * Split an ordered list into kept survivors and FIFO-evicted heads.
+ * @param entries - the entries to trim.
+ * @param capacity - the maximum number of entries to keep.
+ * @returns the kept survivors and the oldest entries evicted past capacity.
+ */
 export function evictToCapacity(entries: readonly MemoryEntry[], capacity: number): {
   kept: MemoryEntry[]
   evicted: MemoryEntry[]
@@ -161,6 +170,11 @@ export class MemoryStore {
   /**
    * Record one extracted candidate: dedupe to a `hits` increment, otherwise
    * append and evict past capacity. Returns the stored (or updated) entry.
+   * @param candidate - the extracted memory candidate to record.
+   * @param sessionId - the session the candidate came from.
+   * @param now - the creation timestamp to stamp a new entry with; defaults to
+   * the current time.
+   * @returns the stored or updated memory entry.
    */
   record(candidate: MemoryCandidate, sessionId: string, now: number = Date.now()): Promise<MemoryEntry> {
     return this.enqueue(async () => {
@@ -191,6 +205,7 @@ export class MemoryStore {
 
   /**
    * Remove one entry by id wherever its shard lives.
+   * @param id - the entry id to remove.
    * @returns whether an entry was removed.
    */
   forget(id: string): Promise<boolean> {
@@ -209,7 +224,10 @@ export class MemoryStore {
     return [...this.entries].sort(olderThan)
   }
 
-  /** Snapshot of every stored entry, oldest first. */
+  /**
+   * Snapshot of every stored entry, oldest first.
+   * @returns the stored entries, oldest first.
+   */
   list(): Promise<MemoryEntry[]> {
     return this.enqueue(async () => {
       if (!this.loaded) await this.readAll()
@@ -217,7 +235,11 @@ export class MemoryStore {
     })
   }
 
-  /** Synchronous view of the currently loaded cache for prompt-time scorers. Empty before the first load completes. */
+  /**
+   * Synchronous view of the currently loaded cache for prompt-time scorers.
+   * Empty before the first load completes.
+   * @returns the cached entries, oldest first.
+   */
   cachedEntries(): readonly MemoryEntry[] {
     return this.sorted()
   }

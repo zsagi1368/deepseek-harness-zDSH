@@ -131,6 +131,46 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'agentMemory',
+    summary: 'The `agentMemory` service: extraction intake, persistence ownership, and the prompt-time scorer behind the registered `agent:memory` section.',
+    description: 'The `agentMemory` service: extraction intake, persistence ownership, and the prompt-time scorer behind the registered `agent:memory` section.',
+    methods: [
+      {
+        signature: 'async observe(session: Session, event: SessionEvent): Promise<void>',
+        description: 'Ingest one session event: human prompts feed the decision/preference rules; a completed turn\'s final assistant reply feeds the fact rule.',
+        parameters: [{ name: 'session', description: 'the session the event belongs to.' }, { name: 'event', description: 'the session event to observe.' }],
+      },
+      {
+        signature: 'renderSection(assemble: AssembleContext): string',
+        description: 'Render the `agent:memory` section text for one prompt assembly: Top-K keyword-overlap entries against the assembling agent\'s current task. Returns `\'\'` when no agent is attached or nothing overlaps.',
+        parameters: [{ name: 'assemble', description: 'the prompt assembly context carrying the agent to score.' }],
+        returns: 'the rendered section text (possibly empty).',
+      },
+      {
+        signature: 'list(): Promise<MemoryEntry[]>',
+        description: 'Every stored entry, oldest first (future UI/Remote read face).',
+        parameters: [],
+        returns: 'the stored memory entries, oldest first.',
+      },
+      {
+        signature: 'forget(id: string): Promise<boolean>',
+        description: 'Drop one stored entry by id.',
+        parameters: [{ name: 'id', description: 'the entry id to forget.' }],
+        returns: 'whether the id existed.',
+      },
+      {
+        signature: 'start(): Promise<void>',
+        description: 'Eagerly load persisted shards so prompt-time scoring sees them before the first turn.',
+        parameters: [],
+      },
+      {
+        signature: 'drain(): Promise<void>',
+        description: 'Await pending persistence (disposal seam).',
+        parameters: [],
+      },
+    ],
+  },
+  {
     key: 'agentPresets',
     summary: 'Registry over the deployment\'s agent presets.',
     description: 'Registry over the deployment\'s agent presets.\n\nDiscovery is unmemoized: `list()` and `resolve()` re-read the roots on every call so a preset authored while the process runs is visible immediately, and a preset deleted underneath a picker disappears from the next read.',
@@ -1131,6 +1171,85 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Select whether plan mode should be active. Between turns the method appends the change immediately because no in-turn pre-step will run until another prompt starts a turn. The open-turn fold is the idle signal: agent status stays `running` through post-turn checkpointing, when no further in-turn pre-step runs. During an open turn the selection remains pending until the next accepted in-turn pre-step. Repeated selection of the current or already-pending state is a no-op.',
         parameters: [{ name: 'agent', description: 'The agent to switch.' }, { name: 'active', description: 'Whether plan mode should be active.' }],
         returns: 'what happened: `committed` (logged now), `queued` (awaiting the next accepted in-turn pre-step), `cancelled` (an opposite pending selection was cleared; the logged state already matches), or `noop` (already in that state).',
+      },
+    ],
+  },
+  {
+    key: 'pluginGovernance',
+    summary: 'The host governance service.',
+    description: 'The host governance service. It owns one PluginRegistry and one PluginPersistence bound to this service fiber; status mutations are snapshotted durably before their receipt is returned, so memory and disk never disagree behind an acknowledged call.',
+    methods: [
+      {
+        signature: '@Remote(\'list\') list(): GovernanceRosterSnapshot',
+        description: 'List every registered plugin with its live status and admission state.',
+        parameters: [],
+        returns: 'the point-in-time roster in registration order.',
+      },
+      {
+        signature: '@Remote(\'get\') get(request: PluginIdRequest): GovernanceResult<GovernedPluginDetail>',
+        description: 'Project one registered plugin in full for inspection surfaces.',
+        parameters: [{ name: 'request', description: 'the plugin to project.' }],
+        returns: 'the detail, or `plugin-not-found`.',
+      },
+      {
+        signature: '@Remote(\'install\') async install(request: InstallPluginRequest): Promise<GovernanceResult<GovernanceAcknowledgement>>',
+        description: 'Install a plugin from a local directory or an npm registry source (L3 admission pipeline). Local sources must be existing directories with a readable `package.json`; `npm:<name>[@<exact-version>]` sources are resolved against the configured registry, integrity-checked, and extracted into the governance storage area before the same manifest construction runs over them. The constructed manifest is admitted through the governance registry and the roster snapshot persists before the receipt returns.\n\nFail closed: a manifest whose permission posture requests an admission decision (`requiresAdmission`) registers **disabled** unless the approvals ledger already holds a decision, so installed code never runs before the operator approves it; `approve` + `enable` then activate it.',
+        parameters: [{ name: 'request', description: 'local source directory or `npm:` spec of the plugin.' }],
+        returns: 'a receipt, or `request-invalid` / `registry-unavailable` / `persistence-failed`.',
+      },
+      {
+        signature: '@Remote(\'uninstall\') async uninstall(request: PluginIdRequest): Promise<GovernanceResult<GovernanceAcknowledgement>>',
+        description: 'Uninstall a plugin: unregister it from the governance registry, purge its durable admission state (approvals-ledger entry and queued persisted decision — a later reinstall fails closed instead of inheriting stale grants), and snapshot the registry before the receipt returns. Entries mirrored from the Cordis Loader reappear on the next sync while their module stays mounted in the loader configuration.',
+        parameters: [{ name: 'request', description: 'the plugin to remove.' }],
+        returns: 'a receipt, or `plugin-not-found` / `persistence-failed`.',
+      },
+      {
+        signature: '@Remote(\'enable\') async enable(request: PluginIdRequest): Promise<GovernanceResult<GovernanceAcknowledgement>>',
+        description: 'Re-enable a previously disabled plugin and snapshot the registry. Plugins whose manifest requests an admission decision stay disabled until `approve` records one — the gate is enforced here on the server, not just in client UI.',
+        parameters: [{ name: 'request', description: 'the plugin to enable.' }],
+        returns: 'a receipt, or `plugin-not-found` / `approval-required` / `persistence-failed`.',
+      },
+      {
+        signature: '@Remote(\'disable\') async disable(request: DisablePluginRequest): Promise<GovernanceResult<GovernanceAcknowledgement>>',
+        description: 'Disable a plugin and snapshot the registry. An optional reason enters the registry\'s own per-plugin record until the next enable re-enables it.',
+        parameters: [{ name: 'request', description: 'the plugin to disable, with an optional reason.' }],
+        returns: 'a receipt, or `plugin-not-found` / `persistence-failed`.',
+      },
+      {
+        signature: '@Remote(\'health\') health(): GovernanceHealthReport',
+        description: 'Report aggregate and per-plugin health, including each plugin\'s own probe verdict when it declares one.',
+        parameters: [],
+        returns: 'the aggregated report over the current roster.',
+      },
+      {
+        signature: '@Remote(\'approve\') approve(request: PluginIdRequest): GovernanceResult<GovernanceAcknowledgement>',
+        description: 'Record the operator\'s admission decision for a plugin whose manifest requests confirmation. The decision survives restarts in the approvals ledger and is reported by `list` and `get`.',
+        parameters: [{ name: 'request', description: 'the plugin to approve.' }],
+        returns: 'a receipt, or `plugin-not-found` / `persistence-failed`.',
+      },
+      {
+        signature: '@Remote(\'presetSave\') presetSave(request: PresetNameRequest): GovernanceResult<GovernanceAcknowledgement>',
+        description: 'Snapshot which plugins are currently enabled or disabled under a preset name. Statuses other than active/disabled are runtime facts rather than operator decisions and stay out of presets.',
+        parameters: [{ name: 'request', description: 'name of the preset to write.' }],
+        returns: 'a receipt, or `preset-already-exists` / `request-invalid` / `persistence-failed`.',
+      },
+      {
+        signature: '@Remote(\'presetLoad\') async presetLoad(request: PresetNameRequest): Promise<GovernanceResult<PresetApplicationReport>>',
+        description: 'Apply a stored preset: re-enable or disable each listed plugin against the live registry. Entries naming unknown plugins are reported untouched.',
+        parameters: [{ name: 'request', description: 'name of the preset to apply.' }],
+        returns: 'applied and unknown ids, or `preset-not-found` / `request-invalid` / `persistence-failed`.',
+      },
+      {
+        signature: '@Remote(\'presetDelete\') presetDelete(request: PresetNameRequest): GovernanceResult<GovernanceAcknowledgement>',
+        description: 'Delete one stored preset. The live registry is untouched.',
+        parameters: [{ name: 'request', description: 'name of the preset to delete.' }],
+        returns: 'a receipt, or `preset-not-found` / `request-invalid` / `persistence-failed`.',
+      },
+      {
+        signature: 'async syncMountedPlugins(): Promise<void>',
+        description: 'Mirror the Cordis Loader\'s currently mounted plugin entries into the governed registry, so the roster and the plugin-manager UI report real production data instead of an empty list. Each entry is wrapped through the governance Cordis adapter in mirror mode: lifecycle stays owned by Cordis, and the operator\'s mount decision in the loader configuration counts as the admission decision. One entry failing to wrap or register never blocks the rest; already-mirrored ids are skipped on re-runs.\n\nRuns once at service init and is re-triggered by every `list`/`health` read so entries mounted after this service can still appear.',
+        parameters: [],
+        returns: 'when one full sync pass has settled (also a test seam).',
       },
     ],
   },
@@ -2886,20 +3005,8 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ApiKeyRecord {\n    readonly kind: \'api-key\';\n    readonly key?: string;\n    readonly env?: Readonly<Record<string, string>>;\n}',
   },
   {
-    name: 'ApprovalOutcome',
-    declaration: 'export type ApprovalOutcome = \'allowed-once\' | \'rejected\' | \'cancelled\' | \'unavailable\';',
-  },
-  {
     name: 'ApprovalPolicy',
     declaration: 'export type ApprovalPolicy = \'ask\' | \'never\';',
-  },
-  {
-    name: 'ApprovalRequest',
-    declaration: 'export interface ApprovalRequest {\n    readonly agent: Agent;\n    readonly toolName: string;\n    readonly callId?: CallId;\n    readonly reason?: string;\n    readonly signal?: AbortSignal;\n}',
-  },
-  {
-    name: 'ApprovalService',
-    declaration: 'export class ApprovalService extends Service {\n    static Config: z<Config>;\n    constructor(ctx: Context, public config: Config);\n    setPolicy(agent: Agent, policy: ApprovalPolicy): void;\n    async request(req: ApprovalRequest): Promise<ApprovalOutcome>;\n    overrideOf(session: Session): ApprovalPolicy | undefined;\n}',
   },
   {
     name: 'AskUserQuestionAnswer',
@@ -3086,10 +3193,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface CommandInvocation {\n    readonly commandId: CommandId;\n    readonly agent: Agent;\n    readonly rawInput: string;\n    readonly attachments: readonly ImageBlock[];\n    readonly signal: AbortSignal;\n}',
   },
   {
-    name: 'CommandResult',
-    declaration: 'export type CommandResult = {\n    readonly kind: \'success\';\n    readonly text?: string;\n    readonly sourceEventSeq?: number;\n} | {\n    readonly kind: \'error\';\n    readonly text: string;\n};',
-  },
-  {
     name: 'CompactionAgentContext',
     declaration: 'export interface CompactionAgentContext {\n    session: Session;\n    options: {\n        provider?: string;\n        model?: string;\n    };\n}',
   },
@@ -3226,14 +3329,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type CredentialRef = Branded<\'CredentialRef\'>;',
   },
   {
-    name: 'DiffCallView',
-    declaration: 'export interface DiffCallView {\n    card: \'diff\';\n    title: string;\n    diffs: FileDiff[];\n    locations?: FileLocation[];\n}',
-  },
-  {
-    name: 'DiffResultView',
-    declaration: 'export interface DiffResultView {\n    card: \'diff\';\n    title?: string;\n    diffs: FileDiff[];\n}',
-  },
-  {
     name: 'DirectoryPickerBrowseCapability',
     declaration: 'export interface DirectoryPickerBrowseCapability {\n    kind: \'browse\';\n    list(path?: string, signal?: AbortSignal): Promise<DirectoryListing>;\n    createDirectory(path: string, name: string): Promise<string>;\n}',
   },
@@ -3252,6 +3347,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'DirectoryRegistrationHandle',
     declaration: 'export interface DirectoryRegistrationHandle {\n    (): void;\n    replace(entries: readonly LlmConfigurableProvider[]): void;\n}',
+  },
+  {
+    name: 'DisablePluginRequest',
+    declaration: 'export interface DisablePluginRequest {\n    readonly pluginId: PluginGovernanceId;\n    readonly reason: string | null;\n}',
+  },
+  {
+    name: 'Disposable',
+    declaration: 'export interface Disposable {\n    dispose(): void;\n}',
   },
   {
     name: 'Domain',
@@ -3338,14 +3441,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface EpochHeader {\n    config: LlmCallConfig;\n    adapterDefaults?: LlmCallConfigAdapterDefaults;\n    system?: string;\n    tools?: ToolSchema[];\n}',
   },
   {
-    name: 'FileDiff',
-    declaration: 'export interface FileDiff {\n    path: string;\n    oldText: string | null;\n    newText: string;\n}',
-  },
-  {
-    name: 'FileLocation',
-    declaration: 'export interface FileLocation {\n    path: string;\n    line?: number;\n}',
-  },
-  {
     name: 'FileReferenceCandidate',
     declaration: 'export interface FileReferenceCandidate {\n    path: string;\n    kind: \'file\' | \'directory\';\n}',
   },
@@ -3406,14 +3501,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface GenerateOptions {\n    provider: string;\n    model: string;\n    reasoningEffort?: ReasoningEffortId;\n    messages: Message[];\n    system?: string;\n    tools?: ToolSchema[];\n    temperature?: number;\n    maxTokens?: number;\n    stop?: string[];\n    signal?: AbortSignal;\n    sessionId?: Branded<\'SessionId\'>;\n    purpose?: \'compaction\' | \'session-title\';\n}',
   },
   {
-    name: 'GenericCallView',
-    declaration: 'export interface GenericCallView {\n    card: \'generic\';\n    title: string;\n    kind?: ToolCallKind;\n    rawInput?: unknown;\n    content?: ContentBlock[];\n    locations?: FileLocation[];\n}',
-  },
-  {
-    name: 'GenericResultView',
-    declaration: 'export interface GenericResultView {\n    card: \'generic\';\n    title?: string;\n    content?: ContentBlock[];\n}',
-  },
-  {
     name: 'GoalActivation',
     declaration: 'export type GoalActivation = \'armed\' | \'disarmed\';',
   },
@@ -3440,6 +3527,50 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'GoalView',
     declaration: 'export interface GoalView extends GoalSnapshot {\n    readonly roundsStarted: number;\n    readonly createdAt: number;\n    readonly updatedAt: number;\n    readonly activation: GoalActivation;\n}',
+  },
+  {
+    name: 'GovernanceAcknowledgement',
+    declaration: 'export interface GovernanceAcknowledgement {\n    readonly acknowledged: boolean;\n}',
+  },
+  {
+    name: 'GovernanceErrorCode',
+    declaration: 'export type GovernanceErrorCode = \'plugin-not-found\' | \'approval-required\' | \'preset-not-found\' | \'preset-already-exists\' | \'not-implemented\' | \'persistence-failed\' | \'request-invalid\' | \'registry-unavailable\';',
+  },
+  {
+    name: 'GovernanceFailure',
+    declaration: 'export interface GovernanceFailure {\n    readonly code: GovernanceErrorCode;\n    readonly message: string;\n}',
+  },
+  {
+    name: 'GovernanceHealthReport',
+    declaration: 'export interface GovernanceHealthReport {\n    readonly total: number;\n    readonly active: number;\n    readonly warnings: number;\n    readonly errors: number;\n    readonly disabled: number;\n    readonly plugins: readonly GovernedPluginHealthEntry[];\n}',
+  },
+  {
+    name: 'GovernanceResult',
+    declaration: 'export type GovernanceResult<T> = {\n    readonly ok: true;\n    readonly value: T;\n} | {\n    readonly ok: false;\n    readonly error: GovernanceFailure;\n};',
+  },
+  {
+    name: 'GovernanceRosterSnapshot',
+    declaration: 'export interface GovernanceRosterSnapshot {\n    readonly plugins: readonly GovernedPluginSummary[];\n}',
+  },
+  {
+    name: 'GovernedCapabilityView',
+    declaration: 'export interface GovernedCapabilityView {\n    readonly type: string;\n    readonly name: string;\n}',
+  },
+  {
+    name: 'GovernedPluginDetail',
+    declaration: 'export interface GovernedPluginDetail {\n    readonly summary: GovernedPluginSummary;\n    readonly description: string | null;\n    readonly author: string | null;\n    readonly certification: string | null;\n    readonly permissionLevel: string | null;\n    readonly capabilities: readonly GovernedCapabilityView[];\n    readonly sandbox: GovernedSandboxView;\n    readonly errors: readonly string[];\n}',
+  },
+  {
+    name: 'GovernedPluginHealthEntry',
+    declaration: 'export interface GovernedPluginHealthEntry {\n    readonly pluginId: PluginGovernanceId;\n    readonly displayName: string;\n    readonly status: PluginGovernanceStatus;\n    readonly healthy: boolean | null;\n    readonly errors: readonly string[];\n    readonly warnings: readonly string[];\n}',
+  },
+  {
+    name: 'GovernedPluginSummary',
+    declaration: 'export interface GovernedPluginSummary {\n    readonly pluginId: PluginGovernanceId;\n    readonly displayName: string;\n    readonly version: string;\n    readonly status: PluginGovernanceStatus;\n    readonly source: \'loader-mirror\' | \'native\';\n    readonly approvalRequired: boolean;\n    readonly approved: boolean;\n    readonly warnings: readonly string[];\n}',
+  },
+  {
+    name: 'GovernedSandboxView',
+    declaration: 'export interface GovernedSandboxView {\n    readonly type: string;\n    readonly filesystemAccess: string;\n    readonly networkAccess: string;\n    readonly maySpawnProcesses: boolean;\n}',
   },
   {
     name: 'GrantRecord',
@@ -3488,6 +3619,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'IndexInjectionPlacement',
     declaration: 'export type IndexInjectionPlacement = \'head\' | \'body\';',
+  },
+  {
+    name: 'InstallPluginRequest',
+    declaration: 'export interface InstallPluginRequest {\n    readonly source: string;\n}',
   },
   {
     name: 'InvariantFailure',
@@ -3568,10 +3703,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'JsonSchemaType',
     declaration: 'export type JsonSchemaType = \'object\' | \'array\' | \'string\' | \'number\' | \'integer\' | \'boolean\' | \'null\';',
-  },
-  {
-    name: 'JsonValue',
-    declaration: 'export type JsonValue = null | boolean | number | string | JsonValue[] | {\n    [key: string]: JsonValue;\n};',
   },
   {
     name: 'KnobState',
@@ -3694,6 +3825,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ManualCompactAgentContext extends CompactionAgentContext {\n    runMaintenance<T>(task: (signal: AbortSignal) => Promise<T>): Promise<T>;\n}',
   },
   {
+    name: 'MemoryEntry',
+    declaration: 'export interface MemoryEntry {\n    readonly id: string;\n    readonly kind: MemoryKind;\n    readonly text: string;\n    readonly sessionId: string;\n    readonly createdAt: number;\n    readonly hits: number;\n}',
+  },
+  {
+    name: 'MemoryKind',
+    declaration: 'export type MemoryKind = \'decision\' | \'fact\' | \'preference\';',
+  },
+  {
     name: 'Message',
     declaration: 'export interface Message {\n    readonly id: MessageId;\n    readonly role: \'system\' | \'user\' | \'assistant\';\n    readonly content: ContentBlock[];\n    readonly source: MessageSource;\n}',
   },
@@ -3810,6 +3949,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface PermissionSelect {\n    options: PresetOption[];\n    currentValue: string;\n}',
   },
   {
+    name: 'PluginGovernanceId',
+    declaration: 'export type PluginGovernanceId = Branded<\'PluginGovernanceId\'>;',
+  },
+  {
+    name: 'PluginGovernanceStatus',
+    declaration: 'export type PluginGovernanceStatus = \'active\' | \'warnings\' | \'disabled\' | \'error\' | \'deprecated\';',
+  },
+  {
+    name: 'PluginIdRequest',
+    declaration: 'export interface PluginIdRequest {\n    readonly pluginId: PluginGovernanceId;\n}',
+  },
+  {
     name: 'PostToolDecision',
     declaration: 'export type PostToolDecision = {\n    kind: \'accept\';\n    content?: ContentBlock[];\n    value?: never;\n    additionalContexts?: UserMessage[];\n} | {\n    kind: \'accept\';\n    value: JsonValue;\n    content?: never;\n    additionalContexts?: UserMessage[];\n} | {\n    kind: \'block\';\n    feedback: ContentBlock[];\n    additionalContexts?: UserMessage[];\n};',
   },
@@ -3830,6 +3981,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type PrepareSessionOptions = (CreateSessionOptions & {\n    readonly seedSource?: undefined;\n}) | RestoredSessionOptions;',
   },
   {
+    name: 'PresetApplicationReport',
+    declaration: 'export interface PresetApplicationReport {\n    readonly applied: readonly PluginGovernanceId[];\n    readonly unknown: readonly PluginGovernanceId[];\n}',
+  },
+  {
+    name: 'PresetNameRequest',
+    declaration: 'export interface PresetNameRequest {\n    readonly name: string;\n}',
+  },
+  {
     name: 'PresetOption',
     declaration: 'export interface PresetOption {\n    value: string;\n    name: string;\n    description?: string;\n}',
   },
@@ -3844,10 +4003,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'PreStepDecision',
     declaration: 'export type PreStepDecision = {\n    kind: \'reject\';\n} | {\n    kind: \'enter\';\n    messages: UserMessage[];\n};',
-  },
-  {
-    name: 'PreToolDecision',
-    declaration: 'export type PreToolDecision = {\n    kind: \'allow\';\n} | {\n    kind: \'deny\';\n    reason: string;\n} | {\n    kind: \'ask\';\n    reason?: string;\n};',
   },
   {
     name: 'ProjectionChangeListener',
@@ -3892,14 +4047,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'PruneResult',
     declaration: 'export interface PruneResult {\n    readonly pruned: readonly PrunedEntry[];\n    readonly charsRemoved: number;\n}',
-  },
-  {
-    name: 'ReadFileLine',
-    declaration: 'export interface ReadFileLine {\n    number: number;\n    text: string;\n}',
-  },
-  {
-    name: 'ReadResultView',
-    declaration: 'export interface ReadResultView {\n    card: \'read\';\n    title?: string;\n    path: string;\n    offset: number;\n    lines: ReadFileLine[];\n    totalLines: number;\n    lang?: string;\n    content?: ContentBlock[];\n}',
   },
   {
     name: 'ReasoningBlock',
@@ -4040,26 +4187,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ScopeKey',
     declaration: 'export type ScopeKey = object;',
-  },
-  {
-    name: 'SearchFileMatches',
-    declaration: 'export interface SearchFileMatches {\n    path: string;\n    matches: SearchLineMatch[];\n}',
-  },
-  {
-    name: 'SearchLineMatch',
-    declaration: 'export interface SearchLineMatch {\n    lineNumber: number;\n    line: string;\n}',
-  },
-  {
-    name: 'SearchMatchesResultView',
-    declaration: 'export interface SearchMatchesResultView {\n    card: \'search\';\n    shape: \'matches\';\n    title?: string;\n    files: SearchFileMatches[];\n    truncated: boolean;\n    total: number;\n}',
-  },
-  {
-    name: 'SearchPathsResultView',
-    declaration: 'export interface SearchPathsResultView {\n    card: \'search\';\n    shape: \'paths\';\n    title?: string;\n    paths: string[];\n    truncated: boolean;\n    total: number;\n}',
-  },
-  {
-    name: 'SearchResultView',
-    declaration: 'export type SearchResultView = SearchMatchesResultView | SearchPathsResultView;',
   },
   {
     name: 'SendTeamMessageRequest',
@@ -4658,20 +4785,12 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface TerminalBackendSpawnSpec extends TerminalSpawnRequest {\n    sessionId: TerminalSessionIdValue;\n    owner: Agent;\n    signal?: AbortSignal;\n}',
   },
   {
-    name: 'TerminalCallView',
-    declaration: 'export interface TerminalCallView {\n    card: \'terminal\';\n    title: string;\n    description?: string;\n    cwd?: string;\n}',
-  },
-  {
     name: 'TerminalReadRequest',
     declaration: 'export interface TerminalReadRequest {\n    offset?: number;\n    count?: number;\n}',
   },
   {
     name: 'TerminalReadResult',
     declaration: 'export interface TerminalReadResult {\n    text: string;\n    totalLines: number;\n    lineBegin: number;\n    lineEnd: number;\n    truncated: boolean;\n}',
-  },
-  {
-    name: 'TerminalResultView',
-    declaration: 'export interface TerminalResultView {\n    card: \'terminal\';\n    title?: string;\n    output?: string;\n    exitCode?: number;\n    signal?: string;\n}',
   },
   {
     name: 'TerminalSendOperation',
@@ -4746,18 +4865,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface TokenUsage {\n    inputTokens: number;\n    outputTokens: number;\n    cacheReadTokens?: number;\n    cacheWriteTokens?: number;\n    reasoningTokens?: number;\n}',
   },
   {
-    name: 'ToolCallKind',
-    declaration: 'export type ToolCallKind = \'read\' | \'edit\' | \'delete\' | \'move\' | \'search\' | \'execute\' | \'fetch\' | \'other\';',
-  },
-  {
-    name: 'ToolCallView',
-    declaration: 'export type ToolCallView = GenericCallView | TerminalCallView | DiffCallView;',
-  },
-  {
-    name: 'ToolDefinition',
-    declaration: 'export interface ToolDefinition extends ToolSchema {\n    readonly output: ToolOutputDefinition;\n    execute(args: unknown, exec: ToolRunContext): Promise<unknown>;\n    finalizeContent?(exec: Readonly<ToolExecution>, result: Readonly<ToolExecutionResult>): ContentBlock[] | undefined;\n    timeoutMs?: number;\n    isConcurrencySafe?(args: unknown): boolean;\n    presentCall?(args: unknown): ToolCallView | undefined;\n    presentResult?(args: unknown, result: ToolResult): ToolResultView | undefined;\n}',
-  },
-  {
     name: 'ToolDispatchExecution',
     declaration: 'export interface ToolDispatchExecution extends Omit<ToolExecution, \'signal\'> {\n    signal: AbortSignal;\n}',
   },
@@ -4806,10 +4913,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ToolMessageSource {\n    kind: \'tool\';\n    callId: CallId;\n}',
   },
   {
-    name: 'ToolOutputDefinition',
-    declaration: 'export interface ToolOutputDefinition {\n    readonly schema: JsonSchemaNode;\n    render(args: unknown, value: JsonValue): ContentBlock[];\n    presentationMeta?(args: unknown, value: JsonValue): JsonValue;\n}',
-  },
-  {
     name: 'ToolPresentationMode',
     declaration: 'export type ToolPresentationMode = \'native\' | \'code\' | \'both\';',
   },
@@ -4822,20 +4925,12 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ToolRestriction {\n    readonly allow?: readonly string[];\n    readonly deny?: readonly string[];\n}',
   },
   {
-    name: 'ToolResult',
-    declaration: 'export interface ToolResult {\n    content: ContentBlock[];\n    isError: boolean;\n    meta?: JsonValue;\n}',
-  },
-  {
     name: 'ToolResultBlock',
     declaration: 'export interface ToolResultBlock {\n    type: \'tool-result\';\n    toolCallId: CallId;\n    content: ContentBlock[];\n    isError?: boolean;\n}',
   },
   {
     name: 'ToolResultMessage',
     declaration: 'export interface ToolResultMessage extends Message {\n    readonly role: \'user\';\n    readonly content: [\n        ToolResultBlock\n    ];\n    readonly source: ToolMessageSource;\n}',
-  },
-  {
-    name: 'ToolResultView',
-    declaration: 'export type ToolResultView = GenericResultView | TerminalResultView | DiffResultView | SearchResultView | ReadResultView | WebResultView;',
   },
   {
     name: 'ToolRunContext',
@@ -4962,14 +5057,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface WebFetchResult {\n    readonly url: string;\n    readonly statusCode: number;\n    readonly body: WebFetchBody;\n    readonly truncated: boolean;\n}',
   },
   {
-    name: 'WebFetchResultView',
-    declaration: 'export interface WebFetchResultView {\n    card: \'web\';\n    kind: \'fetch\';\n    title?: string;\n    url: string;\n    statusCode: number;\n    truncated: boolean;\n}',
-  },
-  {
-    name: 'WebResultView',
-    declaration: 'export type WebResultView = WebSearchResultView | WebFetchResultView;',
-  },
-  {
     name: 'WebRoute',
     declaration: 'export interface WebRoute {\n    kind: WebRouteKind;\n    path: string;\n    handler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>;\n}',
   },
@@ -4990,16 +5077,8 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface WebSearchResult {\n    readonly content?: string;\n    readonly sources: readonly WebSearchSource[];\n    readonly truncated: boolean;\n}',
   },
   {
-    name: 'WebSearchResultView',
-    declaration: 'export interface WebSearchResultView {\n    card: \'web\';\n    kind: \'search\';\n    title?: string;\n    sources: WebSource[];\n    answer?: string;\n    truncated: boolean;\n}',
-  },
-  {
     name: 'WebSearchSource',
     declaration: 'export interface WebSearchSource {\n    readonly url: string;\n    readonly title?: string;\n    readonly snippet?: string;\n    readonly publishedAt?: string;\n}',
-  },
-  {
-    name: 'WebSource',
-    declaration: 'export interface WebSource {\n    url: string;\n    title?: string;\n    snippet?: string;\n    publishedAt?: string;\n}',
   },
   {
     name: 'WebUpgradeRoute',

@@ -9,7 +9,11 @@
  * @module webstack/fetch/narrowing
  */
 
-/** 安全地把 unknown 收窄为普通记录；原型链对象与数组一律拒绝。 */
+/**
+ * 安全地把 unknown 收窄为普通记录；原型链对象与数组一律拒绝。
+ * @param value - 原始 unknown 值。
+ * @returns 普通记录；不可用时为 undefined。
+ */
 export function asRecord(value: unknown): Record<string, unknown> | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
   return value as Record<string, unknown>
@@ -31,6 +35,8 @@ export interface JsonLooseErr {
  * 宽松 JSON 解析（W-B-52）：把「响应文本不是合法 JSON」从异常降级为结构化
  * 数据（ok:false），调用方据此走回退分支而非崩溃。仅做 `JSON.parse` 的
  * try/catch 包装，不做任何修复/容错改写——垃圾进、结构化错误出。
+ * @param text - 待解析的响应文本。
+ * @returns 成功或失败的结构化分支。
  */
 export function parseJsonLoose(text: string): JsonLooseOk | JsonLooseErr {
   try {
@@ -44,6 +50,8 @@ export function parseJsonLoose(text: string): JsonLooseOk | JsonLooseErr {
 /**
  * 安全收窄 unknown → 非空 string：仅当值本来就是 string 且长度 > 0 时返回，
  * 其余（数字/空串/null/undefined/对象）一律 undefined。
+ * @param v - 原始 unknown 值。
+ * @returns 非空字符串；其余为 undefined。
  */
 export function narrowString(v: unknown): string | undefined {
   if (typeof v !== 'string' || v.length === 0) return undefined
@@ -53,6 +61,8 @@ export function narrowString(v: unknown): string | undefined {
 /**
  * 安全收窄 unknown → 只读数组：仅真数组放行（元素保持 unknown 不预校验，
  * 由调用方逐项窄化）；其余一律退空数组，保证调用方可直接迭代。
+ * @param v - 原始 unknown 值。
+ * @returns 真数组（元素保持 unknown）或空数组。
  */
 export function narrowArray(v: unknown): readonly unknown[] {
   if (!Array.isArray(v)) return []
@@ -62,6 +72,8 @@ export function narrowArray(v: unknown): readonly unknown[] {
 /**
  * 安全收窄 unknown → 只读记录：普通对象（非数组、非 null）放行；其余
  * undefined。与 {@link asRecord} 同判据，仅多一层只读视图约束。
+ * @param v - 原始 unknown 值。
+ * @returns 只读记录；其余为 undefined。
  */
 export function narrowRecord(v: unknown): Readonly<Record<string, unknown>> | undefined {
   return asRecord(v)

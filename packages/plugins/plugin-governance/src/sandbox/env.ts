@@ -61,6 +61,10 @@ function isSensitiveName(key: string): boolean {
  *
  * Per-call `options.env` overrides are merged by the caller AFTER this
  * derivation, on top of — not instead of — the sanitized base.
+ * @param config - the sandbox config whose `environment` section drives the derivation.
+ * @param hostEnv - the host process environment to copy from; defaults to
+ * `process.env`, overridable for tests.
+ * @returns the sanitized child environment for the sandboxed plugin.
  */
 export function deriveSandboxEnvironment(
   config: PluginSandboxConfig,

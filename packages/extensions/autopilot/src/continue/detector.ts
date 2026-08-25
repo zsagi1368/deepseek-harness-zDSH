@@ -17,12 +17,14 @@ export type LiveEndReason = 'completed' | 'error' | 'max-tokens' | 'aborted' | '
 /** Reasons that may ever be resumed live. `interrupted` belongs to boot scan only. */
 export type ResumeEligibleReason = 'error' | 'max-tokens' | 'interrupted-boot-scan'
 
+/** Structured failure detail classifier input: code, HTTP status, message. */
 export interface FailureInfo {
   code?: string
   status?: number
   message?: string
 }
 
+/** One regex pattern mapping an error signature to a permanent-failure family. */
 export interface ClassifyPattern {
   /** Human-readable family name for audits and notifications. */
   family: string
@@ -40,6 +42,7 @@ export const PERMANENT_FAILURE_PATTERNS: readonly ClassifyPattern[] = [
   { family: 'invalid-request', re: /\b(invalid[_ ]request|bad[_ ]request)\b/i },
 ]
 
+/** Built-in corpus of transient-failure hints (network/timeout/upstream…). */
 export const TRANSIENT_HINT_PATTERNS: readonly RegExp[] = [
   /\bnetwork\b/i,
   /\btimeout\b/i,
@@ -57,6 +60,7 @@ function matchesPermanent(info: FailureInfo): ClassifyPattern | undefined {
   return PERMANENT_FAILURE_PATTERNS.find(p => p.re.test(haystack))
 }
 
+/** Detector verdict for one ended turn: schedule a resume, or skip and why. */
 export interface DetectionOutcome {
   action: 'schedule-resume' | 'skip'
   /** Populated when skipping: why this turn will not be resumed. */
@@ -64,6 +68,13 @@ export interface DetectionOutcome {
   family?: string
 }
 
+/**
+ * Decide whether a live turn ending is worth auto-resuming.
+ * @param reason - the recorded end reason of the turn.
+ * @param failure - failure detail when the turn ended on an error.
+ * @param options - whether error classification is enabled.
+ * @returns the resume/skip decision.
+ */
 export function detectLive(
   reason: LiveEndReason,
   failure: FailureInfo | undefined,
@@ -87,7 +98,13 @@ export function detectLive(
   }
 }
 
-/** Boot-scan variant: `interrupted` becomes eligible here. */
+/**
+ * Boot-scan variant: `interrupted` becomes eligible here.
+ * @param reason - the recorded end reason of the turn.
+ * @param failure - failure detail when the turn ended on an error.
+ * @param options - whether error classification is enabled.
+ * @returns the resume/skip decision.
+ */
 export function detectBootScan(
   reason: LiveEndReason | 'interrupted',
   failure: FailureInfo | undefined,

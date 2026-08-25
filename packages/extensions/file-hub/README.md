@@ -4,14 +4,11 @@
 
 **The unified file center for DeepSeek Harness.**
 
-Upload anywhere, reference anything with `@`, let the model read your documents,
-caption your images — and manage every file across all sessions from one console.
+Upload anywhere, reference anything with `@`, let the model read your documents, caption your images — and manage every file across all sessions from one console.
 
-[![ci](https://github.com/zsagi1368/zdsh-filehub/actions/workflows/ci.yml/badge.svg)](https://github.com/zsagi1368/zdsh-filehub/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
-[![Node](https://img.shields.io/badge/node-%E2%89%A522-blue.svg)](./package.json)
+[![ci](https://github.com/zsagi1368/zdsh-filehub/actions/workflows/ci.yml/badge.svg)](https://github.com/zsagi1368/zdsh-filehub/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE) [![Node](https://img.shields.io/badge/node-%E2%89%A522-blue.svg)](./package.json)
 
-[English](./README.md) · [简体中文](./README.zh.md)
+English | [中文](README.zh.md)
 
 </div>
 
@@ -19,29 +16,15 @@ caption your images — and manage every file across all sessions from one conso
 
 ## Why FileHub
 
-DeepSeek Harness ships a great multimodal chat experience, but everything
-non-image lives at the edges: there is no click-to-upload button, no generic
-(non-image) upload channel, no way for the model to open a PDF or spreadsheet,
-and no place to see the files a session has produced.
+DeepSeek Harness ships a great multimodal chat experience, but everything non-image lives at the edges: there is no click-to-upload button, no generic (non-image) upload channel, no way for the model to open a PDF or spreadsheet, and no place to see the files a session has produced.
 
 FileHub closes those gaps with one batteries-included plugin:
 
-- **Four upload entries** feeding one queue — button, full-page drag & drop,
-  paste, and whole folders with hierarchy preserved.
-- **`@` file mentions done right** — candidates are ranked instantly from a
-  bounded workspace index *and* your uploaded files, and every mention is
-  existence-checked when the message is sent, then injected as a structured
-  reference. The model sees exactly which file you mean — never its contents
-  unless it asks.
-- **Document reading for the model** — `read_document` opens text, PDF,
-  DOCX and XLSX with pagination, per-format output budgets and explicit
-  truncation markers, so long documents are traversed on demand instead of
-  flooding the context window.
-- **Image captioning waterfall** — if your active route is multimodal, images
-  pass straight through untouched; otherwise captions come from a local Ollama
-  instance by default. Zero bytes leave your machine unless you say so.
-- **A real file console** — every session's files, searchable and filterable,
-  with storage stats and two-step-confirmed cleanup.
+- **Four upload entries** feeding one queue — button, full-page drag & drop, paste, and whole folders with hierarchy preserved.
+- **`@` file mentions done right** — candidates are ranked instantly from a bounded workspace index *and* your uploaded files, and every mention is existence-checked when the message is sent, then injected as a structured reference. The model sees exactly which file you mean — never its contents unless it asks.
+- **Document reading for the model** — `read_document` opens text, PDF, DOCX and XLSX with pagination, per-format output budgets and explicit truncation markers, so long documents are traversed on demand instead of flooding the context window.
+- **Image captioning waterfall** — if your active route is multimodal, images pass straight through untouched; otherwise captions come from a local Ollama instance by default. Zero bytes leave your machine unless you say so.
+- **A real file console** — every session's files, searchable and filterable, with storage stats and two-step-confirmed cleanup.
 
 ## Features
 
@@ -54,21 +37,11 @@ FileHub closes those gaps with one batteries-included plugin:
 | Paste | Any clipboard files, not just images |
 | Queue dock | Per-item progress, retry, cancel, remove (removal deletes server-side too) |
 
-Transfers are streaming with double enforcement of size caps, a concurrency
-gate, and per-session quotas. Content-addressed deduplication means uploading
-the same file twice never stores it twice. Files land in an isolated session
-workspace (`.filehub/<sessionId>/`) that the agent can reach with its normal
-file tools and the sandbox already covers.
+Transfers are streaming with double enforcement of size caps, a concurrency gate, and per-session quotas. Content-addressed deduplication means uploading the same file twice never stores it twice. Files land in an isolated session workspace (`.filehub/<sessionId>/`) that the agent can reach with its normal file tools and the sandbox already covers.
 
 ### @ file mentions
 
-Type `@` in the composer to search both the workspace index and files uploaded
-in the current session. Candidates show type icons, disambiguated parent paths
-and full keyboard navigation. At send time each mention token is validated
-against the filesystem (path traversal rejected) and expanded into a structured
-`<workspace-reference>` message — invalid paths are surfaced, never silently
-dropped. A chip bar above the composer tracks every referenced file and lets
-you remove one precisely.
+Type `@` in the composer to search both the workspace index and files uploaded in the current session. Candidates show type icons, disambiguated parent paths and full keyboard navigation. At send time each mention token is validated against the filesystem (path traversal rejected) and expanded into a structured `<workspace-reference>` message — invalid paths are surfaced, never silently dropped. A chip bar above the composer tracks every referenced file and lets you remove one precisely.
 
 ### AI document reading
 
@@ -77,26 +50,15 @@ you remove one precisely.
 | `read_document` | Read text/PDF/DOCX/XLSX with `offset`/`limit` pagination, `sheet` selection, and a `probe` mode that returns structure (page count, sheet list, sizes) without dumping content |
 | `list_workspace_files` | List the session workspace (bounded, with truncation flag) |
 
-Per-format character budgets keep responses predictable; truncated reads carry
-an explicit continuation marker teaching the model how to fetch the next slice.
-Parsed content is cached content-addressed, so repeated reads of the same file
-cost nothing.
+Per-format character budgets keep responses predictable; truncated reads carry an explicit continuation marker teaching the model how to fetch the next slice. Parsed content is cached content-addressed, so repeated reads of the same file cost nothing.
 
 ### Image captioning
 
-When the active route declares `image` in its input modalities, FileHub steps
-aside completely — native multimodal behavior is untouched. Otherwise captions
-are produced through a strict waterfall: explicit endpoint (public HTTPS only)
-→ local Ollama probe (loopback only, on by default) → gracefully off. Results
-are cached per image hash; concurrent uploads of the same picture trigger
-exactly one caption call.
+When the active route declares `image` in its input modalities, FileHub steps aside completely — native multimodal behavior is untouched. Otherwise captions are produced through a strict waterfall: explicit endpoint (public HTTPS only) → local Ollama probe (loopback only, on by default) → gracefully off. Results are cached per image hash; concurrent uploads of the same picture trigger exactly one caption call.
 
 ### File console
 
-The conversation view gains a **Files** tab aggregating every session: search
-and type filters, per-session grouping, storage usage breakdown, and cleanup
-actions guarded by a dry-run preview plus confirmation. The assistant message
-menu also offers quick actions built on the same store.
+The conversation view gains a **Files** tab aggregating every session: search and type filters, per-session grouping, storage usage breakdown, and cleanup actions guarded by a dry-run preview plus confirmation. The assistant message menu also offers quick actions built on the same store.
 
 ## Installation
 
@@ -104,14 +66,11 @@ menu also offers quick actions built on the same store.
 dsh plugin --profile <your-profile> add https://github.com/zsagi1368/zdsh-filehub
 ```
 
-That's it — the bundled manifest wires up both halves automatically. No manual
-configuration is required; sensible defaults apply everywhere.
+That's it — the bundled manifest wires up both halves automatically. No manual configuration is required; sensible defaults apply everywhere.
 
 ## Configuration
 
-Everyday options live in **Settings → FileHub** inside the web UI (language,
-paste handling, candidate limit, privacy toggles). Server-side tuning accepts
-a profile config object:
+Everyday options live in **Settings → FileHub** inside the web UI (language, paste handling, candidate limit, privacy toggles). Server-side tuning accepts a profile config object:
 
 ```ts
 {
@@ -148,22 +107,14 @@ a profile config object:
 
 ## Security
 
-FileHub handles user files, so security claims here are backed by named tests
-(`tests/adversarial/`) rather than prose:
+FileHub handles user files, so security claims here are backed by named tests (`tests/adversarial/`) rather than prose:
 
-- **Path sandbox** — resolve-then-containment assertions with `realpath`
-  re-checks on both endpoints of every operation; immune to symlink/junction
-  escapes, sibling-prefix tricks, ADS payloads and Windows drive-relative
-  path traps.
-- **SSRF fences** — local probes are locked to loopback addresses; remote
-  endpoints must be public hosts verified after DNS resolution; redirects are
-  refused, not followed.
-- **Same-origin hardening** — Origin hostname comparison plus remote-address
-  loopback verification.
-- **Resource limits** — streaming size caps, concurrency gate, per-session
-  quota, TTL sweeper that provably visits *all* sessions.
+- **Path sandbox** — resolve-then-containment assertions with `realpath` re-checks on both endpoints of every operation; immune to symlink/junction escapes, sibling-prefix tricks, ADS payloads and Windows drive-relative path traps.
+- **SSRF fences** — local probes are locked to loopback addresses; remote endpoints must be public hosts verified after DNS resolution; redirects are refused, not followed.
+- **Same-origin hardening** — Origin hostname comparison plus remote-address loopback verification.
+- **Resource limits** — streaming size caps, concurrency gate, per-session quota, TTL sweeper that provably visits *all* sessions.
 
-See [SECURITY.md](./SECURITY.md) for the claim-by-claim evidence map.
+See `SECURITY.md` (shipped with the standalone plugin package; not part of this monorepo) for the claim-by-claim evidence map.
 
 ## Development
 
@@ -172,10 +123,44 @@ pnpm install   # host types resolve via link:../Fork/* (needs a sibling DeepSeek
 pnpm run check # typecheck + test + build
 ```
 
-The build produces the ESM host half and the single-file client bundle served
-by the harness web server. `docs/integration-playbook.md` documents the seams
-for embedding FileHub as a first-party extension of a distribution branch.
+The build produces the ESM host half and the single-file client bundle served by the harness web server. `docs/integration-playbook.md` documents the seams for embedding FileHub as a first-party extension of a distribution branch.
 
 ## License
 
 [MIT](./LICENSE)
+
+## Model Experience
+
+### `@` workspace references
+
+#### What the model sees
+
+Every confirmed mention is injected into the conversation as a structured `<workspace-reference>` message naming the exact file (path, type, session workspace `.filehub/<sessionId>/`); candidates are existence-checked at send time, and invalid or traversal paths surface as errors, never silent drops.
+
+#### Token effect
+
+One compact reference token per mentioned file; the candidate lists themselves (workspace index plus uploaded files, bounded by `mention.searchLimit` of 50) never enter the context.
+
+#### KV Cache effect
+
+Prefix-stable while the referenced set is unchanged; adding or removing a mention shifts the prefix from the first changed reference token.
+
+### Document reading tools
+
+#### What the model sees
+
+`read_document` opens text/PDF/DOCX/XLSX with `offset`/`limit` pagination, optional `sheet` selection, and a `probe` mode returning structure (page count, sheet list, sizes) without dumping content; `list_workspace_files` lists the bounded session workspace with a truncation flag.
+
+#### Token effect
+
+Reads are on-demand and budget-capped per format (`reading.budgets`); truncated reads carry an explicit continuation marker so the model fetches the next slice instead of resending.
+
+#### KV Cache effect
+
+Parsed content is cached content-addressed — repeated reads of the same file resend the same parsed slices at zero parse cost; newly read slices append after the reusable prefix.
+
+## Known Limitations and Deferred Work
+
+- **Captions require a user-provisioned endpoint** — with `vision.endpoint` unset and no local Ollama probe (loopback only, on by default), images are served uncaptioned; native multimodal routes are unaffected.
+- **Cleanup is destructive by design** — removal deletes server-side files after a two-step confirmation plus dry-run preview; there is no trash or restore.
+- **Retention is timeboxed** — the TTL sweeper (default `lifecycle.ttlMs` of 7 days) provably visits *all* sessions, and there is no per-file exemption UI.

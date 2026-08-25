@@ -25,6 +25,11 @@ export class PathPolicyError extends Error {
 /** Session ids are host-minted tokens: alphanumerics, dash, underscore. */
 export const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
 
+/**
+ * Whether a value is a well-formed session id token.
+ * @param value - the value to test.
+ * @returns true for non-empty alphanumeric/dash/underscore strings (≤64 chars).
+ */
 export function isValidSessionId(value: unknown): value is string {
   return typeof value === 'string' && SESSION_ID_PATTERN.test(value)
 }
@@ -59,6 +64,8 @@ function stripReserved(name: string): string {
  * strips control characters, neutralizes Windows-hostile characters and NTFS
  * alternate-data-stream separators, defuses reserved device names, trailing
  * dots/spaces, and traversal heads. Returns `'unnamed'` when nothing survives.
+ * @param input - the raw file/directory segment to sanitize.
+ * @returns the sanitized segment, never empty.
  */
 export function sanitizeFileName(input: string): string {
   let name = input.replace(/[\u0000-\u001f\u007f-\u009f]/g, '')
@@ -79,6 +86,7 @@ export function sanitizeFileName(input: string): string {
   return name === '' ? 'unnamed' : name
 }
 
+/** Verdict of splitting a wire-side relative path into sanitized segments. */
 export type RelativePathResult =
   | { ok: true; segments: string[] }
   | { ok: false; reason: string }
@@ -90,6 +98,8 @@ export type RelativePathResult =
  * segment passes through {@link sanitizeFileName}. An empty input yields an
  * empty segment list (plain file upload — the file-name header supplies the
  * only segment).
+ * @param input - the wire-side relative path (forward slashes).
+ * @returns the sanitized segments, or the rejection reason.
  */
 export function sanitizeRelativePath(input: string): RelativePathResult {
   const trimmed = input.replace(/\\/g, '/').trim()
@@ -120,6 +130,9 @@ export function sanitizeRelativePath(input: string): RelativePathResult {
  * Non-throwing strict-containment check: candidate must resolve to a path
  * STRICTLY inside root (equal-to-root fails). Defensive against both the
  * sibling-prefix confusion and the Windows cross-drive absolute-relative trap.
+ * @param root - the containment root.
+ * @param candidate - the path to test.
+ * @returns true when candidate resolves strictly inside root.
  */
 export function isStrictlyInside(root: string, candidate: string): boolean {
   const resolvedRoot = path.resolve(root)
@@ -139,6 +152,8 @@ export function isStrictlyInside(root: string, candidate: string): boolean {
 /**
  * Throwing variant of {@link isStrictlyInside}; the message names the rule,
  * never the resolved paths (error bodies must not leak host layout).
+ * @param root - the containment root.
+ * @param candidate - the path that must stay inside root.
  */
 export function assertInside(root: string, candidate: string): void {
   if (!isStrictlyInside(root, candidate)) {

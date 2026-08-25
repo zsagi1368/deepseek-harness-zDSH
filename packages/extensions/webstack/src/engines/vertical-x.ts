@@ -33,6 +33,7 @@ export interface VerticalHit {
   provenance: { engine: string; via?: string; note?: string }
 }
 
+/** 垂直腿引擎收到的搜索请求视图（本地结构镜像，防卫星侧类型耦合）。 */
 export interface VerticalRequestView {
   query: string
   hints: {
@@ -45,6 +46,7 @@ export interface VerticalRequestView {
   signal?: AbortSignal
 }
 
+/** 垂直腿可用能力视图：搜索入口 + 可选内核出站客户端。 */
 export interface VerticalDepsView {
   search(req: VerticalRequestView): Promise<VerticalHit[]>
   outboundFetch?:
@@ -58,11 +60,13 @@ export interface VerticalDepsView {
     | undefined
 }
 
+/** 单个垂直频道的结构面：id + run（恒 resolve，最坏空数组）。 */
 export interface VerticalChannelView {
   readonly id: string
   run(req: VerticalRequestView, deps: VerticalDepsView): Promise<VerticalHit[]>
 }
 
+/** 卫星包导出视图（当前仅有 X 频道构造器）。 */
 export interface VerticalPackView {
   XVerticalChannel: new () => VerticalChannelView
 }
@@ -141,6 +145,8 @@ export class VerticalXLegEngine extends BaseEngine {
   /**
    * 执行垂直降级链：包/频道不可用 → cooldown（诊断键 detail）；频道自身
    * run 恒 resolve（最坏空数组），两腿全败的静默语义在卫星侧收敛。
+   * @param req - 引擎层搜索请求。
+   * @returns 归一化响应（含 attempts 审计记录）。
    */
   async search(req: EngineSearchRequest): Promise<EngineSearchResponse> {
     return await this.runSearch(req, async () => {
