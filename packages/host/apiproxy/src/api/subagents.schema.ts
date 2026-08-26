@@ -58,6 +58,7 @@ export const subagentHistoryRequestSchema = z.object({
 export const subagentHistoryValueSchema = z.object({
   events: z.array(historyEntrySchema),
   hasMore: z.boolean(),
+  windowCut: z.number().int().nonnegative().optional(),
   projections: sessionProjectionsBlockSchema.optional(),
 }) as unknown as z.ZodType<Wire<ResponseValue<'subagent.history'>>>
 

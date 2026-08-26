@@ -82,7 +82,7 @@ export class FakeApiClient implements IApiClient {
   onRename: (payload: unknown) => Promise<RpcResponse<{ title: string; seq: number }>> = () => Promise.resolve(ok({ title: 'fk-renamed', seq: 0 }))
   onFork: (payload: unknown) => Promise<RpcResponse<{ sessionId: SessionId }>> = () => Promise.resolve(ok({ sessionId: 'fk-fork' as SessionId }))
   onHistory: (payload: { sessionId: SessionId; beforeSeq?: number; maxMessages?: number })
-  => Promise<RpcResponse<{ events: never[]; hasMore: boolean }>> =
+  => Promise<RpcResponse<{ events: never[]; hasMore: boolean; windowCut?: number }>> =
     () => Promise.resolve(ok({ events: [], hasMore: false }))
 
   onModels: (payload: unknown) => Promise<RpcResponse<SessionModels>> = () => Promise.resolve(ok({

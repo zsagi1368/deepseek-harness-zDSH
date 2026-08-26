@@ -282,9 +282,19 @@ export interface SessionsApi {
    * A deployment without the registry serves histories without the block.
    * Reading history uses an attached Session or persistence inspection and
    * never resumes or publishes an Agent.
+   *
+   * Streaming fragments a finalized assistant message cites as provenance do
+   * not ride the page: the message already restates their content, so a turn
+   * that streamed 100k+ deltas reads in kilobytes, not megabytes (#370). The
+   * in-flight partial (chunks no finalized message cites yet) always ships.
+   * Because retained events can therefore skip seqs, `windowCut` reports the
+   * page's contiguous raw lower bound — the oldest seq the message-group cut
+   * guarantees this page covers (0 once history is exhausted). A client pages
+   * older history with `beforeSeq: windowCut`, tiling RAW ranges rather than
+   * retained events.
    */
   history(request: RpcRequest<{ sessionId: SessionId; beforeSeq?: number; maxMessages?: number }>):
-  Promise<RpcResponse<{ events: HistoryEntry[]; hasMore: boolean; projections?: SessionProjectionsBlock }>>
+  Promise<RpcResponse<{ events: HistoryEntry[]; hasMore: boolean; windowCut?: number; projections?: SessionProjectionsBlock }>>
 
   /**
    * Reads a fresh advisory model directory for an ordinary session. Provider

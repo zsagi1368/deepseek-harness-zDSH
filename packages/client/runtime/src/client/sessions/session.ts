@@ -377,7 +377,7 @@ export class Session implements SessionFace {
     return promise
   }
 
-  /** Page up: pull one earlier page with the window's first seq as beforeSeq and prepend. */
+  /** Page up: pull one earlier page below the window's exclusive raw lower bound and prepend. */
   async loadOlder(): Promise<void> {
     if (this.openState !== 'open' || !this.hasMore || this.loadingOlder) return
     this.loadingOlder = true
@@ -392,17 +392,31 @@ export class Session implements SessionFace {
         return
       }
       const tail = older[older.length - 1]
-      if (tail === undefined || tail.event.seq + 1 !== this.baseSeq) {
-        // Continuity assertion: on violation drop the page fail-soft rather than render an out-of-order stream.
-        console.error(`[web-runtime] history page discontinuous: tail seq ${tail?.event.seq} vs baseSeq ${this.baseSeq}`)
-        this.hasMore = false
-        this.conversation.prepend([], false)
-        return
+      if (result.value.windowCut !== undefined) {
+        // Elided-page tiling (#370): the host dropped finalized messages'
+        // streaming fragments from the page, so retained seqs skip. The
+        // windowCut contract guarantees the page's RAW range ends at
+        // baseSeq - 1 and resumes at windowCut; only ordering needs a guard.
+        if (tail === undefined || tail.event.seq >= this.baseSeq || result.value.windowCut > tail.event.seq) {
+          console.error(`[web-runtime] history page tiles past cursor: windowCut ${String(result.value.windowCut)} vs baseSeq ${String(this.baseSeq)}`)
+          this.hasMore = false
+          this.conversation.prepend([], false)
+          return
+        }
+        this.baseSeq = result.value.windowCut
+      } else {
+        if (tail === undefined || tail.event.seq + 1 !== this.baseSeq) {
+          // Continuity assertion: on violation drop the page fail-soft rather than render an out-of-order stream.
+          console.error(`[web-runtime] history page discontinuous: tail seq ${String(tail?.event.seq)} vs baseSeq ${String(this.baseSeq)}`)
+          this.hasMore = false
+          this.conversation.prepend([], false)
+          return
+        }
+        /* v8 ignore next -- the ?? arm needs older[0] undefined, but the empty-page branch above already returned. */
+        this.baseSeq = older[0]?.event.seq ?? this.baseSeq
       }
       this.events = [...older.map(e => e.event), ...this.events]
       this.views = [...older.map(e => e.view), ...this.views]
-      /* v8 ignore next -- the ?? arm needs older[0] undefined, but the empty-page branch above already returned. */
-      this.baseSeq = older[0]?.event.seq ?? this.baseSeq
       this.hasMore = result.value.hasMore
       this.conversation.prepend(older.map(conversationInput), this.hasMore)
     } catch (error) {
@@ -627,13 +641,13 @@ export class Session implements SessionFace {
         this.openError = result.error
         return
       }
-      this.installWindow(result.value.events, result.value.hasMore, result.value.projections)
+      this.installWindow(result.value.events, result.value.hasMore, result.value.projections, result.value.windowCut)
       // Gap detection: baseline past the window tail and liveBuffer did not cover it -> pull the tail page once more.
       const tailSeq = this.windowTailSeq()
       if (this.subscribedLastSeq !== null && tailSeq !== null && this.subscribedLastSeq > tailSeq) {
         result = (await this.history({ maxMessages: PAGE_MESSAGES })).result
         if (generation !== this.openGeneration) return
-        if (result.ok) this.installWindow(result.value.events, result.value.hasMore, result.value.projections)
+        if (result.ok) this.installWindow(result.value.events, result.value.hasMore, result.value.projections, result.value.windowCut)
       }
       this.openState = 'open'
     } catch (error) {
@@ -653,11 +667,14 @@ export class Session implements SessionFace {
    *  back into liveBuffer where nothing ever drains it — a silent drop loop.
    *  A carried projections block seeds the value store (higher seq wins, so a stale
    *  baseline cannot overwrite a newer push frame); the window events themselves are
-   *  never folded — the host is the only computation site. */
-  private installWindow(entries: HistoryEntry[], hasMore: boolean, projections?: ProjectionsBaseline): void {
+   *  never folded — the host is the only computation site.
+   *  `windowCut` (absent from pre-elision hosts) is the page's contiguous raw lower
+   *  bound: with finalized-fragment elision (#370) retained seqs skip, so it — not the
+   *  first retained event's seq — is the cursor loadOlder resumes from. */
+  private installWindow(entries: HistoryEntry[], hasMore: boolean, projections?: ProjectionsBaseline, windowCut?: number): void {
     this.events = entries.map(e => e.event)
     this.views = entries.map(e => e.view)
-    this.baseSeq = this.events[0]?.seq ?? 0
+    this.baseSeq = windowCut ?? this.events[0]?.seq ?? 0
     this.hasMore = hasMore
     if (this.events.some(event => event.type === 'turn/start')) this.firstPromptPendingTurn = false
     this.conversation.replaceWindow(entries.map(conversationInput), hasMore)
@@ -718,7 +735,7 @@ export class Session implements SessionFace {
       const { result } = await this.history({ maxMessages: PAGE_MESSAGES })
       // Failure or superseded by a full resync: drop — the resync path rebuilds and clears the buffer itself.
       if (result.ok && generation === this.openGeneration && this.openState === 'open') {
-        this.installWindow(result.value.events, result.value.hasMore, result.value.projections)
+        this.installWindow(result.value.events, result.value.hasMore, result.value.projections, result.value.windowCut)
       }
     } catch (error) {
       console.error('[web-runtime] gap repair failed:', error)
@@ -775,6 +792,7 @@ export class Session implements SessionFace {
   private history(payload: { beforeSeq?: number; maxMessages?: number }): Promise<RpcResponse<{
     events: HistoryEntry[]
     hasMore: boolean
+    windowCut?: number
     projections?: ProjectionsBaseline
   }>> {
     return this.address === undefined

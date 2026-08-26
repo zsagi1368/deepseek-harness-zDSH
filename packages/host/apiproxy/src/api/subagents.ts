@@ -78,6 +78,11 @@ export interface SubagentsApi {
    * Reads one healthy catalog child's transcript — the in-memory snapshot of
    * a live child, the persisted log of a cold one — with ordinary
    * message-aligned pagination and render intents, without Agent activation.
+   *
+   * Like `session.history`, streaming fragments a finalized assistant message
+   * cites as provenance do not ride the page; `windowCut` is the page's
+   * contiguous raw lower bound (0 once history is exhausted) to resume paging
+   * from.
    */
   history(
     request: RpcRequest<SubagentAddress & { beforeSeq?: number; maxMessages?: number }>,
@@ -85,6 +90,7 @@ export interface SubagentsApi {
   ): Promise<RpcResponse<{
     events: HistoryEntry[]
     hasMore: boolean
+    windowCut?: number
     projections?: SessionProjectionsBlock
   }>>
 

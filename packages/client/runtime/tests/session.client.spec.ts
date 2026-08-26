@@ -175,6 +175,12 @@ function histResponse(events: SessionEvent[], hasMore = false) {
   return Promise.resolve(ok({ events: entries(events) as never[], hasMore }))
 }
 
+function histElidedResponse(events: SessionEvent[], hasMore: boolean, windowCut: number) {
+  // The host's finalized-fragment elision (#370): retained events skip seqs and
+  // windowCut carries the page's contiguous raw lower bound.
+  return Promise.resolve(ok({ events: entries(events) as never[], hasMore, windowCut }))
+}
+
 describe('open', () => {
   it('keeps a bare Session blank until an authoritative lifecycle signal arrives', () => {
     const { session } = makeSession()
@@ -422,6 +428,50 @@ describe('paging', () => {
       const snapshot = session.getSnapshot()
       expect(snapshot.nodes).toEqual(nodesBefore)
       expect(snapshot.hasMore).toBe(false)
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  it('seeds the paging cursor from windowCut on open and tiles gapped older pages (#370 elision)', async () => {
+    const { api, session } = makeSession()
+    // Tail page: the host retained only the finalized turn's message events
+    // (its streamed chunks were elided), so first retained seq is 10 while the
+    // raw cut sits at 6 — the cursor loadOlder must resume from.
+    const tail = plainTurn(10, 1, '新', '页')
+    api.onHistory = payload => payload.beforeSeq === undefined
+      ? histElidedResponse(tail, true, 6)
+      : histElidedResponse([ev.user(1, '旧问'), ev.assistant(3, 0, '旧答')], false, 0)
+    await session.open()
+    // The older request resumes at the RAW cut (6), not the first retained seq (10):
+    // resuming from a retained event would re-request an already-covered raw range.
+    await session.loadOlder()
+    expect(api.callsOf('session.history')).toMatchObject([
+      {},
+      { sessionId: SID, beforeSeq: 6 },
+    ])
+    const snapshot = session.getSnapshot()
+    expect(snapshot.hasMore).toBe(false)
+    expect(snapshot.nodes.map(n => n.seq)).toEqual([1, 3, 11, 13])
+    // History is exhausted (hasMore false): further loads are no-ops.
+    await session.loadOlder()
+    expect(api.callsOf('session.history')).toHaveLength(2)
+  })
+
+  it('drops an elided older page whose tiling violates the cursor fail-soft', async () => {
+    const { api, session } = makeSession()
+    api.onHistory = payload => payload.beforeSeq === undefined
+      ? histElidedResponse(plainTurn(10, 1, '新', '页'), true, 6)
+      : histElidedResponse([ev.user(1, '断'), ev.assistant(3, 0, '层')], true, 7) // windowCut 7 > tail seq 3
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      await session.open()
+      const nodesBefore = session.getSnapshot().nodes
+      await session.loadOlder()
+      const snapshot = session.getSnapshot()
+      expect(snapshot.nodes).toEqual(nodesBefore)
+      expect(snapshot.hasMore).toBe(false)
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('tiles past cursor'))
     } finally {
       errorSpy.mockRestore()
     }

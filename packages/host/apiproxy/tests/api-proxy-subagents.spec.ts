@@ -164,6 +164,39 @@ describe('subagent gateway', () => {
     expect(getAgent).not.toHaveBeenCalled()
   })
 
+  it('reports the windowCut raw cut on a child page whose fragments were elided', async () => {
+    // Same contract as session.history (#370): the child's finalized message
+    // cites its streamed chunks, so they drop from the page and windowCut
+    // carries the contiguous lower bound the client resumes paging from.
+    const { api, inspect } = bench()
+    const childLog = [
+      {
+        type: 'turn/start', seq: 0, time: 1, data: { turn: 1 },
+      },
+      {
+        type: 'assistant/chunk', seq: 1, time: 2,
+        data: { turn: 1, step: 1, chunk: { type: 'text-delta', index: 0, text: 'x' } },
+      },
+      {
+        type: 'assistant/message', seq: 2, time: 3, surfaceOp: 'append', sourceEventSeqs: [1],
+        data: { turn: 1, step: 1, message: { role: 'assistant', content: [{ type: 'text', text: 'x' }], source: { kind: 'model', provider: 'p', model: 'm' } } },
+      },
+    ] as unknown as SessionEvent[]
+    inspect.mockReturnValue(Promise.resolve({
+      meta: {
+        version: 0, id: CHILD, createdAt: 1, cwd: '/proj', parentSession: PARENT,
+      },
+      events: childLog,
+    }))
+    const response = await api.subagents.history(request({
+      parentSessionId: PARENT, childSessionId: CHILD, mode: 'continuable',
+    }))
+    if (!response.result.ok) throw new Error('unreachable')
+    expect(response.result.value.events.map(entry => entry.event.type)).toEqual(['turn/start', 'assistant/message'])
+    expect(response.result.value.windowCut).toBe(0)
+    expect(response.result.value.hasMore).toBe(false)
+  })
+
   it('serves a live child from the in-memory snapshot and the watermark projections', async () => {
     const { api, inspect, snapshot, restore } = bench({ liveChild: true })
     const response = await api.subagents.history(request({

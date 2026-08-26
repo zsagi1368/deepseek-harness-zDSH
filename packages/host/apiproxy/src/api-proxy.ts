@@ -5,7 +5,7 @@
 
 import { readFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
-import { mkdir, stat } from 'node:fs/promises'
+import { stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -259,7 +259,7 @@ function paginate(
   events: readonly SessionEvent[],
   beforeSeq: number | undefined,
   maxMessages: number,
-): { events: SessionEvent[]; hasMore: boolean } {
+): { events: SessionEvent[]; hasMore: boolean; cut: number } {
   const window = beforeSeq === undefined ? [...events] : events.filter(event => event.seq < beforeSeq)
   let count = 0
   let cut = 0
@@ -280,7 +280,32 @@ function paginate(
     }
   }
   const page = window.filter(event => event.seq >= cut)
-  return { events: page, hasMore: cut > 0 }
+  return { events: page, hasMore: cut > 0, cut }
+}
+
+/**
+ * The seqs a page's finalized assistant messages claim as their streamed
+ * provenance. One linear pass over the page and its `sourceEventSeqs` arrays
+ * (no argument expansion, no per-member recursion), so provenance of any size
+ * costs time proportional to its length.
+ *
+ * Every finalized message participates regardless of surface op: an append
+ * message supersedes the partial its chunks rendered, and a replacement copy
+ * restates the content of everything it cites, so cited chunks are redundant
+ * on the wire either way.
+ *
+ * @param events - one pagination window's raw events, in log order.
+ * @returns the set of chunk seqs some finalized message on the window cites.
+ */
+function finalizedChunkProvenance(events: readonly SessionEvent[]): Set<number> {
+  const cited = new Set<number>()
+  for (const event of events) {
+    if (event.type !== 'assistant/message') continue
+    const sources = (event as { sourceEventSeqs?: readonly number[] }).sourceEventSeqs
+    if (sources === undefined) continue
+    for (const source of sources) cited.add(source)
+  }
+  return cited
 }
 
 /** Wrap an ok result echoing the request's rpcId. */
@@ -774,21 +799,47 @@ function backscanArgs(events: readonly SessionEvent[], callId: string): { name: 
   return undefined
 }
 
-/** Render one detached history page through the same presenter path as ordinary history. */
+/**
+ * Render one detached history page through the same presenter path as ordinary
+ * history.
+ *
+ * Streaming fragments a finalized assistant message already supersedes are
+ * dropped from the wire (`windowCut` reports the page's true contiguous lower
+ * bound so a paging client tiles raw ranges instead of retained events). The
+ * elision is what bounds a long session's first screen: one turn that streamed
+ * 100k+ token deltas otherwise ships every delta beside the message that
+ * already restates them (#370). Chunks no finalized message cites — the
+ * in-flight partial, or provenance whose finalized message fell below the cut —
+ * always ride the page. Presenter evaluation and backscan pairing run over the
+ * RETAINED window only: chunk events never carried views, and dropping them
+ * keeps this pass linear in what actually ships.
+ *
+ * @param ctx - context carrying the tool presenter registry.
+ * @param events - the full event log (attached snapshot or detached inspection).
+ * @param beforeSeq - exclusive upper bound when paging below the tail.
+ * @param maxMessages - append-origin messages per page; default when absent.
+ * @param scope - presenter lookup scope for preset-scoped tool cards.
+ * @returns the retained entries, whether older history exists, and the raw cut.
+ */
 function historyPage(
   ctx: Context,
   events: readonly SessionEvent[],
   beforeSeq: number | undefined,
   maxMessages: number | undefined,
   scope?: ScopeKey,
-): { events: HistoryEntry[]; hasMore: boolean } {
+): { events: HistoryEntry[]; hasMore: boolean; windowCut: number } {
   const page = paginate(events, beforeSeq, maxMessages ?? DEFAULT_MAX_MESSAGES)
+  const cited = finalizedChunkProvenance(page.events)
+  const retained = cited.size === 0
+    ? page.events
+    : page.events.filter(event => event.type !== 'assistant/chunk' || !cited.has(event.seq))
   return {
-    events: page.events.map((event) => {
-      const view = viewFor(ctx, event, callId => backscanArgs(page.events, callId), scope)
+    events: retained.map((event) => {
+      const view = viewFor(ctx, event, callId => backscanArgs(retained, callId), scope)
       return { event, ...view === undefined ? {} : { view } }
     }),
     hasMore: page.hasMore,
+    windowCut: page.cut,
   }
 }
 
@@ -1988,7 +2039,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
     return ok(request, namespaceView(descriptor))
   }
 
-  return {
+  const proxy: ApiProxy = {
     sessions: {
       // Attached sessions summarize from memory; persisted-but-unattached (cold)
       // sessions merge in from the persistence store so history survives restarts.
@@ -2220,6 +2271,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
           return ok(request, {
             events: page.events,
             hasMore: page.hasMore,
+            windowCut: page.windowCut,
             ...cut.projections === undefined ? {} : { projections: cut.projections },
           })
         } catch (error: unknown) {

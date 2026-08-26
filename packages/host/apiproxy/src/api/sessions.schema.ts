@@ -235,10 +235,11 @@ export const imageLimitsProjectionSchema = z.object({
   mediaTypes: z.array(z.string()),
 }) as unknown as z.ZodType<ImageAttachmentLimits>
 
-/** session.history response value (projections rides the tail page only). */
+/** session.history response value (projections rides the tail page only; windowCut reports the raw cut when hasMore). */
 export const sessionHistoryValueSchema: z.ZodType<Wire<ResponseValue<'session.history'>>> = z.object({
   events: z.array(historyEntrySchema),
   hasMore: z.boolean(),
+  windowCut: z.number().int().nonnegative().optional(),
   projections: sessionProjectionsBlockSchema.optional(),
 })
 

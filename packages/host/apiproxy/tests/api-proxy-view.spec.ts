@@ -317,8 +317,12 @@ describe('mux live view computation', () => {
         payload: { sessionId: session.id, maxMessages: 1 },
       })
       if (!response.result.ok) throw new Error('unreachable')
-      expect(response.result.value.events.map(entry => entry.event.seq)).toEqual([...sources, message.seq])
+      // Provenance scanning stays iterative AND its cited fragments stay off
+      // the page (#370): only the finalized message rides, and windowCut
+      // reports the raw cut (the first chunk) for upward paging.
+      expect(response.result.value.events.map(entry => entry.event.seq)).toEqual([message.seq])
       expect(response.result.value.hasMore).toBe(true)
+      expect(response.result.value.windowCut).toBe(sources[0])
     } finally {
       min.mockRestore()
     }
