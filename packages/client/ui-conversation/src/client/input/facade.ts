@@ -18,6 +18,7 @@ import type {
 } from './contract.ts'
 import type { InputSubmitMode } from '../contract/composer-submission.ts'
 import { InputMachine, projectClipboard } from './machine.ts'
+import { composeQuotedDraft } from './quote.ts'
 
 /** Popup face the shell needs (dismissal only; typed structurally to avoid a value import). */
 export interface PopupDismissFace {
@@ -88,6 +89,13 @@ export class SessionInputShell implements SessionInput {
   /** The public provide-channel action face (one stable identity per session). */
   readonly actions: InputActions = {
     setDraft: (text) => { this.setDraft(text) },
+    appendQuote: (text) => {
+      // Plain phase only: an append landing on a claimed command token or
+      // mid-admission draft would corrupt the span the machine is guarding.
+      if (this.snapshot.phase !== 'plain' || text.trim() === '') return false
+      this.setDraft(composeQuotedDraft(this.core.state.draft, text))
+      return true
+    },
     addImages: ids => this.addImages(ids),
     removeImage: (id) => { this.removeImage(id) },
     pruneImages: (ids) => { this.pruneImages(ids) },

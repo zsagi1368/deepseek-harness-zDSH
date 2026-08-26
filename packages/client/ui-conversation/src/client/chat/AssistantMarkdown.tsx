@@ -20,6 +20,7 @@ import type { AssistantBlock } from '@deepseek-ai/dsh-client-runtime/client'
 import { JsonBlock, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { MarkdownFileMentions } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ChatNodeOwnerProps, ChatViewSlotProps } from '../contract/slots.ts'
+import { FollowUpTextScope } from './FollowUpTextScope.tsx'
 import { ReasoningRow } from './ReasoningRow.tsx'
 import css from './AssistantMarkdown.module.css'
 
@@ -32,6 +33,17 @@ export interface AssistantMarkdownProps {
   renderMessageImages: ChatNodeOwnerProps['renderMessageImages']
   /** Resolved prose file mentions for this Assistant's closing turn. */
   mentions?: MarkdownFileMentions | undefined
+  /**
+   * S-30: deliver a verbatim prose selection to the caller (the node view
+   * forwards it to the session draft as one quote block). Omission renders
+   * text blocks exactly as before — no selection scope wrapper.
+   */
+  onQuote?: ((text: string) => void) | undefined
+  /**
+   * Whether the composer currently accepts quotes (plain phase); gates the
+   * floating affordance independently of the handler's existence.
+   */
+  quoteEnabled?: boolean | undefined
   /** The owning view's locale seat, passed down as a plain prop. */
   t: ChatViewSlotProps['t']
 }
@@ -89,7 +101,7 @@ function RawJsonFallback({ payload }: { payload: unknown }) {
 
 /** Reasoning block as the Think variant summary row (figma 39:28304). */
 export const AssistantMarkdown = memo(function AssistantMarkdown({
-  blocks, streaming, interrupted, renderMessageImages, mentions, t,
+  blocks, streaming, interrupted, renderMessageImages, mentions, onQuote, quoteEnabled, t,
 }: AssistantMarkdownProps) {
   // Stable per locale revision (t identity changes on switch): a fresh object
   // per render would rebuild MarkdownText's component table every chunk.
@@ -107,10 +119,9 @@ export const AssistantMarkdown = memo(function AssistantMarkdown({
     const block = blocks[i]
     if (block === undefined) continue
     switch (block.kind) {
-      case 'text':
-        rendered.push(
+      case 'text': {
+        const body = (
           <BlockVisibilityBoundary
-            key={i}
             resetToken={block.text}
             fallback={<pre className={css.rawFallback} data-assistant-fallback="text">{block.text}</pre>}
           >
@@ -120,9 +131,28 @@ export const AssistantMarkdown = memo(function AssistantMarkdown({
               codeLabels={codeLabels}
               fileMentions={mentions}
             />
-          </BlockVisibilityBoundary>,
+          </BlockVisibilityBoundary>
+        )
+        // S-30: with a quote handler the text block sits inside its selection
+        // scope (the listener hangs on this block-level container, outside the
+        // visibility boundary, so the raw crash fallback stays selectable too);
+        // without one the DOM is exactly the pre-feature shape.
+        rendered.push(
+          onQuote === undefined ? (
+            <Fragment key={i}>{body}</Fragment>
+          ) : (
+            <FollowUpTextScope
+              key={i}
+              enabled={quoteEnabled === true}
+              label={t('message.followUp')}
+              onQuote={onQuote}
+            >
+              {body}
+            </FollowUpTextScope>
+          ),
         )
         break
+      }
       case 'reasoning':
         rendered.push(
           <BlockVisibilityBoundary

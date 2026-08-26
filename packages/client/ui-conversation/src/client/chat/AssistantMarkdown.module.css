@@ -50,6 +50,34 @@
   line-height: 18px;
 }
 
+/* S-30 selection scope: the relative origin the floating follow-up pill is
+   placed against; transparent to layout otherwise (block flow, full width). */
+.quoteScope {
+  position: relative;
+  min-width: 0;
+}
+
+/* Floating 追问 pill summoned by a prose selection. Sits just below the
+   selection's end edge; elevated so it reads over streamed text underneath. */
+.followUp {
+  position: absolute;
+  z-index: 2;
+  padding: 2px 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 100px;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  line-height: 20px;
+  white-space: nowrap;
+  box-shadow: var(--dsw-shadow-lv2);
+  cursor: pointer;
+}
+
+.followUp:hover {
+  background: var(--dsw-alias-button-floating-hover);
+}
+
 /* S-10 crash face: when a rich renderer (markdown / reasoning / JSON) throws,
    the block degrades to this raw face instead of vanishing with the slot's
    empty crash div — assistant output must stay on the record. */

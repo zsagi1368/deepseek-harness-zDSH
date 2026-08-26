@@ -24,6 +24,19 @@
   pointer-events: none;
 }
 
+/* S-41: an expanded Think head pins under the scrollport's top edge while its
+   own block spans it, so long thinking text keeps its header visible while
+   being read. The opaque background covers flow content scrolling beneath;
+   the low z-index stays under the composer stack (7) and back-to-bottom (8).
+   The pin is bounded by this block's own box: scrolling past it releases the
+   header with the block, exactly like a native section header. */
+.root[data-expanded] .row {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--dsw-alias-bg-base);
+}
+
 @keyframes dsh-reasoning-row-sweep {
   0% { left: -300px; }
   90%, 100% { left: 100%; }

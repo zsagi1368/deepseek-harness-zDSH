@@ -760,6 +760,11 @@ export interface ChatViewInjected {
   loadOlder: () => void
   /** Resolve a session-authorized historical image for inline display. */
   loadImage: (attachment: ImageAttachmentRef) => Promise<string>
+  /**
+   * S-52 double-Esc first stroke: cancel the in-flight turn. Optional —
+   * without it the Esc gesture stays entirely off (there is nothing to arm).
+   */
+  stop?: (() => void) | undefined
   /** Hand a call off to the trajectory view: write the one-shot inspect target and switch tabs. */
   inspectCall: (callId: CallId) => void
   /**

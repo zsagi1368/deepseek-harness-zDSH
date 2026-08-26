@@ -409,6 +409,13 @@ export function apply(ctx: Context): void {
           actions.setInspect({ callId })
           actions.setView('trajectory')
         },
+        // S-52 double-Esc first stroke shares the composer Stop verb exactly:
+        // a failed cancel surfaces through snapshot.promptError, nothing to restore.
+        stop: () => {
+          scopedConversation(sessions, sessionId).cancel().catch(() => {
+            // Stop failure surfaces via snapshot.promptError; nothing to restore.
+          })
+        },
         chatScroll: {
           save: (position) => {
             if (position === null) chatScrollPositions.delete(sessionId)

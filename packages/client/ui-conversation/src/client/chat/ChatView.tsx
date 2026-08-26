@@ -14,7 +14,7 @@
 // lifecycle updates replace only their own row without remounting it.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { ConversationTimelineSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ChatNodeStore, ConversationTimelineSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
 import { Button, IconChevronDownOutline14, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ChatViewSlotProps, RenderMessageImages } from '../contract/slots.ts'
 import { PendingSteeringBubble } from './MessageItem.tsx'
@@ -24,9 +24,41 @@ import css from './ChatView.module.css'
 
 const FOLLOW_THRESHOLD = 24
 
+/** S-52 double-Esc: how long the second press may follow the first (the stop)
+ * and still count as the retraction confirmation. */
+const ESC_RETRACT_WINDOW_MS = 1_500
+
 /** Active column host when present; otherwise the view-local scroller. */
 function scrollerOf(from: HTMLElement): HTMLElement {
   return (from.closest('[data-conversation-scroll]')) ?? from
+}
+
+/**
+ * Locate the S-52 retraction anchor: for the latest user message, the nearest
+ * earlier visible node's anchor seq. sessions.fork cuts at the first completed
+ * turn at or after that anchor, so branching there excludes exactly the turn
+ * the user message opened — the append-only log stays intact and the child
+ * session continues from clean history.
+ * @param order - ordered Chat node keys.
+ * @param nodes - node table by key.
+ * @returns the fork-through anchor seq, or null when nothing is retractable
+ * (no user message, or its predecessor is outside the loaded window).
+ */
+function retractAnchorSeqOf(
+  order: readonly string[],
+  nodes: Readonly<ChatNodeStore>,
+): number | null {
+  // Scan the whole loaded window: the retraction targets the LATEST user
+  // message, so earlier user nodes must not short-circuit the walk.
+  let anchor: number | null = null
+  let previousSeq: number | null = null
+  for (const key of order) {
+    const node = nodes.get(key)
+    if (node === undefined || node.visibility === 'hidden') continue
+    if (node.kind === 'user') anchor = previousSeq
+    previousSeq = node.anchorSeq
+  }
+  return anchor
 }
 
 interface PagingAnchor {
@@ -157,7 +189,7 @@ function TurnStatus({ startTime, t }: {
  */
 export function ChatView({
   useSession, useSessions, useStore, renderSlot, sessionId, openFile, loadOlder, loadImage, inspectCall, chatScroll, forkAt,
-  fileMentions, t,
+  fileMentions, stop, t,
 }: ChatViewSlotProps) {
   const order = useSession(s => s.chat.order)
   const nodeStore = useSession(s => s.chat.nodes)
@@ -395,6 +427,46 @@ export function ChatView({
   useEffect(() => {
     if (!loadingOlder) anchorRef.current = null
   }, [loadingOlder])
+
+  // S-52 double-Esc, Claude Code semantics: while the turn runs, Escape stops
+  // it and arms a short confirmation window; a second press inside that window
+  // retracts the latest user message by branching to just before its turn (the
+  // child session continues from clean history — the source log is never cut).
+  // The gesture lives on a document listener so it works wherever focus sits;
+  // it yields to every existing Escape consumer by skipping events another
+  // layer already handled (slash menu close preventDefaults) and to IME
+  // composition entirely. Streaming and other running activity keep the
+  // retraction disabled: with the turn live, only the stop stroke exists.
+  const escFactsRef = useRef({ openState, running, order, nodes: nodeStore })
+  escFactsRef.current = { openState, running, order, nodes: nodeStore }
+  const escArmRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (stop === undefined) return
+    const onKeyDown = (event: KeyboardEvent): void => {
+      // Any non-Escape stroke disarms a pending retraction.
+      if (event.key !== 'Escape') {
+        escArmRef.current = null
+        return
+      }
+      if (event.repeat || event.defaultPrevented || event.isComposing) return
+      // oxlint-disable-next-line typescript/no-deprecated -- legacy IME signal (keyCode 229), same guard as the composer.
+      if ((event as unknown as { keyCode?: number }).keyCode === 229) return
+      const facts = escFactsRef.current
+      if (facts.openState !== 'open') return
+      if (facts.running) {
+        escArmRef.current = Date.now()
+        stop()
+        return
+      }
+      const armedAt = escArmRef.current
+      escArmRef.current = null
+      if (armedAt === null || Date.now() - armedAt > ESC_RETRACT_WINDOW_MS) return
+      const anchor = retractAnchorSeqOf(facts.order, facts.nodes)
+      if (anchor !== null) forkAt(anchor)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => { document.removeEventListener('keydown', onKeyDown) }
+  }, [forkAt, stop])
 
   const loadOlderAnchored = (): void => {
     const local = listRef.current

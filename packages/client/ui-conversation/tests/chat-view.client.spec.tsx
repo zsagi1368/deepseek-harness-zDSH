@@ -24,6 +24,7 @@ import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts
 import { createChatStore } from '../src/client/stores.ts'
 import { ChatView } from '../src/client/chat/ChatView.tsx'
 import { zh } from '../src/client/locales.ts'
+import type { InputState } from '../src/client/input/contract.ts'
 import { AssistantNodeView } from '../src/client/chat/AssistantNodeView.tsx'
 import { CommandNodeView, ManualCompactionNodeView } from '../src/client/chat/CommandNodeView.tsx'
 import {
@@ -149,6 +150,11 @@ function emptyWorkspaces() {
   return bindSnapshotSelector(store)
 }
 
+/** Inert plain-phase input currency: assistant rows read the quote gate off it. */
+const INERT_INPUT = bindSnapshotSelector(createSnapshotStore<InputState>({
+  draft: '', imageIds: [], draftRev: 0, phase: 'plain', occurrences: [], queue: [],
+}))
+
 function makeHarness(init?: Partial<ConversationSnapshot>) {
   const { set, source } = makeSource(init)
   const openDetails = vi.fn<(t: SelectionTarget) => void>()
@@ -268,7 +274,7 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
     useSessions: emptySessions(),
     useWorkspaces: emptyWorkspaces(),
     useProjection: (() => undefined),
-    useInput: (() => { throw new Error('unused') }),
+    useInput: INERT_INPUT,
     inputActions: {
       setDraft: () => {},
       addImages: () => true,
@@ -1456,5 +1462,122 @@ describe('ChatView', () => {
     const failedView = render(<failed.ChatView {...failed.props} />)
     expect(failedView.getByText('Compaction cancelled.')).toBeTruthy()
     expect(failedView.container.querySelector('[data-state="error"]')).not.toBeNull()
+  })
+})
+
+describe('ChatView double-Esc retraction (S-52)', () => {
+  function pressEscape(init: KeyboardEventInit = {}): void {
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true, ...init }))
+    })
+  }
+
+  it('first Esc stops the running turn; the confirmation stroke branches to before the latest user message', () => {
+    const h = makeHarness({
+      nodes: [user(1, 'first'), assistant(2, 'a'), user(7, 'typo'), assistant(8, 'answer')],
+      running: true,
+    })
+    const stop = vi.fn()
+    h.props.stop = stop
+    render(<h.ChatView {...h.props} />)
+
+    pressEscape()
+    expect(stop).toHaveBeenCalledTimes(1)
+    expect(h.forkAt).not.toHaveBeenCalled()
+
+    // Host acknowledged the cancellation; the second stroke lands inside the
+    // window and cuts before the retracted turn: anchor = the node preceding
+    // the latest user message (seq 7), i.e. seq 2.
+    act(() => { h.set({ running: false }) })
+    pressEscape()
+    expect(h.forkAt).toHaveBeenCalledWith(2)
+  })
+
+  it('a second stroke while still streaming is another stop, not a retraction', () => {
+    const h = makeHarness({
+      nodes: [user(1, 'first'), assistant(2, 'a'), user(7, 'typo'), assistant(8, 'answer')],
+      running: true,
+    })
+    const stop = vi.fn()
+    h.props.stop = stop
+    render(<h.ChatView {...h.props} />)
+
+    pressEscape()
+    pressEscape()
+    expect(stop).toHaveBeenCalledTimes(2)
+    expect(h.forkAt).not.toHaveBeenCalled()
+  })
+
+  it('the retraction window expires, other keys disarm, an unarmed idle stroke is inert', () => {
+    const nowSpy = vi.spyOn(Date, 'now')
+    try {
+      const h = makeHarness({
+        nodes: [assistant(2, 'a'), user(7, 'typo'), assistant(8, 'answer')],
+      })
+      const stop = vi.fn()
+      h.props.stop = stop
+      render(<h.ChatView {...h.props} />)
+
+      // Idle single stroke: nothing armed, nothing happens.
+      nowSpy.mockReturnValue(1_000)
+      pressEscape()
+      expect(h.forkAt).not.toHaveBeenCalled()
+
+      // Arm via the running stop, then let the window lapse.
+      act(() => { h.set({ running: true }) })
+      pressEscape() // arm at t=1000 (stop fires once)
+      expect(stop).toHaveBeenCalledTimes(1)
+      act(() => { h.set({ running: false }) })
+      nowSpy.mockReturnValue(1_000 + 1_500 + 1)
+      pressEscape()
+      expect(h.forkAt).not.toHaveBeenCalled()
+
+      // Fresh arm, but any non-Escape stroke disarms before the confirmation.
+      act(() => { h.set({ running: true }) })
+      nowSpy.mockReturnValue(5_000)
+      pressEscape()
+      act(() => { h.set({ running: false }) })
+      act(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true })) })
+      pressEscape()
+      expect(h.forkAt).not.toHaveBeenCalled()
+
+      // In-window confirmation after a fresh arm does fire. The anchor is the
+      // node preceding the latest user message (assistant seq 2): sessions.fork
+      // cuts at the first turn/end at or after the anchor and INCLUDES that
+      // turn, so branching at 2 keeps exactly the earlier exchange and drops
+      // the retracted u7/a8 turn.
+      act(() => { h.set({ running: true }) })
+      nowSpy.mockReturnValue(9_000)
+      pressEscape()
+      act(() => { h.set({ running: false }) })
+      nowSpy.mockReturnValue(9_000 + 200)
+      pressEscape()
+      expect(h.forkAt).toHaveBeenCalledWith(2)
+    } finally {
+      nowSpy.mockRestore()
+    }
+  })
+
+  it('retraction without a loaded predecessor stays inert; handled Escapes never reach the gesture', () => {
+    const h = makeHarness({ nodes: [user(9, 'only visible message')], hasMore: true })
+    const stop = vi.fn()
+    h.props.stop = stop
+    render(<h.ChatView {...h.props} />)
+
+    // Arm through a real run-stop cycle; the only user message has no loaded
+    // predecessor (older page not fetched), so there is nothing to cut at.
+    act(() => { h.set({ running: true }) })
+    pressEscape()
+    act(() => { h.set({ running: false }) })
+    pressEscape()
+    expect(h.forkAt).not.toHaveBeenCalled()
+
+    // An Escape another layer already handled (slash menu close preventDefaults)
+    // is invisible to the gesture even while the turn runs.
+    act(() => { h.set({ running: true }) })
+    const consumed = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    consumed.preventDefault()
+    act(() => { document.dispatchEvent(consumed) })
+    expect(stop).toHaveBeenCalledTimes(1) // only the first arm's stop above
   })
 })

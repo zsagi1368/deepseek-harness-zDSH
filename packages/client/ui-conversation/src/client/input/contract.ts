@@ -73,6 +73,16 @@ export interface SessionInputResolver {
 export interface InputActions {
   /** Single public draft write path (full next draft; occurrence math via diff scan). */
   setDraft(text: string): void
+  /**
+   * Append a prepared quote block (the S-30 selection quote) after the current
+   * draft as one machine transaction (one undo step). Refused while an
+   * admission phase holds the draft — an append must never mutate a claimed
+   * command span — or when the block is blank. Optional: shells predating the
+   * feature simply do not offer it.
+   * @param text - the ready-to-append formatted block.
+   * @returns whether the draft accepted the append.
+   */
+  appendQuote?(text: string): boolean
   /** Append ordered browser-owned image ids; busy admission phases refuse. */
   addImages(ids: readonly DraftAttachmentId[]): boolean
   /** Remove one browser-owned image id; busy admission phases refuse. */
