@@ -177,6 +177,121 @@ dsh plugin --profile demo add github:you/hello-plugin
 - **发布到 npm**，在 `pnpm publish` 时构建好 `lib/`；`dsh plugin add your-package` 安装的就是预构建代码。
 - **交付 tarball**：用 `pnpm pack` 打包；用户执行 `dsh plugin add ./hello-plugin-0.1.0.tgz`。
 
+## 发布免构建的技能组合包
+
+前文分发的都是插件代码——tool 与宿主能力。组合包同样可以分发**技能**（skill）：模型按需加载的指令，而不是它调用的 tool。这种形态完全不需要任何构建步骤：技能正文是 Markdown，唯一的代码只是一小段把技能交给 `ctx.skills` 的纯 JavaScript 提供方插件。仓库内的 [`@deepseek-ai/dsh-skill-badge`](../../../../packages/skill/skill-badge/README.zh.md) 正是这一形态的官方先例。
+
+创建包目录：
+
+```sh
+mkdir -p hello-skill/skills/team-style
+```
+
+```
+hello-skill/
+├── package.json       # declares dsh.bundle
+├── cordis.patch.yml   # the layer applied when a profile lists this bundle
+├── index.js           # provider plugin: lists and loads the shipped skill
+└── skills/
+    └── team-style/
+        └── SKILL.md   # the instruction body
+```
+
+创建 `hello-skill/package.json` —— 与第一节的 manifest 同构，只是把 `skills/` 加进发布文件清单：
+
+```json
+{
+  "name": "dsh-hello-skill",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "index.js",
+  "files": ["index.js", "cordis.patch.yml", "skills"],
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
+}
+```
+
+创建 `hello-skill/cordis.patch.yml`：
+
+```yaml
+- insert:
+    - id: hello-skill
+      name: dsh-hello-skill
+```
+
+创建 `hello-skill/index.js`。它遵循 badge 提供方的同一契约：`list()` 返回目录候选，`get()` 每次加载都重读当前正文，`apply()` 注册提供方。纯 ESM JavaScript 原样运行——没有任何要转译的东西：
+
+```js
+import { readFile } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
+
+const bodyUrl = new URL('./skills/team-style/SKILL.md', import.meta.url)
+const resourceBase = { kind: 'directory', path: fileURLToPath(new URL('./skills/team-style/', import.meta.url)) }
+
+const provider = {
+  name: 'hello-skill',
+  list: () => Promise.resolve([{
+    name: 'team-style',
+    description: 'House style for commit messages, branch names, and pull request titles.',
+    invocation: { modelInvocable: true, userInvocable: true },
+    provider: 'hello-skill',
+    source: 'bundled',
+    rank: 600,
+    locator: bodyUrl,
+    resourceBase,
+  }]),
+  async get(candidate) {
+    return {
+      name: candidate.name,
+      description: candidate.description,
+      invocation: candidate.invocation,
+      provider: candidate.provider,
+      source: candidate.source,
+      resourceBase,
+      content: await readFile(bodyUrl, 'utf8'),
+    }
+  },
+}
+
+export const name = 'hello-skill'
+export const inject = ['skills']
+
+export function apply(ctx) {
+  ctx.skills.registerProvider(() => provider)
+}
+```
+
+bundled 这一 rank 意味着项目自带的同名技能在冲突时仍然优先。名称与描述放在候选里而不是 frontmatter 里，所以正文文件保持纯 Markdown。创建 `hello-skill/skills/team-style/SKILL.md`：
+
+```markdown
+# Team style
+
+Apply these conventions whenever you write or review version-control text.
+
+## Commit messages
+
+- Subject line in imperative mood, at most 72 characters, no trailing period.
+- Body lines wrapped at 80 characters; explain why, not what.
+
+## Branches and pull requests
+
+- Branch names follow `<type>/<short-topic>`, for example `fix/session-flush`.
+- Pull request titles follow the commit subject rules; the description lists the behavior changes and the tests covering them.
+```
+
+安装并启动——与任何组合包相同的流程：
+
+```sh
+dsh plugin --profile demo add ./hello-skill
+dsh --profile demo --dump-config   # shows a "# == dsh-hello-skill" layer
+dsh --profile demo
+```
+
+在会话里把 `/team-style` 写在消息第一行——user-invocable 技能通过这个手势确定性地加载——或者让模型用它自己的 `skill` 工具加载该技能。
+
+分发环节可以完全跳过上一节：没有构建产物就意味着没有 `prepare` 脚本，git 安装不需要任何 `allowBuilds` 授权，tarball 则携带全部内容——`pnpm pack`，然后 `dsh plugin add ./dsh-hello-skill-0.1.0.tgz`。
+
+按作用域选择分发渠道：装进 profile 的组合包让技能在该 profile 启动的每个工作区都可用；而属于单个仓库的技能应随仓分发——把目录放进 `<projectRoot>/.dsh/skills/` 下，[文件系统发现](../../../../docs/subsystems/skills.zh.md)无需任何包就会拾取它。
+
 ## 下一步
 
 - [插件与生命周期](../framework/index.zh.md) — 插件的完整生命周期

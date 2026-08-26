@@ -177,6 +177,121 @@ If you would rather not ask users for the allowance, distribute built artifacts 
 - **Publish to npm** with `lib/` built at `pnpm publish` time; `dsh plugin add your-package` then installs prebuilt code.
 - **Ship a tarball** from `pnpm pack`; users run `dsh plugin add ./hello-plugin-0.1.0.tgz`.
 
+## Publish a build-free skill bundle
+
+Everything above distributes plugin code — tools and host capabilities. A bundle can just as well distribute a **skill**: instructions the model loads on demand instead of a tool it calls. This form needs no build step anywhere: the skill body is Markdown, and the only code is a small plain-JavaScript provider that hands it to `ctx.skills`. [`@deepseek-ai/dsh-skill-badge`](../../../../packages/skill/skill-badge/README.md) is the shipped precedent for exactly this shape.
+
+Create the package directory:
+
+```sh
+mkdir -p hello-skill/skills/team-style
+```
+
+```
+hello-skill/
+├── package.json       # declares dsh.bundle
+├── cordis.patch.yml   # the layer applied when a profile lists this bundle
+├── index.js           # provider plugin: lists and loads the shipped skill
+└── skills/
+    └── team-style/
+        └── SKILL.md   # the instruction body
+```
+
+Create `hello-skill/package.json` — the manifest shape from the first section, with `skills/` added to the published files:
+
+```json
+{
+  "name": "dsh-hello-skill",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "index.js",
+  "files": ["index.js", "cordis.patch.yml", "skills"],
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
+}
+```
+
+Create `hello-skill/cordis.patch.yml`:
+
+```yaml
+- insert:
+    - id: hello-skill
+      name: dsh-hello-skill
+```
+
+Create `hello-skill/index.js`. It follows the badge provider's contract: `list()` returns the catalog candidate, `get()` rereads the current body on every load, and `apply()` registers the provider. Plain ESM JavaScript runs as-is — nothing to transpile:
+
+```js
+import { readFile } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
+
+const bodyUrl = new URL('./skills/team-style/SKILL.md', import.meta.url)
+const resourceBase = { kind: 'directory', path: fileURLToPath(new URL('./skills/team-style/', import.meta.url)) }
+
+const provider = {
+  name: 'hello-skill',
+  list: () => Promise.resolve([{
+    name: 'team-style',
+    description: 'House style for commit messages, branch names, and pull request titles.',
+    invocation: { modelInvocable: true, userInvocable: true },
+    provider: 'hello-skill',
+    source: 'bundled',
+    rank: 600,
+    locator: bodyUrl,
+    resourceBase,
+  }]),
+  async get(candidate) {
+    return {
+      name: candidate.name,
+      description: candidate.description,
+      invocation: candidate.invocation,
+      provider: candidate.provider,
+      source: candidate.source,
+      resourceBase,
+      content: await readFile(bodyUrl, 'utf8'),
+    }
+  },
+}
+
+export const name = 'hello-skill'
+export const inject = ['skills']
+
+export function apply(ctx) {
+  ctx.skills.registerProvider(() => provider)
+}
+```
+
+The bundled rank means a project's own skills still win a name conflict. Name and description live in the candidate rather than in frontmatter, so the body file stays plain Markdown. Create `hello-skill/skills/team-style/SKILL.md`:
+
+```markdown
+# Team style
+
+Apply these conventions whenever you write or review version-control text.
+
+## Commit messages
+
+- Subject line in imperative mood, at most 72 characters, no trailing period.
+- Body lines wrapped at 80 characters; explain why, not what.
+
+## Branches and pull requests
+
+- Branch names follow `<type>/<short-topic>`, for example `fix/session-flush`.
+- Pull request titles follow the commit subject rules; the description lists the behavior changes and the tests covering them.
+```
+
+Install and boot — the same flow as any bundle:
+
+```sh
+dsh plugin --profile demo add ./hello-skill
+dsh --profile demo --dump-config   # shows a "# == dsh-hello-skill" layer
+dsh --profile demo
+```
+
+In a session, send `/team-style` as the first line of a message — a user-invocable skill loads deterministically through that gesture — or ask the model to load the skill through its own `skill` tool.
+
+Distribution skips the previous section entirely: no build products means no `prepare` script, so a git install needs no `allowBuilds` entry, and a tarball carries everything — `pnpm pack`, then `dsh plugin add ./dsh-hello-skill-0.1.0.tgz`.
+
+Choose the channel by scope: a profile-installed bundle makes the skill available in every workspace that profile boots, while a skill belonging to one repository ships inside it — drop the directory under `<projectRoot>/.dsh/skills/` and [filesystem discovery](../../../../docs/subsystems/skills.md) picks it up without any package.
+
 ## Next steps
 
 - [Plugins and lifecycle](../framework/index.md) — the full plugin lifecycle
