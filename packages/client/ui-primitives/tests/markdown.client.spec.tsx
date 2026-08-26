@@ -68,6 +68,21 @@ describe('MarkdownText', () => {
     expect(screen.getByRole('link', { name: 'https://deepseek.com' })).toBeTruthy()
   })
 
+  it('keeps single tildes literal; only paired double tildes strike through', () => {
+    // Financial ranges like `5%~6%` must never gain a stray <del>, in either
+    // rendering arm (settled parses with math; streaming parses plain GFM).
+    for (const streaming of [false, true]) {
+      const rendered = render(
+        <MarkdownText text={'Growth 5%~6%, ~lone~, and ~~gone~~.'} streaming={streaming} />,
+      )
+      expect([...rendered.container.querySelectorAll('del')].map(node => node.textContent))
+        .toEqual(['gone'])
+      expect(rendered.container.querySelector('p')?.textContent)
+        .toBe('Growth 5%~6%, ~lone~, and gone.')
+      rendered.unmount()
+    }
+  })
+
   it('closes punctuation-terminated strong emphasis before adjacent CJK text', () => {
     const cases = [
       ['**注意：**内容', '注意：'],

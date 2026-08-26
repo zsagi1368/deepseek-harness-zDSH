@@ -6,6 +6,10 @@
  * plus the math extensions, so the arms differ only where TeX delimiters
  * begin a math construct (a `$$` block is a paragraph while streaming and a
  * math block once settled, by design).
+ *
+ * Both arms disable GFM single-tilde strikethrough (`singleTilde: false`):
+ * only paired double tildes (`~~text~~`) delete, so financial ranges like
+ * `5%~6%` keep their tilde literally instead of gaining a stray strike.
  */
 
 import type { Root } from 'mdast'
@@ -25,7 +29,7 @@ import { mathCompatibility } from './mathCompatibility.ts'
  */
 export function parseGfm(text: string): Root {
   return fromMarkdown(text, {
-    extensions: [gfm(), cjkFriendlyStrong()],
+    extensions: [gfm({ singleTilde: false }), cjkFriendlyStrong()],
     mdastExtensions: [gfmFromMarkdown()],
   })
 }
@@ -38,7 +42,7 @@ export function parseGfm(text: string): Root {
  */
 export function parseGfmWithMath(text: string): Root {
   return fromMarkdown(text, {
-    extensions: [gfm(), cjkFriendlyStrong(), mathCompatibility(), math()],
+    extensions: [gfm({ singleTilde: false }), cjkFriendlyStrong(), mathCompatibility(), math()],
     mdastExtensions: [gfmFromMarkdown(), mathFromMarkdown()],
   })
 }
