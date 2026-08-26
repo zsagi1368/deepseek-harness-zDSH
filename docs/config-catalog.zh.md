@@ -363,10 +363,15 @@ export interface Config {
   normalizedImageMaxBytes?: number
   /** Maximum simultaneous normalization or request-image transformations in this service instance. */
   imageCompressionConcurrency?: number
+  /**
+   * Maximum bytes accepted for one submitted text file; content must decode
+   * as UTF-8 text (see {@link decodeTextAttachment}). Default: 256 KiB.
+   */
+  maxTextBytes?: number
 }
 ```
 
-Source: [`packages/attachment/attachment-local/src/index.ts:51`](../packages/attachment/attachment-local/src/index.ts)
+Source: [`packages/attachment/attachment-local/src/index.ts:63`](../packages/attachment/attachment-local/src/index.ts)
 
 <a id="deepseek-aidsh-bash-local"></a>
 
@@ -1023,6 +1028,13 @@ export interface Config {
    * @default 1024
    */
   coldBlankProbeMaxBytes?: number
+  /**
+   * Serve reads only: every mutation-class RPC answers the fixed
+   * `read-only-mode` error, while the browsing surface (session list/search/
+   * history/models/attachment and the listings a viewer renders) stays live.
+   * The posture behind `dsh web --read-only`.
+   */
+  readOnly?: boolean
 }
 ```
 
@@ -1108,6 +1120,58 @@ export interface Config {
 ```
 
 Source: [`packages/jobs/jobs-local/src/index.ts:31`](../packages/jobs/jobs-local/src/index.ts)
+
+<a id="deepseek-aidsh-llm"></a>
+
+## `@deepseek-ai/dsh-llm`
+
+```ts config-catalog
+/** Service-level configuration for the LLM runtime. */
+export interface LlmRuntimeConfig {
+  /**
+   * Streaming repetition-loop guard thresholds (S-16). The guard watches the
+   * visible text of every streamed block and stops a stream that has collapsed
+   * into a degenerate repetition loop, surfacing a `REPETITION_LOOP` failure
+   * instead of burning tokens on garbage. Omission keeps the conservative
+   * defaults; set `enabled: false` to turn monitoring off entirely.
+   */
+  repetitionGuard?: RepetitionGuardConfig
+}
+
+/** Tunable repetition-loop detection thresholds; every field is optional. */
+export interface RepetitionGuardConfig {
+  /** Master switch for stream monitoring (default `true`). */
+  enabled?: boolean
+  /**
+   * Trailing analysis window in UTF-16 code units per monitored block.
+   * Findings require at least this much observed text (default 2048), so
+   * short answers are structurally out of reach.
+   */
+  minWindowChars?: number
+  /** Minimum appended characters between scans of one block (default 256). */
+  checkIntervalChars?: number
+  /**
+   * Window share above which a single non-whitespace character is a collapse
+   * (default 0.92). Whitespace-dominant windows never fire: indentation and
+   * blank-line formatting are legitimate.
+   */
+  charCollapseRatio?: number
+  /** Shortest verbatim repeat unit still treated as a loop (default 32). */
+  loopMinUnitChars?: number
+  /** Longest verbatim repeat unit considered (default 256). */
+  loopMaxUnitChars?: number
+  /** Consecutive verbatim repeats of one unit required to fire (default 25). */
+  loopMinRepeats?: number
+  /**
+   * Fraction of the analysis window the looping span must already cover
+   * before firing (default 0.5), keeping brief repetitions at the tail of an
+   * otherwise normal answer below the threshold.
+   */
+  loopMinCoverageRatio?: number
+}
+```
+
+Source: [`packages/llm/llm/src/index.ts:320`](../packages/llm/llm/src/index.ts)
 
 <a id="deepseek-aidsh-llm-deepseek"></a>
 
@@ -1971,7 +2035,7 @@ export interface Config {
 export type JsonlCompression = 'zstd' | 'none'
 ```
 
-Source: [`packages/session/session-persistence-jsonl/src/index.ts:60`](../packages/session/session-persistence-jsonl/src/index.ts)
+Source: [`packages/session/session-persistence-jsonl/src/index.ts:67`](../packages/session/session-persistence-jsonl/src/index.ts)
 
 <a id="deepseek-aidsh-session-persistence-sqlite"></a>
 
@@ -2392,6 +2456,43 @@ export type JournalMode = 'wal' | 'delete' | 'truncate' | 'persist'
 ```
 
 Source: [`packages/storage/storage-sqlite/src/index.ts:24`](../packages/storage/storage-sqlite/src/index.ts)
+
+<a id="deepseek-aidsh-subagent"></a>
+
+## `@deepseek-ai/dsh-subagent`
+
+```ts config-catalog
+/**
+ * Deployment limits for the subagent seam, settable as the runtime's plugin
+ * config. Every key is optional; omitted keys take the documented default, and
+ * unknown keys are rejected at construction instead of being ignored.
+ */
+export interface SubagentRuntimeConfig {
+  /**
+   * Maximum number of simultaneously admitted subagents across both delegation
+   * shapes: one-shot runs hold a slot from `start()` admission until the run
+   * settles; continuable children hold one from materialization until their
+   * Activation leaves residency. A start that would exceed the limit rejects
+   * immediately with `SubagentCapacityError` — the seam never queues. Default
+   * `8`: enough fan-out for parallel delegation while bounding the heap and
+   * event-loop share every in-process child costs. `'unlimited'` restores the
+   * unbounded behavior.
+   */
+  maxConcurrent?: number | 'unlimited'
+  /**
+   * Absolute delegation-depth ceiling applied on top of any caller-supplied
+   * `maxDepth` — the binding cap is the smaller of the two. A delegation whose
+   * resolved child depth would exceed it fails fast with `SubagentDepthError`.
+   * Default `3`, matching the model-facing tool's shipped default. A child that
+   * cold-resumes after the ceiling was lowered stays reachable through
+   * `followup`, but it cannot delegate deeper while its recorded depth already
+   * meets the ceiling. `'unlimited'` disables the ceiling.
+   */
+  maxDepth?: number | 'unlimited'
+}
+```
+
+Source: [`packages/subagent/subagent/src/capacity.ts:23`](../packages/subagent/subagent/src/capacity.ts)
 
 <a id="deepseek-aidsh-subagent-acp"></a>
 
@@ -3309,10 +3410,12 @@ export interface Config {
   surfaceContext: boolean
   /** Explicit `--trusted-host` authorities from this invocation. */
   trustedHosts: string[]
+  /** Serve reads only (`--read-only`); the URL line names the posture. */
+  readOnly: boolean
 }
 ```
 
-Source: [`packages/bundle/web-app/src/index.ts:42`](../packages/bundle/web-app/src/index.ts)
+Source: [`packages/bundle/web-app/src/index.ts:43`](../packages/bundle/web-app/src/index.ts)
 
 <a id="deepseek-aidsh-web-fetch-http"></a>
 
@@ -3600,7 +3703,6 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-host-directory-picker-auto` — requires `webServer` · `loader` ([`packages/host/directory-picker-auto/src/index.ts`](../packages/host/directory-picker-auto/src/index.ts))
 - `@deepseek-ai/dsh-host-directory-picker-native` ([`packages/host/directory-picker-native/src/index.ts`](../packages/host/directory-picker-native/src/index.ts))
 - `@deepseek-ai/dsh-host-plugin-inventory` — requires `loader` ([`packages/host/plugin-inventory/src/index.ts`](../packages/host/plugin-inventory/src/index.ts))
-- `@deepseek-ai/dsh-llm` ([`packages/llm/llm/src/index.ts`](../packages/llm/llm/src/index.ts))
 - `@deepseek-ai/dsh-lsp` ([`packages/lsp/lsp/src/index.ts`](../packages/lsp/lsp/src/index.ts))
 - `@deepseek-ai/dsh-schedule` — requires `agents` · `sessions` · `tools` · `sessionPersistence` ([`packages/schedule/schedule/src/index.ts`](../packages/schedule/schedule/src/index.ts))
 - `@deepseek-ai/dsh-session` ([`packages/core/session/src/index.ts`](../packages/core/session/src/index.ts))
@@ -3610,7 +3712,6 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-session-stats` — requires `sessionProjections` ([`packages/session/session-stats/src/index.ts`](../packages/session/session-stats/src/index.ts))
 - `@deepseek-ai/dsh-skill-badge` — requires `skills` ([`packages/skill/skill-badge/src/index.ts`](../packages/skill/skill-badge/src/index.ts))
 - `@deepseek-ai/dsh-storage` ([`packages/storage/storage/src/index.ts`](../packages/storage/storage/src/index.ts))
-- `@deepseek-ai/dsh-subagent` ([`packages/subagent/subagent/src/index.ts`](../packages/subagent/subagent/src/index.ts))
 - `@deepseek-ai/dsh-subprocess-local` ([`packages/subprocess/subprocess-local/src/index.ts`](../packages/subprocess/subprocess-local/src/index.ts))
 - `@deepseek-ai/dsh-terminal` ([`packages/terminal/terminal/src/index.ts`](../packages/terminal/terminal/src/index.ts))
 - `@deepseek-ai/dsh-tool-ask-user` — requires `tools` · `userQuestions` ([`packages/interaction/tool-ask-user/src/index.ts`](../packages/interaction/tool-ask-user/src/index.ts))

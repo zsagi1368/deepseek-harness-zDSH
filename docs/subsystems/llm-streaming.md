@@ -888,7 +888,9 @@ async prepareCall(config: LlmCallConfig, signal?: AbortSignal): Promise<Prepared
  * asynchronous exact-model resolution and dispatch. Adapter selection,
  * dispatch, and iteration failures become terminal `error` or `aborted`
  * finish chunks; middleware, nested-call, cleanup, and consumer failures
- * remain thrown.
+ * remain thrown. When the repetition guard is enabled and a streamed text or
+ * reasoning block collapses into a degenerate loop, the stream stops early
+ * with a terminal `error` finish carrying the `REPETITION_LOOP` code.
  * @param options - the full request; `options.provider` selects the adapter.
  * @returns the chunk stream, possibly wrapped by `llm/stream` listeners.
  */

@@ -1472,6 +1472,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
       'client-ui-plugin-manager PluginManagerSettingsTab id \'governance\'',
       'client-ui-settings-plugin-inventory PluginInventorySettingsTab id \'all\'',
       'client-ui-settings-plugins ConfigurablePluginsTab id \'configurable\'',
+      'client-ui-settings-plugins PluginInstallGuideTab id \'install\'',
       'file-hub FileHubSettingsPanel id \'zdsh-filehub\'',
     ],
     replaceRisk: 'none',

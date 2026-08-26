@@ -3,4 +3,4 @@
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/persistence-catalog.md
 persistence-catalog.md: 2a103861f2a1ffe6d53f369ddc7575f92778cd81
-persistence-catalog.zh.md: e7117b212b5c0f6d62ea5f67fe883fcd460c68bb
+persistence-catalog.zh.md: e6e282db8a43b309f16f02e7a22ae9aaa0a9204d

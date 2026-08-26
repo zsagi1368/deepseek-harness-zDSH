@@ -500,7 +500,8 @@ Named provider registry with one-shot runs, durable discovery, and continuable-c
  * failure rejects with no ids and rolls back the child entirely.
  * @param spec - provider, delegation request, and caller cancellation.
  * @returns the durable child id and the accepted prompt's message id.
- * @throws when continuation services are unavailable or materialization fails.
+ * @throws when continuation services are unavailable, the deployment depth
+ *   ceiling or concurrency limit refuses the delegation, or materialization fails.
  */
 async startContinuable(spec: ContinuableStartSpec): Promise<ContinuableStart>
 
@@ -660,9 +661,16 @@ list(): string[]
  * fulfills; a rejection therefore has no run for the caller to dispose and
  * emits no run lifecycle events. Post-publication turn and infrastructure
  * failures settle through the returned run.
+ *
+ * The admitted run holds one concurrency-deployment slot from this admission
+ * until its result settles — success, failure, or abort all return it — so a
+ * start refused by the deployment limit rejects immediately instead of
+ * queueing.
  * @param name - the provider to use.
  * @param request - child label, prompt, parent, signal, and optional capabilities.
  * @returns the published holder-owned run.
+ * @throws {SubagentCapacityError} when the deployment concurrency limit is full.
+ * @throws {SubagentDepthError} when the resolved child depth exceeds the binding cap.
  */
 async start(name: string, request: SubagentStartRequest): Promise<SubagentRun>
 ```
