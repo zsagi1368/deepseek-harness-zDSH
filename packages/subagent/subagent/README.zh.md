@@ -57,6 +57,12 @@ subagent seam 允许一个 agent（智能体）通过具名提供方把工作委
 
 `inheritsParentContext` 只用于描述，不能强制执行。它仅说明子 agent 是否能看到父级已完成的对话历史（`fork` 可以；`spawn` 和各进程外一次性提供方不可以），不表示是否继承工具、服务或权限。
 
+## 部署上限
+
+运行时的插件配置（`SubagentRuntimeConfig`）携带两个部署级上限。`maxConcurrent`（默认 `8`）限制同时接纳的子 agent 数量，覆盖两种形态：一次性 run 从 `start()` 接纳起持有配额，直到其 result 落定；可继续子 agent 从 Activation 物化起持有配额，直到驻留结束。`maxDepth`（默认 `3`）是委派深度的绝对天花板：生效上限取它与调用方传入的 `maxDepth` 中较小者，超限委派在任何 provider 工作开始之前即被拒绝。
+
+两条上限都快速失败、绝不排队。被拒绝的 start 立即以 `SubagentCapacityError`（`code: 'CAPACITY_EXCEEDED'`，附带 `active`/`limit` 占用详情）或 `SubagentDepthError`（写明尝试深度与生效上限）拒绝，因此失控的扇出会表现为一条条清晰的错误，而不是子 agent 堆满宿主堆与事件循环。每一处驻留退出都会归还配额：正常落定、经 `interrupt()` 的中止、清理失败、启动失败以及驻留前的回滚一视同仁。在天花板调低之后冷恢复的子 agent 仍可通过 `followup` 继续对话，但在其记录深度已达天花板时无法继续向更深层委派；持久深度不可读的父级会跳过深度检查而不是猜测（调用方显式提供的 per-request 上限仍由 provider 自行执行）。`'unlimited'` 关闭任一上限；未知的配置键在构造时即被拒绝。
+
 <a id="delegated-policy"></a>
 
 ## 委派策略

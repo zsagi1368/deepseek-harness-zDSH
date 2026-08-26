@@ -51,6 +51,13 @@ import type {
 } from './types.ts'
 import { SubagentError } from './error.ts'
 import { assertSubagentMaxDepth } from './depth.ts'
+import { resolveChildDepth } from './child-agent.ts'
+import {
+  SubagentConcurrencyGate,
+  assertSubagentLimitValue,
+  readableParentDepth,
+} from './capacity.ts'
+import type { SubagentRuntimeConfig } from './capacity.ts'
 import { createActivationObserver, createLifecycleEmitter, observeRun } from './lifecycle.ts'
 import type { ActivationObserver, LifecycleEmitter } from './lifecycle.ts'
 import SubagentContinuationManager from './continuation.ts'
@@ -98,6 +105,8 @@ export type {
 } from './descriptor.ts'
 export { seedDescriptorTurn } from './descriptor-seed.ts'
 export { SubagentError } from './error.ts'
+export { SubagentCapacityError, assertSubagentLimitValue } from './capacity.ts'
+export type { SubagentRuntimeConfig } from './capacity.ts'
 export { settleRun } from './run-settlement.ts'
 export { assertSubagentMaxDepth, delegationDepthOf } from './depth.ts'
 export {
@@ -167,12 +176,41 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
+/** Default for `SubagentRuntimeConfig.maxConcurrent`. */
+const DEFAULT_MAX_CONCURRENT = 8
+/** Default for `SubagentRuntimeConfig.maxDepth`. */
+const DEFAULT_MAX_DEPTH = 3
+
+/**
+ * Resolve one deployment limit to its internal form: the default when omitted,
+ * `undefined` (unbounded) for `'unlimited'`, and the validated number otherwise.
+ * @param value - the configured value.
+ * @param label - config key naming the value in validation errors.
+ * @param fallback - default applied when the key is omitted.
+ * @returns the effective numeric limit, or `undefined` for unlimited.
+ */
+function normalizeDeploymentLimit(
+  value: number | 'unlimited' | undefined,
+  label: string,
+  fallback: number,
+): number | undefined {
+  assertSubagentLimitValue(value, label)
+  if (value === undefined) return fallback
+  return value === 'unlimited' ? undefined : value
+}
+
 /** Named provider registry with one-shot runs, durable discovery, and continuable-child operations. */
 export class SubagentRuntime extends Service {
   private providers = new Map<string, SubagentProvider>()
   private continuations: SubagentContinuationManager | undefined
   /** Deployment contributions composed into unpublished continuable children. */
   private readonly setupRegistry = new SubagentActivationSetupRegistry()
+  /** Effective concurrency limit; `undefined` means unbounded. */
+  private readonly maxConcurrent: number | undefined
+  /** Effective delegation-depth ceiling; `undefined` means unbounded. */
+  private readonly maxDepth: number | undefined
+  /** The concurrency gate every admitted subagent holds one slot of. */
+  private readonly gate: SubagentConcurrencyGate
   /**
    * The contained lifecycle-edge publisher. Built here because scoped dispatch
    * keys its carrier by this exact service instance, whose own context filter
@@ -180,13 +218,22 @@ export class SubagentRuntime extends Service {
    */
   private readonly emitLifecycle: LifecycleEmitter
 
-  constructor(ctx: Context) {
+  constructor(ctx: Context, config: SubagentRuntimeConfig = {}) {
     super(ctx, 'subagents')
+    for (const key of Object.keys(config)) {
+      if (key !== 'maxConcurrent' && key !== 'maxDepth') {
+        throw new TypeError(`subagent config: unknown key "${key}" (supported: maxConcurrent, maxDepth)`)
+      }
+    }
+    this.maxConcurrent = normalizeDeploymentLimit(config.maxConcurrent, 'subagent maxConcurrent', DEFAULT_MAX_CONCURRENT)
+    this.maxDepth = normalizeDeploymentLimit(config.maxDepth, 'subagent maxDepth', DEFAULT_MAX_DEPTH)
+    this.gate = new SubagentConcurrencyGate(this.maxConcurrent)
     this.emitLifecycle = createLifecycleEmitter(this.ctx, parent => scopeTarget(this, parent))
     ctx.inject(['agents'], (childCtx: Context) => {
       const manager = new SubagentContinuationManager(childCtx, {
         prepareContinuable: (name, request) => this.prepareContinuable(name, request),
         observeActivation: (provider, childId, parent) => this.observeActivation(provider, childId, parent),
+        admitActivation: () => this.gate.acquire(),
       }, this.setupRegistry)
       this.continuations = manager
       childCtx.effect(() => () => {
@@ -207,9 +254,11 @@ export class SubagentRuntime extends Service {
    * failure rejects with no ids and rolls back the child entirely.
    * @param spec - provider, delegation request, and caller cancellation.
    * @returns the durable child id and the accepted prompt's message id.
-   * @throws when continuation services are unavailable or materialization fails.
+   * @throws when continuation services are unavailable, the deployment depth
+   *   ceiling or concurrency limit refuses the delegation, or materialization fails.
    */
   async startContinuable(spec: ContinuableStartSpec): Promise<ContinuableStart> {
+    this.assertDelegationDepthCeiling(spec.request.parent, spec.request.maxDepth)
     return this.requireContinuations().startContinuable(spec)
   }
 
@@ -423,22 +472,44 @@ export class SubagentRuntime extends Service {
    * fulfills; a rejection therefore has no run for the caller to dispose and
    * emits no run lifecycle events. Post-publication turn and infrastructure
    * failures settle through the returned run.
+   *
+   * The admitted run holds one concurrency-deployment slot from this admission
+   * until its result settles — success, failure, or abort all return it — so a
+   * start refused by the deployment limit rejects immediately instead of
+   * queueing.
    * @param name - the provider to use.
    * @param request - child label, prompt, parent, signal, and optional capabilities.
    * @returns the published holder-owned run.
+   * @throws {SubagentCapacityError} when the deployment concurrency limit is full.
+   * @throws {SubagentDepthError} when the resolved child depth exceeds the binding cap.
    */
   async start(name: string, request: SubagentStartRequest): Promise<SubagentRun> {
     const provider = this.expectProvider(name)
     this.assertCapabilities(provider, request)
     assertSubagentMaxDepth(request.maxDepth)
     if (request.outputSchema !== undefined) assertObjectJsonSchema(request.outputSchema)
-    const descriptor = snapshotSubagentDescriptor({
-      mode: 'one-shot',
-      provider: name,
-      ...request.label !== undefined ? { label: request.label } : {},
-    })
-    const resolved: ResolvedSubagentStartRequest = { ...request, descriptor }
-    return observeRun(this.emitLifecycle, name, request.parent, await provider.start(resolved))
+    this.assertDelegationDepthCeiling(request.parent, request.maxDepth)
+    const lease = this.gate.acquire()
+    try {
+      const descriptor = snapshotSubagentDescriptor({
+        mode: 'one-shot',
+        provider: name,
+        ...request.label !== undefined ? { label: request.label } : {},
+      })
+      const resolved: ResolvedSubagentStartRequest = { ...request, descriptor }
+      const run = await provider.start(resolved)
+      // Release when the run settles — completed, failed, or aborted all count
+      // as finished — because settlement is the seam's own end-of-work signal.
+      // The rejection handler swallows deliberately: a settling child's error
+      // belongs to the run's holder, not to slot accounting.
+      void run.result.then(() => { lease.release() }, () => { lease.release() })
+      return observeRun(this.emitLifecycle, name, request.parent, run)
+    } catch (error) {
+      // Startup rejection before any handler attached: idempotent release keeps
+      // this path and any late settlement handler converging on one decrement.
+      lease.release()
+      throw error
+    }
   }
 
   /**
@@ -459,6 +530,26 @@ export class SubagentRuntime extends Service {
       )
     }
     return provider.prepareContinuable(request)
+  }
+
+  /**
+   * Reject a delegation whose resolved child depth exceeds the deployment
+   * depth ceiling. The binding cap is the smaller of the caller-supplied
+   * `maxDepth` (when any) and the ceiling, mirroring the provider-side
+   * {@link resolveChildDepth} rule without rewriting the provider-visible
+   * request. A parent whose durable depth is unreadable (no session header or
+   * runtime options — never a production Agent) skips the check rather than
+   * guessing, and the provider's own per-request cap still applies.
+   * @param parent - the delegating parent agent.
+   * @param requestedMaxDepth - the caller-supplied absolute cap, if any.
+   * @throws {SubagentDepthError} when the resolved child depth exceeds the binding cap.
+   */
+  private assertDelegationDepthCeiling(parent: Agent, requestedMaxDepth: number | undefined): void {
+    const ceiling = this.maxDepth
+    if (ceiling === undefined) return
+    if (readableParentDepth(parent) === undefined) return
+    const binding = requestedMaxDepth === undefined ? ceiling : Math.min(requestedMaxDepth, ceiling)
+    resolveChildDepth(parent, binding)
   }
 
   /** Look up a provider for dispatch or fail loud. */

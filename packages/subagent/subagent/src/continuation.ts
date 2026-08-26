@@ -48,6 +48,7 @@ import {
 } from './child-agent.ts'
 import type { DelegatedPolicyOverrides } from './child-agent.ts'
 import { assertSubagentMaxDepth } from './depth.ts'
+import type { CapacityLease } from './capacity.ts'
 import { seedDescriptorTurn } from './descriptor-seed.ts'
 import type { ContinuableCreateRequest, ContinuableCreateSpec, SubagentResult, SubagentStartRequest } from './types.ts'
 import type { ActivationObserver, ActivationTerminal } from './lifecycle.ts'
@@ -180,6 +181,12 @@ interface ContinuationHost {
    */
   prepareContinuable(name: string, request: ContinuableCreateRequest): Promise<ContinuableCreateSpec>
   /**
+   * Reserve one deployment concurrency slot for a materializing Activation,
+   * rejecting immediately — never queueing — when the limit is full.
+   * @returns the lease the Activation releases exactly once when it leaves residency.
+   */
+  admitActivation(): CapacityLease
+  /**
    * Build the lifecycle observer for one Activation's residency epoch.
    * @param provider - the provider name recorded in the durable descriptor.
    * @param childId - the durable child session id.
@@ -222,6 +229,13 @@ interface Activation {
   readonly ownedChildren: Set<SessionId>
   /** The lifecycle observer that emits this epoch's start and terminal edges. */
   readonly observer: ActivationObserver
+  /**
+   * The deployment concurrency slot this residency holds. Released exactly once
+   * when the Activation leaves residency — through `finishDisposal` on every
+   * settled path, or by the materialization failure paths that never reached
+   * residency — so abort, teardown failure, and rollback all return the slot.
+   */
+  readonly capacityLease: CapacityLease
   /**
    * The memoized disposal transaction. Presence IS the admission cutoff: it is
    * assigned synchronously when disposal begins, so no delivery can join a
@@ -1041,13 +1055,35 @@ export class SubagentContinuationManager {
   }
 
   /**
-   * Perform one tracked materialization. The caller keeps the drain barrier
-   * registered until this either returns a resident Activation or finishes
-   * rollback.
+   * Perform one tracked materialization under a concurrency slot taken at the
+   * admission boundary. The slot (or its fast failure) precedes every provider
+   * and persistence step, so an over-limit start costs no work; every failure
+   * before residency releases it here, and after residency the Activation's own
+   * disposal releases it — the idempotent release makes both owners converge.
+   * The caller keeps the drain barrier registered until this either returns a
+   * resident Activation or finishes rollback.
    */
   private async materializeTracked(
     inputs: MaterializeInputs,
     parentLineage: readonly Agent[],
+  ): Promise<Activation> {
+    const lease = this.host.admitActivation()
+    try {
+      return await this.materializeResident(inputs, parentLineage, lease)
+    } catch (error) {
+      lease.release()
+      throw error
+    }
+  }
+
+  /**
+   * Compose, create or resume, and publish one Activation, installing the
+   * caller's concurrency lease on it for release at settlement.
+   */
+  private async materializeResident(
+    inputs: MaterializeInputs,
+    parentLineage: readonly Agent[],
+    lease: CapacityLease,
   ): Promise<Activation> {
     const { childId, provider, parent, create } = inputs
     // No id pre-check here: the child lock serializes each durable child, both
@@ -1099,6 +1135,7 @@ export class SubagentContinuationManager {
       accepted: new Set(),
       announced: false,
       poke: Promise.withResolvers<void>(),
+      capacityLease: lease,
     }
     // After transfer, any failure must dispose the created handle, remove the
     // Activation, and roll back parent ownership before rejecting.
@@ -1426,6 +1463,9 @@ export class SubagentContinuationManager {
     // makes a racing delivery wait for release rather than cold-resume into the
     // still-registered agent.
     this.activations.delete(childId)
+    // Residency is over, so the deployment concurrency slot returns even when
+    // teardown failed: a failing child must not pin the deployment budget.
+    activation.capacityLease.release()
     // BEFORE releasing ownership, while the parent still counts this child and
     // therefore cannot be judged settled. Delivering after the release would
     // race a parent watcher that resumes one microtask later, finds itself
