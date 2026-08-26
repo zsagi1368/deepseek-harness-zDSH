@@ -15,6 +15,10 @@ The `dsh` command is the product launcher for profiles: ordered stacks of plugin
 
 The invoking directory is the default workspace root. The `web` and `headless` profiles auto-initialize on first use from shipped templates; any other profile must be created through `dsh plugin`.
 
+## First-run expectations
+
+The very first `npx --yes @deepseek-ai/dsh web` run downloads and extracts the whole dependency tree before anything executes, so several minutes of silence (only npm warnings) is normal on the first start — do not kill the process; later starts are fast because everything is cached. On slow networks, pointing npm at a mirror first helps a lot: `npm config set registry https://registry.npmmirror.com`. Once the launcher itself starts it prints a banner naming the version and booted profile with the same first-start hint, and interactive terminals additionally get one progress line per boot phase (configuration resolved, plugins mounted); piped output and machine modes (`--dump-config`, `dsh plugin`) stay silent.
+
 ## Windows console window
 
 Some Windows terminal hosts flash a second backend console window while `dsh web` hands its URL to the default browser. Start with the browser handoff disabled and open the printed URL manually:

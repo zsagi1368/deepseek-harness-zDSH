@@ -36,6 +36,7 @@ const SHIPPED_PRESET_ROOT = fileURLToPath(new URL('../config/agent-presets/', im
 
 import { DSH_LAUNCH_ENVIRONMENT_KEY, type LaunchEnvironmentSnapshot } from '@deepseek-ai/dsh-launch-environment'
 import { provideCmdline } from '@deepseek-ai/dsh-cmdline'
+import { createBootProgress } from './boot-progress.ts'
 import { createProcessShutdown, type ProcessShutdown } from './process-shutdown.ts'
 
 const NAME = 'dsh'
@@ -233,13 +234,36 @@ function suppressShutdownError(ctx: Context, signal: AbortSignal, error: unknown
 }
 
 /**
+ * Count the plugin entries a settled boot tree mounted: every loader entry
+ * that is not explicitly disabled. A tree that exited while startup was still
+ * in flight has no Loader service anymore; its count is 0, which only ever
+ * shows up in a progress line for an invocation that is exiting as asked.
+ * @param ctx - the settled boot context.
+ * @returns the number of enabled mounted entries.
+ */
+function countMountedEntries(ctx: Context): number {
+  const loader = ctx.get('loader')
+  if (loader === undefined) return 0
+  return [...loader.entries()].filter(entry => !entry.disabled).length
+}
+
+/**
  * Boot one profile invocation end to end and leave process lifetime to the
  * mounted plugins (or to a one-shot runner the composition mounts).
  * @param options - environment snapshot, profile name, overlays, and the booted app's own arguments.
  * @returns the settled root context and the shutdown controller.
  */
 export async function runProfile(options: RunProfileOptions): Promise<{ ctx: Context; shutdown: ProcessShutdown }> {
-  const composed = composeProfile(options.profile, options.patchFiles)
+  // Phase visibility (#176): configuration resolution and plugin loading are
+  // the two stages whose cost a cold cache makes visible. On an interactive
+  // terminal each announces itself and prints one completion line; piped and
+  // machine-consumed output sees nothing, and the gate decision costs one
+  // property read per boot.
+  const progress = createBootProgress({ prefix: `${NAME} ${options.profile}` })
+  const composed = await progress.phase(
+    'resolving configuration',
+    () => composeProfile(options.profile, options.patchFiles),
+  )
   const app: { current?: Context } = {}
   const shutdown = createProcessShutdown(async () => { await app.current?.fiber.dispose() })
   const signalShutdown = new AbortController()
@@ -279,7 +303,7 @@ export async function runProfile(options: RunProfileOptions): Promise<{ ctx: Con
   ])
   // Cloned for the same insert-aliasing reason as composeLive: the boot
   // application must not mutate the objects later reloads recompose from.
-  const ctx = await boot(NAME, rootConfig, structuredClone(allPatches(composed)), (hostCtx) => {
+  const ctx = await progress.phase('loading plugins', () => boot(NAME, rootConfig, structuredClone(allPatches(composed)), (hostCtx) => {
     app.current = hostCtx
     // Before any config-tree entry mounts, so plugins resolve all launch-time
     // environment values from the same immutable provenance snapshot.
@@ -290,7 +314,7 @@ export async function runProfile(options: RunProfileOptions): Promise<{ ctx: Con
       args: options.args,
       exit: code => void shutdown.shutdown(code),
     })
-  })
+  }), booted => `${countMountedEntries(booted)} plugin entries mounted`)
   app.current = ctx
   // A surface can dispose the whole tree while boot or this post-boot watcher
   // setup is still in flight — a signal, or a fast one-shot's appExit. Loader

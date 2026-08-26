@@ -12,6 +12,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { parseDshArgs } from './args.ts'
 import { describeRuntimeSupport } from './runtime-guard.ts'
+import { printStartupBanner } from './startup-banner.ts'
 
 // Runtime guard — the launcher's first statement. It probes for a capability
 // (`AbortSignal.timeout`, Node >= 17.3, also absent from some embedded
@@ -36,7 +37,16 @@ function readVersion(): string {
   return typeof manifest.version === 'string' ? manifest.version : '0.0.0'
 }
 
-const invocation = parseDshArgs(process.argv.slice(2), readVersion())
+const version = readVersion()
+const invocation = parseDshArgs(process.argv.slice(2), version)
+
+// First-impression banner (#176): the earliest honest signal that this process
+// is alive and what it is about to boot, with a first-start expectation hint —
+// npx's own download window before this line is outside our control. Profile
+// boots only: a config dump's machine-read text and `plugin`'s pnpm forwarding
+// stay silent even on a terminal, and the banner itself prints on interactive
+// terminals only.
+if (invocation.mode === 'profile') printStartupBanner(version, invocation.profile)
 
 switch (invocation.mode) {
   case 'profile': {

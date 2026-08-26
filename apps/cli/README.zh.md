@@ -15,6 +15,10 @@
 
 运行命令时所在的目录将作为默认 workspace 根目录。`web` 和 `headless` profile 在首次使用时会从随附模板自动初始化；其他任何 profile 都必须通过 `dsh plugin` 创建。
 
+## 首次运行预期
+
+第一次运行 `npx --yes @deepseek-ai/dsh web` 时，npx 会先下载并解压完整的依赖树，然后才开始执行任何代码，因此首次启动出现数分钟无输出（仅有 npm 警告）属正常现象——请耐心等待，不要终止进程；后续启动会命中缓存，速度很快。网络较慢时，可先将 npm 指向镜像源以显著提速：`npm config set registry https://registry.npmmirror.com`。启动器自身开始运行后，会打印一条标明版本与所启动 profile 的横幅（附带同样的首启提示）；交互式终端上还会为每个启动阶段输出一行进度（配置解析完成、插件装载完成）。管道输出与机器模式（`--dump-config`、`dsh plugin`）保持静默。
+
 ## Windows 控制台窗口
 
 在部分 Windows 终端宿主上，`dsh web` 把 URL 交给默认浏览器时会闪出第二个后端控制台窗口。可在禁用浏览器交接的情况下启动，然后手动打开打印出的 URL：
