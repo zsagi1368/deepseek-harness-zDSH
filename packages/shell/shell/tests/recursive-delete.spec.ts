@@ -98,4 +98,23 @@ describe('recursiveWorkspaceRootDelete', () => {
       dialect: 'bash', command: 'rm -rf c:/users/DEV/ws', workspaceRoot: windowsRoot,
     })).toContain('workspace root')
   })
+
+  it('red-team: glued operators, $PWD, and MSYS spellings stay gated (PASS-WITH-NOTES P1-1/P1-2)', () => {
+    for (const command of [
+      'rm -rf .&&echo done',
+      'rm -rf ./&&echo done',
+      'rm -rf .; echo done',
+      'rm -rf .|tee log',
+      'rm -rf "$PWD"',
+      'rm -rf ${PWD}',
+    ]) {
+      const hit = recursiveWorkspaceRootDelete(probe(command))
+      expect(hit, command).toContain('workspace root')
+    }
+    if (process.platform === 'win32') {
+      expect(recursiveWorkspaceRootDelete({
+        dialect: 'bash', command: 'rm -rf /c/ws/proj', workspaceRoot: 'C:/ws/proj',
+      })).toContain('workspace root')
+    }
+  })
 })

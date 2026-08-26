@@ -15,6 +15,7 @@
  */
 
 import { isAbsolute, resolve as resolvePath } from 'node:path'
+import { tokenizeCommandLine } from './command-tokenize.ts'
 
 /** Shell dialects the detector speaks. */
 export type ShellDialect = 'bash' | 'pwsh'
@@ -80,7 +81,20 @@ function targetsRoot(target: string, probe: RecursiveDeleteProbe): boolean {
   const raw = unquote(target)
   if (raw.length === 0) return false
   const cwd = probe.cwd ?? probe.workspaceRoot
-  const absolute = isAbsolute(raw) ? raw : resolvePath(cwd, raw)
+  // Common spellings the shell would expand before the filesystem ever sees
+  // them; without this a root-referencing variable sails past the gate.
+  const expanded = raw === '$PWD' || raw === '${PWD}' || raw === '$(pwd)' || raw === '%CD%'
+    ? cwd
+    : raw
+  let absolute = isAbsolute(expanded) ? expanded : resolvePath(cwd, expanded)
+  // Git Bash on Windows executes MSYS spellings that resolve() would read as
+  // a literal rootless path; translate to the drive form first.
+  if (probe.dialect === 'bash' && process.platform === 'win32') {
+    const msys = /^\/([a-z])(?:\/(.*))?$/i.exec(absolute)
+    if (msys !== null) {
+      absolute = (msys[1] ?? '').toUpperCase() + ':\\' + (msys[2] ?? '').replace(/\//g, '\\')
+    }
+  }
   const left = resolvePath(absolute)
   const right = resolvePath(probe.workspaceRoot)
   return process.platform === 'win32'
@@ -96,7 +110,9 @@ function targetsRoot(target: string, probe: RecursiveDeleteProbe): boolean {
  * @returns the human-readable reason for the approval prompt, or undefined when nothing matches.
  */
 export function recursiveWorkspaceRootDelete(probe: RecursiveDeleteProbe): string | undefined {
-  const tokens = probe.command.split(/\s+/).filter(token => token.length > 0)
+  // Quote- and operator-aware tokenization: glued operators (`rm -rf .&&echo`)
+  // must split into segments, and quoted roots survive as one token.
+  const tokens = tokenizeCommandLine(probe.command)
   const dialect = probe.dialect
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index] as string

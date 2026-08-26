@@ -250,4 +250,16 @@ describe('speaks PowerShell: Stop-Process, aliases, pipelines, and taskkill', ()
     expect(selfTerminationCommand(probe('STOP-PROCESS -ID 4242', pwsh))).toContain('pid 4242')
     expect(selfTerminationCommand(probe('KILL 4242'))).toBeUndefined()
   })
+
+  it('red-team: glued operators can no longer hide the kill (R-S43 family, PASS-WITH-NOTES P1-1)', () => {
+    expectHits([
+      'kill 4242&&echo x',
+      'kill 4242 & echo x',
+      'kill 4242;echo done',
+      'kill -9 4242||true',
+    ])
+    expectHits(['Stop-Process -Id 4242;Write-Output done', 'Stop-Process -Id 4242&&echo hi'], { dialect: 'pwsh' })
+    // The pid must still be a clean number once operators split off.
+    expectPasses(['kill 42429 && echo x'], {})
+  })
 })

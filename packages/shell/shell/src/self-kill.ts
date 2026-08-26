@@ -22,6 +22,7 @@
  * @module @deepseek-ai/dsh-shell/self-kill
  */
 
+import { tokenizeCommandLine } from './command-tokenize.ts'
 import type { ShellDialect } from './recursive-delete.ts'
 
 /** One detector query: the command plus the identity facts of the process it must not kill. */
@@ -616,7 +617,9 @@ function reasonFor(detail: string): string {
  * @returns the human-readable refusal reason, or undefined when nothing matches.
  */
 export function selfTerminationCommand(probe: SelfKillProbe): string | undefined {
-  const tokens = probe.command.split(/\s+/).filter(token => token.length > 0)
+  // Quote- and operator-aware tokenization: glued operators (`kill 4242&&echo x`)
+  // must split so neither pid nor next verb hides inside a token.
+  const tokens = tokenizeCommandLine(probe.command)
   const segments = splitSegments(tokens)
   const protectedPids = new Set(probe.protectedPids)
   const selfNames = new Set(probe.selfNames)
