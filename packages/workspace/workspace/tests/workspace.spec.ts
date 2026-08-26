@@ -16,6 +16,7 @@ import WorkspaceRegistry, {
   WorkspaceOrderInvalidError,
 } from '../src/index.ts'
 import type { WorkspaceDomainState, WorkspaceRecord } from '../src/index.ts'
+import { titleFromPath } from '../src/paths.ts'
 
 const DOMAIN_VERSION = 2
 
@@ -869,6 +870,39 @@ describe('workspace mutation and status', () => {
     await writeFile(dir, 'now a file')
     expect(await workspace.status()).toBe('missing-dir')
     expect(registry.get(workspace.id)).toBe(workspace)
+  })
+})
+
+describe('root-aware default titles (#143)', () => {
+  it('falls back to the drive name for volume roots instead of the empty basename', () => {
+    expect(titleFromPath('D:\\', 'win32')).toBe('D:')
+    expect(titleFromPath('C:\\', 'win32')).toBe('C:')
+    expect(titleFromPath('D:', 'win32')).toBe('D:')
+    expect(titleFromPath('E:/', 'win32')).toBe('E:')
+  })
+
+  it.each([
+    ['C:\\Users\\name\\project', 'project'],
+    ['C:/Users/name/project', 'project'],
+    ['\\\\server\\share\\folder', 'folder'],
+  ])('keeps plain win32 basenames as titles: %s', (path, expected) => {
+    expect(titleFromPath(path, 'win32')).toBe(expected)
+  })
+
+  it('already names a UNC device root by its share name without the fallback', () => {
+    expect(titleFromPath('\\\\server\\share\\', 'win32')).toBe('share')
+  })
+
+  it('treats the POSIX single root and normal POSIX paths the same way', () => {
+    expect(titleFromPath('/', 'posix')).toBe('/')
+    // A double slash trims to nothing, so the full path stays the title.
+    expect(titleFromPath('//', 'posix')).toBe('//')
+    expect(titleFromPath('/home/user/project', 'posix')).toBe('project')
+  })
+
+  it('defaults to the grammar matching the host realpath spelling', () => {
+    const path = process.platform === 'win32' ? 'C:\\w' : '/w'
+    expect(titleFromPath(path)).toBe('w')
   })
 })
 

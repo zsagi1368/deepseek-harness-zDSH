@@ -7,7 +7,6 @@
 
 import { randomUUID } from 'node:crypto'
 import { stat } from 'node:fs/promises'
-import { basename } from 'node:path'
 import { Context, Service } from '@deepseek-ai/cordis'
 import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
@@ -16,7 +15,7 @@ import { WorkspaceEntity } from './entity.ts'
 import type { WorkspaceEntityHost } from './entity.ts'
 
 export { WorkspaceMoveInvalidError } from './entity.ts'
-import { realpathNormalize } from './paths.ts'
+import { realpathNormalize, titleFromPath } from './paths.ts'
 import { workspaceDomainSpec } from './spec.ts'
 import type { WorkspaceDomainState, WorkspaceRecord } from './spec.ts'
 import type { Workspace, WorkspaceId as WorkspaceIdBrand } from './types.ts'
@@ -287,7 +286,7 @@ export class WorkspaceRegistry extends Service {
       if (entity.path === canonical) return entity
     }
 
-    const workspaceName = title ?? basename(canonical)
+    const workspaceName = title ?? titleFromPath(canonical)
     const table = this.requireTable()
     const state = this.requireState()
     const id = WorkspaceId(randomUUID())
@@ -459,7 +458,7 @@ export class WorkspaceRegistry extends Service {
         const createdAt = new Date(group.newestAt).toISOString()
         const record: WorkspaceRecord = {
           path: group.path,
-          title: basename(group.path),
+          title: titleFromPath(group.path),
           sessionIds,
           createdAt,
           updatedAt: createdAt,

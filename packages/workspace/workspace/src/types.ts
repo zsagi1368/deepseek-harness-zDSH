@@ -31,7 +31,10 @@ export interface Workspace {
    */
   readonly path: string
 
-  /** Display title. Defaults to `basename(path)` at create; duplicates are allowed. */
+  /**
+   * Display title. Defaults to the path basename at create; a filesystem root has no basename, so its path minus trailing
+   * separators stands in instead. Duplicates are allowed.
+   */
   readonly title: string
 
   /** ISO-8601 creation instant, stamped at create and never rewritten. */
