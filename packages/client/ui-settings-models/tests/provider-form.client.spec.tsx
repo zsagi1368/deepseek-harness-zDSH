@@ -630,6 +630,89 @@ describe('endpoint interrogation', () => {
     expect(boxes.map(box => box.checked)).toEqual([true, true, true])
     expect(within_(dialog, en.fetchDeselectAll)).toBeTruthy()
   })
+
+  it('inverts a mixed pick and adopts exactly what stays checked', async () => {
+    const discover = vi.fn(() => Promise.resolve(ok({
+      models: [{ id: 'kept' }, { id: 'a' }, { id: 'b' }],
+    })))
+    const { mutate } = await mountSection({
+      discover,
+      providers: { openai: { baseURL: 'https://proxy.example/v1', models: [{ id: 'kept', contextWindow: 111 }] } },
+    })
+    openEditor('openai')
+
+    fireEvent.click(screen.getByText(en.fetchModels))
+    const dialog = await screen.findByRole('dialog')
+    const boxes = [...dialog.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')]
+    // The default is untouched product semantics: configured rows start
+    // unchecked, everything new starts picked.
+    expect(boxes.map(box => box.checked)).toEqual([false, true, true])
+
+    // Decline one candidate, then let invert flip the rest: the configured row
+    // and the previously declined candidate come back checked.
+    fireEvent.click(boxes[2]!)
+    fireEvent.click(within_(dialog, en.fetchInvertSelection))
+    expect(boxes.map(box => box.checked)).toEqual([true, false, true])
+
+    fireEvent.click(within_(dialog, en.fetchAdopt))
+    fireEvent.click(screen.getByText(en.apply))
+
+    await waitFor(() => { expect(mutate).toHaveBeenCalled() })
+    expect(firstMutate(mutate).ops[0]?.value).toEqual([
+      { id: 'kept', contextWindow: 111 },
+      { id: 'b' },
+    ])
+  })
+
+  it('rescues an empty pick with invert and round-trips back', async () => {
+    const discover = vi.fn(() => Promise.resolve(ok({ models: [{ id: 'a' }, { id: 'b' }] })))
+    await mountSection({ discover })
+    openEditor('openai')
+
+    fireEvent.click(screen.getByText(en.fetchModels))
+    const dialog = await screen.findByRole('dialog')
+    const boxes = [...dialog.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')]
+
+    // Everything starts picked, so clearing it — the complaint this answers —
+    // is one action; from empty, invert is what selects everything again.
+    fireEvent.click(within_(dialog, en.fetchDeselectAll))
+    expect(boxes.map(box => box.checked)).toEqual([false, false])
+
+    fireEvent.click(within_(dialog, en.fetchInvertSelection))
+    expect(boxes.map(box => box.checked)).toEqual([true, true])
+    fireEvent.click(within_(dialog, en.fetchInvertSelection))
+    expect(boxes.map(box => box.checked)).toEqual([false, false])
+
+    fireEvent.click(within_(dialog, en.fetchSelectAll))
+    expect(boxes.map(box => box.checked)).toEqual([true, true])
+  })
+
+  it('keeps every picker control on the native keyboard path', async () => {
+    const discover = vi.fn(() => Promise.resolve(ok({ models: [{ id: 'kept' }, { id: 'a' }] })))
+    await mountSection({
+      discover,
+      providers: { openai: { baseURL: 'https://proxy.example/v1', models: [{ id: 'kept' }] } },
+    })
+    openEditor('openai')
+
+    fireEvent.click(screen.getByText(en.fetchModels))
+    const dialog = await screen.findByRole('dialog')
+
+    // Native elements give focus order and Enter/Space activation from the
+    // platform; jsdom cannot replay key activation, so the structural contract
+    // is what a component spec can assert honestly.
+    for (const control of dialog.querySelectorAll<HTMLElement>('button, input')) {
+      expect(['BUTTON', 'INPUT']).toContain(control.tagName)
+      expect(control.getAttribute('tabindex')).toBeNull()
+    }
+    // The mixed default leaves the bulk toggle on "select all"; both batch
+    // actions are named buttons a keyboard user can reach and fire.
+    expect(within_(dialog, en.fetchSelectAll)).toBeTruthy()
+    expect(within_(dialog, en.fetchInvertSelection)).toBeTruthy()
+    for (const box of dialog.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')) {
+      expect(box.closest('label')).not.toBeNull()
+    }
+  })
 })
 
 describe('provider rows', () => {

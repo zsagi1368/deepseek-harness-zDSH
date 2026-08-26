@@ -83,3 +83,101 @@
   font-size: 13px;
   color: var(--dsw-alias-label-tertiary);
 }
+
+/* Install guide: three numbered steps, one clipboard row per source kind. */
+
+.guide {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 640px;
+}
+
+.guideIntro {
+  margin: 0;
+  font-size: 13px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.guideSteps {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 0;
+  padding-inline-start: 20px;
+}
+
+.guideStepHeading {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.guideStepBody {
+  margin: 0;
+  font-size: 13px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.guideCommands {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.guideCommandRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.guideSourceLabel {
+  flex: 0 0 auto;
+  min-width: 150px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.guideCommandText {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-2);
+  font-family: var(--ds-font-family-code);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.guideCopied,
+.guideCopyFailed {
+  flex: 0 1 auto;
+  font-size: 12px;
+}
+
+.guideCopied {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.guideCopyFailed {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.guideHubNote {
+  margin: 0;
+  font-size: 13px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.guideLink {
+  color: var(--dsw-alias-brand-primary);
+  text-decoration: none;
+}
+
+.guideLink:hover {
+  text-decoration: underline;
+}

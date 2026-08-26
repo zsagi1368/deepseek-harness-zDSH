@@ -80,9 +80,14 @@ describe('ui-settings-plugins apply', () => {
     // The nav label is a locale-following thunk; owners resolve it at read time.
     expect(resolveSlotLabel(section.options.label)).toBe('插件')
     expect(slots.spec('settings.plugins.tab')).toMatchObject({ kind: 'list', scope: 'root' })
-    const tab = slots.entries('settings.plugins.tab')[0]!
-    expect(tab.options).toMatchObject({ id: 'configurable', order: 0 })
-    expect(resolveSlotLabel(tab.options.label)).toBe('插件配置')
+    const [tab, install] = slots.entries('settings.plugins.tab')
+    expect(tab?.options).toMatchObject({ id: 'configurable', order: 0 })
+    expect(resolveSlotLabel(tab?.options.label)).toBe('插件配置')
+    // The guided installation entry ships with the section, between the two
+    // data tabs, and needs no inject face — it is static copy and links.
+    expect(install?.options).toMatchObject({ id: 'install', order: 5 })
+    expect(install?.inject).toBeUndefined()
+    expect(resolveSlotLabel(install?.options.label)).toBe('安装插件')
     expect(slots.spec('settings.plugin.item')).toMatchObject({ kind: 'keyed', scope: 'root' })
   })
 
@@ -97,15 +102,19 @@ describe('ui-settings-plugins apply', () => {
     const initialTabs = sectionFace.hooks.tabs.getSnapshot()
     expect(initialTabs).toEqual([
       { id: 'configurable', order: 0, label: '插件配置' },
+      { id: 'install', order: 5, label: '安装插件' },
     ])
     expect(sectionFace.hooks.tabs.getSnapshot()).toBe(initialTabs)
 
     const listener = vi.fn()
     const unsubscribe = sectionFace.hooks.tabs.subscribe(listener)
     slots.register({ name: 'settings.plugins.tab', id: 'plain' } as never, () => null)
+    // Equal orders keep registration order, so the latecomer joins the
+    // configurable tab's group rather than displacing the guide.
     expect(sectionFace.hooks.tabs.getSnapshot()).toEqual([
       { id: 'configurable', order: 0, label: '插件配置' },
       { id: 'plain', order: 0, label: '' },
+      { id: 'install', order: 5, label: '安装插件' },
     ])
     unsubscribe()
 

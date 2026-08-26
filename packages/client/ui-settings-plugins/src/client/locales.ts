@@ -3,6 +3,12 @@
 /** Locale keys these surfaces render. */
 export type PluginsSettingsLocaleKey =
   | 'nav' | 'title' | 'intro' | 'tabs' | 'configurableTab' | 'empty'
+  | 'installTab' | 'installIntro' | 'installSourceHeading' | 'installSourceBody'
+  | 'installRunHeading' | 'installRunHint'
+  | 'installSourceCheckout' | 'installSourceGit' | 'installSourceNpm' | 'installSourceTarball'
+  | 'installCopy' | 'installCopied' | 'installCopyFailed'
+  | 'installVerifyHeading' | 'installVerifyHint'
+  | 'installHubIntro' | 'installCenterLink' | 'installRegistryLink' | 'installDocsLink'
   | 'overridden' | 'reset' | 'readOnly' | 'expand' | 'collapse'
   | 'save' | 'saving' | 'discard' | 'unsaved' | 'saveFailed' | 'invalidNumber'
   | 'bashTitle' | 'bashDescription' | 'bashTimeoutMs' | 'bashTimeoutMsHint'
@@ -20,6 +26,25 @@ export const en: Record<PluginsSettingsLocaleKey, string> = {
   tabs: 'Plugin views',
   configurableTab: 'Plugin configuration',
   empty: 'This deployment exposes no plugin settings.',
+  installTab: 'Install plugins',
+  installIntro: 'Plugins ship as packages installed into a profile from your terminal; the steps below are the whole procedure.',
+  installSourceHeading: 'Pick a source',
+  installSourceBody: 'A local checkout, a Git repository pinned to an exact commit, an npm package, or a packed tarball all install the same way.',
+  installRunHeading: 'Run the install command',
+  installRunHint: 'Replace <profile> with your profile name, and everything after add with the source you picked.',
+  installSourceCheckout: 'Local directory',
+  installSourceGit: 'Git repository (pinned commit)',
+  installSourceNpm: 'npm package',
+  installSourceTarball: 'Tarball',
+  installCopy: 'Copy command',
+  installCopied: 'Copied to the clipboard.',
+  installCopyFailed: 'Copy failed — select the command text and copy it manually.',
+  installVerifyHeading: 'Verify, then boot',
+  installVerifyHint: 'The config dump lists every bundle layer the profile composes; start the deployment afterwards to activate them.',
+  installHubIntro: 'For a visual marketplace with reviewed, reversible installs, install the separate Plugin Center extension; its catalog comes from a reviewed registry:',
+  installCenterLink: 'Plugin Center releases',
+  installRegistryLink: 'Plugin registry catalog',
+  installDocsLink: 'Tutorial: packaging and installing plugins',
   overridden: 'Overridden',
   reset: 'Reset to default',
   readOnly: 'This deployment stores settings read-only.',
@@ -61,6 +86,25 @@ export const zh: Record<PluginsSettingsLocaleKey, string> = {
   tabs: '插件视图',
   configurableTab: '插件配置',
   empty: '本部署没有开放任何插件设置。',
+  installTab: '安装插件',
+  installIntro: '插件以包的形式从终端安装进 profile；下面三步就是全部过程。',
+  installSourceHeading: '选择来源',
+  installSourceBody: '本地检出、锁定到具体 commit 的 Git 仓库、npm 包或打包好的 tarball，安装方式完全相同。',
+  installRunHeading: '运行安装命令',
+  installRunHint: '把 <profile> 替换成你的 profile 名，add 后面的部分换成你选择的来源。',
+  installSourceCheckout: '本地目录',
+  installSourceGit: 'Git 仓库（锁定 commit）',
+  installSourceNpm: 'npm 包',
+  installSourceTarball: 'tarball 包',
+  installCopy: '复制命令',
+  installCopied: '已复制到剪贴板。',
+  installCopyFailed: '复制失败——请手动选中命令文本复制。',
+  installVerifyHeading: '验证并启动',
+  installVerifyHint: '配置 dump 会列出该 profile 组合的每个插件层；之后正常启动部署即可生效。',
+  installHubIntro: '想要图形化的市场浏览与可回滚的受控安装，可以另装独立的 Plugin Center 扩展；其目录来自经过审核的注册表：',
+  installCenterLink: 'Plugin Center 发布页',
+  installRegistryLink: '插件注册表目录',
+  installDocsLink: '教程：打包与安装插件',
   overridden: '已覆盖',
   reset: '恢复默认',
   readOnly: '本部署的设置为只读。',

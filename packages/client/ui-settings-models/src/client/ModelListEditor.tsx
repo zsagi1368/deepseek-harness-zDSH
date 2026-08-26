@@ -302,6 +302,14 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
     })
   }
 
+  // The complement of the selection within the listing. A listing that starts
+  // fully picked is the common case, so flipping is the one gesture that both
+  // clears it and rescues a near-complete pick from a single stray check.
+  const invertCandidates = (): void => {
+    setPicked(current =>
+      new Set(activeCandidates.filter(candidate => !current.has(candidate.id)).map(candidate => candidate.id)))
+  }
+
   // A route the adapter already describes answers without an endpoint; only a
   // draft with neither has nothing to ask about.
   const askable = probe.provider !== undefined || (probe.baseURL !== undefined && probe.baseURL.length > 0)
@@ -458,6 +466,9 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
         )}
       >
         <div className={styles['candidateActions']}>
+          <Button variant="ghost" size="sm" onClick={invertCandidates}>
+            {t('fetchInvertSelection')}
+          </Button>
           <Button variant="ghost" size="sm" onClick={toggleAllCandidates}>
             {t(allCandidatesPicked ? 'fetchDeselectAll' : 'fetchSelectAll')}
           </Button>

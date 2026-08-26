@@ -15,6 +15,8 @@ import { BashCard } from '../src/client/BashCard.tsx'
 import type { BashCardProps } from '../src/client/BashCard.tsx'
 import { ConfigurablePluginsTab } from '../src/client/ConfigurablePluginsTab.tsx'
 import type { ConfigurablePluginsTabProps } from '../src/client/ConfigurablePluginsTab.tsx'
+import { PluginInstallGuideTab } from '../src/client/PluginInstallGuideTab.tsx'
+import type { PluginInstallGuideTabProps } from '../src/client/PluginInstallGuideTab.tsx'
 import { PluginsSettingsSection } from '../src/client/PluginsSettingsSection.tsx'
 import type { PluginsSettingsSectionProps, PluginsSettingsTabEntry } from '../src/client/PluginsSettingsSection.tsx'
 import { WebSearchCard } from '../src/client/WebSearchCard.tsx'
@@ -126,6 +128,28 @@ describe('PluginsSettingsSection', () => {
 
     expect(screen.getByRole('heading', { name: en.title })).toBeTruthy()
     expect(screen.getByText(en.intro)).toBeTruthy()
+  })
+
+  it('mounts the guided installation entry only once its tab is selected', () => {
+    const props = {
+      t,
+      useTabs: (selector: (value: readonly PluginsSettingsTabEntry[]) => unknown) => selector([
+        { id: 'configurable', order: 0, label: en.configurableTab },
+        { id: 'install', order: 5, label: en.installTab },
+      ]),
+      renderSlot: (_name: string, _owner: unknown, options: { only?: string }) =>
+        options.only === 'install'
+          ? <PluginInstallGuideTab {...({ t } as unknown as PluginInstallGuideTabProps)} />
+          : null,
+    } as unknown as PluginsSettingsSectionProps
+    render(<PluginsSettingsSection {...props} />)
+
+    // The configurable tab is the default view; the guide joins on selection
+    // and stays mounted afterwards.
+    expect(screen.queryByText(en.installIntro)).toBeNull()
+    fireEvent.click(screen.getByRole('tab', { name: en.installTab }))
+    expect(screen.getByText(en.installIntro)).toBeTruthy()
+    expect(screen.getByRole('tab', { name: en.installTab }).getAttribute('aria-selected')).toBe('true')
   })
 
   it('moves focus and selection with standard horizontal tab keys', () => {

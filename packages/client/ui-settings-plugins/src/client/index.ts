@@ -23,6 +23,7 @@ import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import { AgentLoopCard } from './AgentLoopCard.tsx'
 import { BashCard } from './BashCard.tsx'
 import { ConfigurablePluginsTab } from './ConfigurablePluginsTab.tsx'
+import { PluginInstallGuideTab } from './PluginInstallGuideTab.tsx'
 import { PluginsSettingsSection } from './PluginsSettingsSection.tsx'
 import type { PluginsSettingsSectionInjected, PluginsSettingsTabEntry } from './PluginsSettingsSection.tsx'
 import { WebSearchCard } from './WebSearchCard.tsx'
@@ -34,6 +35,7 @@ import { en, zh } from './locales.ts'
 
 export type { PluginsSettingsSectionInjected, PluginsSettingsSectionProps } from './PluginsSettingsSection.tsx'
 export type { ConfigurablePluginsTabProps } from './ConfigurablePluginsTab.tsx'
+export type { PluginInstallGuideTabProps } from './PluginInstallGuideTab.tsx'
 export type { ConfigurablePluginsTabFace, ConfigurablePluginsTabState } from './tab-store.ts'
 export type { PluginCardProps } from './PluginCard.tsx'
 export type { SettingsPluginItemOwnerProps } from './slot-contract.ts'
@@ -142,6 +144,17 @@ export function apply(ctx: ClientContext): void {
     inject: () => configurable.inject(),
     children: { 'settings.plugin.item': { kind: 'keyed', scope: 'root' } },
   }, ConfigurablePluginsTab))
+
+  // The guided installation entry sits between the two data tabs: a user who
+  // came here wanting plugins reads it first, and it stays static, so no
+  // inject face and no children — the section chrome owns everything else.
+  ctx.slots.inject('settings.plugins.tab', () => ctx.slots.register({
+    name: 'settings.plugins.tab',
+    id: 'install',
+    order: 5,
+    label: () => t('installTab'),
+    locale: NS,
+  }, PluginInstallGuideTab))
 
   ctx.slots.inject('settings.plugin.item', function* () {
     yield ctx.slots.register({
