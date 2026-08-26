@@ -34,7 +34,7 @@ import type { SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandb
 import { ESCALATION_TARGETS, approveEscalation, validateEscalationArgs } from '@deepseek-ai/dsh-sandbox'
 import type { SandboxPolicyService } from '@deepseek-ai/dsh-sandbox-policy'
 import type { ShellRunResult } from '@deepseek-ai/dsh-shell'
-import { parseExitStatus, recursiveWorkspaceRootDelete } from '@deepseek-ai/dsh-shell'
+import { parseExitStatus, recursiveWorkspaceRootDelete, hostProcessChain, selfProcessNames, selfTerminationCommand } from '@deepseek-ai/dsh-shell'
 import { processOutcome } from './background.ts'
 import { renderPwshProcessRead, renderPwshResult } from './render.ts'
 import type { RenderablePwshResult } from './render.ts'
@@ -283,6 +283,27 @@ export function apply(ctx: Context, config: Config = {}): void {
   }
   /* jscpd:ignore-end */
 
+  /* jscpd:ignore-start -- deliberate mirror of dsh-tool-bash's #387 gate (pwsh-tool-and-executor Agent Note). */
+  /**
+   * The #387 refusal gate: a termination command aimed at this harness
+   * process (or its ancestor chain) kills the backend before the tool call
+   * can return, stranding the session in "running" forever. Unlike the #149
+   * gate this is an unconditional REFUSAL, not an ask — restarting the host
+   * belongs to an external terminal or a supervised restart flow (Wave5), so
+   * no approval outcome can legitimize it here. It runs before escalation and
+   * confirmation gates: a forbidden command never raises a prompt.
+   */
+  const rejectSelfTermination = (command: string): void => {
+    const reason = selfTerminationCommand({
+      dialect: 'pwsh',
+      command,
+      protectedPids: hostProcessChain(),
+      selfNames: selfProcessNames(),
+    })
+    if (reason !== undefined) throw new Error(reason)
+  }
+  /* jscpd:ignore-end */
+
   ctx.systemPrompt.section({
     name: 'tool:pwsh',
     order: 105,
@@ -388,6 +409,8 @@ export function apply(ctx: Context, config: Config = {}): void {
     /* jscpd:ignore-start -- the execute path mirrors dsh-tool-bash's by design (see the pwsh-tool-and-executor Agent Note). */
     async execute(args: PwshToolArgs, exec) {
       validatePwshArgs(args)
+      // Refuse host-directed terminations (#387) before anything can ask or execute.
+      rejectSelfTermination(args.command)
       // Description is display metadata; workdir defaults to the caller's session.
       const standingPolicy = resolveSandboxPolicy(exec)
       const approvedMode = args.sandbox_permissions !== undefined && args.justification !== undefined

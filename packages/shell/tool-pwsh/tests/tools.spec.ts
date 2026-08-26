@@ -1101,3 +1101,53 @@ describe('recursive workspace-root deletion gate (#149)', () => {
     expect(bash.modes).toHaveLength(0)
   })
 })
+
+describe('self-termination gate (#387)', () => {
+  const hostile = { command: `Stop-Process -Id ${process.pid}`, description: 'restart the service' }
+
+  it('refuses a pid-directed termination before anything executes', async () => {
+    const { ctx, bash } = await setup()
+    const result = await call(ctx, 'pwsh', hostile)
+    expect(text(result)).toContain('would terminate this harness host process itself')
+    expect(text(result)).toContain('external terminal')
+    expect(text(result)).toContain('persisted and recoverable')
+    expect(bash.requests).toHaveLength(0)
+  })
+
+  it('refuses a name-directed termination on the background path too', async () => {
+    const { ctx, bash } = await setup()
+    const result = await call(ctx, 'pwsh', {
+      command: 'Stop-Process -Name node',
+      description: 'restart',
+      run_in_background: true,
+    })
+    expect(text(result)).toContain("process name 'node'")
+    expect(bash.requests).toHaveLength(0)
+    expect(bash.startCalls).toBe(0)
+  })
+
+  it('refuses before the approval flow raises an ask', async () => {
+    const { ctx, bash } = await setupSandboxed(true)
+    const asked = vi.fn()
+    ctx.on('approval/request', () => {
+      asked()
+      return Promise.resolve<ApprovalOutcome>('allowed-once')
+    })
+    const result = await call(ctx, 'pwsh', hostile, sandboxAgent())
+    expect(asked).not.toHaveBeenCalled()
+    expect(text(result)).toContain('external terminal')
+    expect(bash.modes).toHaveLength(0)
+  })
+
+  it('leaves ordinary process administration alone', async () => {
+    const { ctx, bash } = await setup()
+    await call(ctx, 'pwsh', { command: 'Stop-Process -Name chrome', description: 'stop chrome' })
+    expect(bash.requests).toHaveLength(1)
+  })
+
+  it('lets unrelated pid targets run', async () => {
+    const { ctx, bash } = await setup()
+    await call(ctx, 'pwsh', { command: 'Stop-Process -Id 99999', description: 'stop stray process' })
+    expect(bash.requests).toHaveLength(1)
+  })
+})

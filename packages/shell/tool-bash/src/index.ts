@@ -24,7 +24,7 @@ import { ESCALATION_TARGETS, approveEscalation, canonicalPath, validateEscalatio
 import type { SandboxPolicyService } from '@deepseek-ai/dsh-sandbox-policy'
 import { DSH_ENV_PREFIX } from '@deepseek-ai/dsh-shell'
 import type { ShellRunResult } from '@deepseek-ai/dsh-shell'
-import { recursiveWorkspaceRootDelete } from '@deepseek-ai/dsh-shell'
+import { hostProcessChain, recursiveWorkspaceRootDelete, selfProcessNames, selfTerminationCommand } from '@deepseek-ai/dsh-shell'
 import { processOutcome } from './background.ts'
 import { parseExitStatus, renderProcessRead, renderResult } from './render.ts'
 
@@ -274,6 +274,27 @@ export function apply(ctx: Context, config: Config = {}): void {
   }
   /* jscpd:ignore-end */
 
+  /* jscpd:ignore-start -- deliberate mirror of dsh-tool-pwsh's #387 gate (pwsh-tool-and-executor Agent Note). */
+  /**
+   * The #387 refusal gate: a termination command aimed at this harness
+   * process (or its ancestor chain) kills the backend before the tool call
+   * can return, stranding the session in "running" forever. Unlike the #149
+   * gate this is an unconditional REFUSAL, not an ask — restarting the host
+   * belongs to an external terminal or a supervised restart flow (Wave5), so
+   * no approval outcome can legitimize it here. It runs before escalation and
+   * confirmation gates: a forbidden command never raises a prompt.
+   */
+  const rejectSelfTermination = (command: string): void => {
+    const reason = selfTerminationCommand({
+      dialect: 'bash',
+      command,
+      protectedPids: hostProcessChain(),
+      selfNames: selfProcessNames(),
+    })
+    if (reason !== undefined) throw new Error(reason)
+  }
+  /* jscpd:ignore-end */
+
   // Cross-call guidance belongs in the prompt rather than one-call schema prose.
   ctx.systemPrompt.section({
     name: 'tool:bash',
@@ -371,6 +392,8 @@ export function apply(ctx: Context, config: Config = {}): void {
     },
     async execute(args: BashToolArgs, exec) {
       validateBashArgs(args)
+      // Refuse host-directed terminations (#387) before anything can ask or execute.
+      rejectSelfTermination(args.command)
       // Description is display metadata; workdir defaults to the caller's session.
       const standingPolicy = resolveSandboxPolicy(exec)
       const approvedMode = args.sandbox_permissions !== undefined && args.justification !== undefined

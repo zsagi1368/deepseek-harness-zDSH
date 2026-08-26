@@ -1324,3 +1324,45 @@ describe('recursive workspace-root deletion gate (#149)', () => {
     expect(bash.modes).toHaveLength(0)
   })
 })
+
+describe('self-termination gate (#387)', () => {
+  it('refuses a pid-directed kill before anything executes', async () => {
+    const { ctx, bash } = await setupSandboxed(true)
+    const result = await call(ctx, 'bash', { command: `kill ${process.pid}`, description: 'restart the service' }, sandboxAgent())
+    expect(text(result)).toContain('would terminate this harness host process itself')
+    expect(text(result)).toContain('external terminal')
+    expect(text(result)).toContain('persisted and recoverable')
+    expect(bash.modes).toHaveLength(0)
+  })
+
+  it('refuses the ancestor pid and name-based killers on the background path alike', async () => {
+    const { ctx, bash } = await setupSandboxed(true)
+    const ancestor = await call(ctx, 'bash', { command: `kill -9 ${process.ppid}`, description: 'stop parent' }, sandboxAgent())
+    expect(text(ancestor)).toContain(`pid ${process.ppid}`)
+    const background = await call(ctx, 'bash', {
+      command: 'killall node',
+      description: 'restart',
+      run_in_background: true,
+    }, sandboxAgent())
+    expect(text(background)).toContain("process name 'node'")
+    expect(bash.modes).toHaveLength(0)
+  })
+
+  it('refuses unconditionally, without a confining executor or approval service', async () => {
+    const ctx = await setup()
+    const result = await call(ctx, 'bash', { command: `kill ${process.pid}`, description: 'restart' })
+    expect(text(result)).toContain('external terminal')
+  })
+
+  it('leaves ordinary process administration alone', async () => {
+    const { ctx, bash } = await setupSandboxed(true)
+    await call(ctx, 'bash', { command: 'kill 99999', description: 'stop stray process' }, sandboxAgent())
+    expect(bash.modes).toHaveLength(1)
+  })
+
+  it('lets unrelated name patterns through', async () => {
+    const { ctx, bash } = await setupSandboxed(true)
+    await call(ctx, 'bash', { command: 'pkill chrome', description: 'stop chrome' }, sandboxAgent())
+    expect(bash.modes).toHaveLength(1)
+  })
+})
