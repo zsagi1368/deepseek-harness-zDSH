@@ -25,7 +25,9 @@ Four forwarded events belong to this feature, declared by this package on its cl
 
 ## Storage stance
 
-The registry is process memory and the only source of truth. The session log carries a define call's metadata — never its code — so a restarted process legitimately has no definitions, and a card whose id no longer resolves says exactly that rather than pretending it can run. Nothing here is written to disk, and no definition is restored automatically; a reloaded page holds nothing until someone runs a package again, which is what makes it bind the live host half and re-fetch the browser half.
+The registry is process memory and the only source of truth for live definitions. The session log carries a define call's metadata — never its code — so a restarted process legitimately has no definitions, and a card whose id no longer resolves says exactly that rather than pretending it can run. No definition is restored automatically; a reloaded page holds nothing until someone runs a package again, which is what makes it bind the live host half and re-fetch the browser half.
+
+There is exactly one sanctioned write path out of memory, and it is not a restore: `requestExport` (the model-facing `cordis_export`) prepares an export of this Plugin's current, host-half-only Package and announces its sha256 digests on `cordis/request-export`, while `confirmDynamicExport` — reachable only as a panel verb, never as a Tool — is what writes `<harness home>/plugins/user-persisted/<pluginId>/` after a person compares the digests out of band. The artifact is verbatim source plus a `package.json` manifest with an explicit deny-all sandbox and confirm-required admission; nothing mounts it automatically, and once the governance pipeline admits it after a restart it stays disabled until the operator approves and enables it.
 
 ## Trust stance
 

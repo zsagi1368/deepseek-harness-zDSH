@@ -4,14 +4,21 @@
  * @module @deepseek-ai/dsh-cordis-host-runner
  */
 
+import { homedir } from 'node:os'
+import { join, resolve } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import type { Fiber } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import type { JsonValue } from '@deepseek-ai/dsh-session/types'
+import type { JsonValue, SessionId } from '@deepseek-ai/dsh-session/types'
 import { TypertRemoteService, Remote } from '@deepseek-ai/dsh-typert-protocol'
 import { isPlugin, normalizeHandler } from './guard.ts'
+import {
+  buildPersistedPackagePlan, digestPersistedPlan, inspectExistingPersistedArtifact, sha256Hex,
+  writePersistedPackage,
+} from './export.ts'
+import type { ExistingPersistedArtifact, PersistedExportDigests, PersistedPackagePlan } from './export.ts'
 import { CordisInspectRegistryService } from './inspect-registry.ts'
 import { missingServices, startHostHalf } from './lifecycle.ts'
 import { DynamicCordisRegistry } from './registry.ts'
@@ -23,9 +30,10 @@ import type {
 } from './registry.ts'
 import { createSandbox, evaluateHostCode, precheckCode } from './sandbox.ts'
 import type {
-  ApprovalRequestId, CordisDynamicPackageId, CordisDynamicPluginId, CordisDynamicPluginRunId, CordisErrorDetails,
-  CordisDynamicRunMode, CordisInspectProviderManifest, CordisInspectQueryResolution,
-  CordisInspectRequestId, CordisInspectResolveAck, DynamicCordisClientSource, DynamicCordisHostHalfResult,
+  ApprovalRequestId, CordisDynamicExportId, CordisDynamicPackageId, CordisDynamicPluginId, CordisDynamicPluginRunId, CordisErrorDetails,
+  CordisDynamicRunMode, CordisExportRequestSummary, CordisInspectProviderManifest, CordisInspectQueryResolution,
+  CordisInspectRequestId, CordisInspectResolveAck, DynamicCordisClientSource, DynamicCordisExportReceipt,
+  DynamicCordisExportSettlementFailure, DynamicCordisHostHalfResult,
   DynamicCordisInventoryRow, DynamicCordisInvokeResult, DynamicCordisRenderFailure, DynamicCordisResolveAck,
   DynamicCordisRunAttempt, DynamicCordisRunResolution, DynamicCordisRunResponse, DynamicCordisStopResponse,
   DynamicCordisUndefineReceipt, RequestRunOutcome,
@@ -39,6 +47,14 @@ export type {
 } from './registry.ts'
 export { CordisInspectRegistryService } from './inspect-registry.ts'
 export type { HostCordisInspectProviderRegistration } from './inspect-registry.ts'
+export {
+  buildManifestObject, buildPersistedPackagePlan, digestPersistedPlan, inspectExistingPersistedArtifact,
+  isSafePersistedSegment, persistedIdFor, PERSISTED_ENTRY_FILE, PERSISTED_MANIFEST_FILE, PERSISTED_NAMESPACE,
+  toGovernanceManifest, validatePersistedManifest, writePersistedPackage,
+} from './export.ts'
+export type {
+  ExistingPersistedArtifact, PersistedExportDigests, PersistedPackagePlan, PersistedProvenance,
+} from './export.ts'
 export { HOST_BUILTIN_INSPECTION } from './sandbox.ts'
 
 /**
@@ -77,6 +93,15 @@ export function ApprovalRequestId(id: string): ApprovalRequestId {
   return id as ApprovalRequestId
 }
 
+/**
+ * Brand a Host-minted persisted-export request ID.
+ * @param id - opaque identifier minted by the Host registry.
+ * @returns the branded Export request identifier.
+ */
+export function CordisDynamicExportId(id: string): CordisDynamicExportId {
+  return id as CordisDynamicExportId
+}
+
 declare module '@deepseek-ai/cordis' {
   interface Context {
     /** Process-local dynamic Plugin registry and lifecycle service. */
@@ -88,6 +113,12 @@ declare module '@deepseek-ai/cordis' {
 export interface Config {
   /** Maximum synchronous VM evaluation time in milliseconds. */
   vmTimeoutMs?: number
+  /**
+   * Directory that confirmed persisted-package artifacts are written under;
+   * defaults to `<harness home>/plugins`, where the harness home honors
+   * `DSH_HOME` and otherwise is `~/.dsh` (matching @deepseek-ai/dsh-home-paths).
+   */
+  persistedPluginsRoot?: string
 }
 
 type ResolvedConfig = Required<Config>
@@ -126,6 +157,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
 
   static Config: z<Config> = z.object({
     vmTimeoutMs: z.number().min(1).default(5000),
+    persistedPluginsRoot: z.string(),
   })
 
   private readonly rootCtx: Context
@@ -133,6 +165,8 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
   private readonly inspectRegistry: CordisInspectRegistryService
   private readonly starting = new Map<CordisDynamicPluginId, Promise<DynamicCordisHostHalfResult>>()
   private readonly resolved: ResolvedConfig
+  /** Directory confirmed exports are written under (created lazily by the writer). */
+  private readonly persistedPluginsRoot: string
   private group: Fiber | undefined
 
   /** Create the service under the Host composition. */
@@ -140,6 +174,9 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     super(ctx, 'dynamicCordisRunner')
     this.rootCtx = ctx
     this.resolved = config as ResolvedConfig
+    this.persistedPluginsRoot = config.persistedPluginsRoot !== undefined && config.persistedPluginsRoot.trim().length > 0
+      ? resolve(config.persistedPluginsRoot)
+      : defaultPersistedPluginsRoot()
     this.inspectRegistry = new CordisInspectRegistryService(ctx)
   }
 
@@ -212,6 +249,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     if (plugin === undefined) return { ok: false, reason: 'plugin-missing', message: missingPluginMessage(pluginId) }
     const wasRunning = plugin.run !== undefined
     this.cancelPending(pluginId, `dynamic plugin "${pluginId}" was removed before approval`)
+    this.cancelPendingExports(pluginId)
     if (plugin.run !== undefined) await this.retract(plugin)
     this.registry.delete(pluginId)
     return { ok: true, wasRunning }
@@ -765,6 +803,225 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     }
   }
 
+  /**
+   * Prepare one confirmed-source persisted-package export for the current
+   * Plugin. This only builds the manifest plan, digests the exact bytes that
+   * would be written, and announces a pending request on
+   * `cordis/request-export`; nothing touches disk until a human settles the
+   * request through `confirmDynamicExport` outside the session.
+   * @param agent - Agent whose Session must own the Plugin.
+   * @param pluginId - Stable Plugin identity to persist.
+   * @param packageId - Immutable Package identity to persist; it must be this Plugin's current version.
+   * @returns The pending summary (digests included) for confirmation surfaces.
+   * @throws when the Plugin is not owned, the Package is absent or not current, the halves are not
+   *   host-only, or a request is already pending.
+   */
+  requestExport(
+    agent: Agent,
+    pluginId: CordisDynamicPluginId,
+    packageId: CordisDynamicPackageId,
+  ): CordisExportRequestSummary {
+    const plugin = this.owned(agent, pluginId)
+    if (plugin === undefined) throw new Error(missingPluginMessage(pluginId))
+    const definition = plugin.packages.get(packageId)
+    if (definition === undefined) {
+      throw new Error(`dynamic package "${packageId}" does not exist on plugin "${pluginId}"`)
+    }
+    if (definition.hostCode === undefined || definition.clientCode !== undefined) {
+      throw new Error('only a Host-half-only Package can be persisted; browser-half packages are not supported yet')
+    }
+    if (plugin.currentPackageId !== packageId) {
+      throw new Error(`package "${packageId}" is not this Plugin's current version; activate it successfully before asking to persist it`)
+    }
+    const pending = this.registry.pendingExportFor(pluginId)
+    if (pending !== undefined) {
+      throw new Error(`dynamic plugin "${pluginId}" already has a pending persist request (${pending.exportId})`)
+    }
+    const prepared = this.preparePersistedPlan(agent.id, pluginId, packageId, definition)
+    const exportId = CordisDynamicExportId(this.registry.mintExportRequestId())
+    this.registry.armExportRequest(exportId, {
+      exportId,
+      agentId: agent.id,
+      pluginId,
+      packageId,
+      plan: prepared.plan,
+      digests: prepared.digests,
+    })
+    const summary: CordisExportRequestSummary = {
+      exportId,
+      agentId: agent.id,
+      pluginId,
+      packageId,
+      name: definition.name,
+      purpose: definition.purpose,
+      persistedId: prepared.plan.persistedId,
+      targetDirSuffix: prepared.plan.dirSuffix,
+      digests: prepared.digests,
+      ...prepared.existing === undefined ? {} : {
+        replaces: {
+          rev: prepared.existing.rev,
+          ...prepared.existing.originSession === undefined ? {} : { originSession: prepared.existing.originSession },
+        },
+      },
+    }
+    this.ctx.emit('cordis/request-export', summary)
+    return summary
+  }
+
+  /**
+   * Honor one pending export request: verify the digests against the still-
+   * stored bytes and write the artifact under the configured plugins root.
+   * The write happens only here — never in the model-facing tool — so a
+   * persisted artifact always traces to an out-of-band human decision.
+   * @param agent - Agent whose Session owns the request being settled.
+   * @param exportId - Pending request identity to settle once.
+   * @returns The written receipt, or a typed refusal.
+   */
+  @Remote('confirmDynamicExport')
+  async confirmDynamicExport(
+    agent: Agent,
+    exportId: CordisDynamicExportId,
+  ): Promise<DynamicCordisExportReceipt | DynamicCordisExportSettlementFailure> {
+    const claimed = this.claimExportFor(agent, exportId)
+    if (!claimed.ok) return claimed.failure
+    const { pending } = claimed
+    const plugin = this.registry.get(pending.pluginId)
+    const definition = plugin?.packages.get(pending.packageId)
+    if (definition?.hostCode === undefined || sha256Hex(definition.hostCode) !== pending.digests.host) {
+      // Unreachable through public verbs (definitions are immutable and undefine
+      // cancels pendings first); kept so a future registry change cannot confirm
+      // against vanished or swapped bytes.
+      /* v8 ignore next 2 */
+      this.ctx.emit('cordis/request-export-resolved', { exportId, outcome: 'cancelled' })
+      return { ok: false, reason: 'source-vanished', message: `the source bytes for "${pending.pluginId}/${pending.packageId}" no longer match the confirmed request` }
+    }
+    let written: { dir: string; files: string[] }
+    try {
+      // The armed plan is written verbatim: the artifact always matches the
+      // digests the user confirmed, byte for byte.
+      written = writePersistedPackage(this.persistedPluginsRoot, pending.plan)
+    } catch (cause) {
+      return {
+        ok: false,
+        reason: 'persistence-failed',
+        message: `the persisted artifact could not be written: ${errorDetails(cause).message}`,
+      }
+    }
+    this.ctx.emit('cordis/request-export-resolved', { exportId, outcome: 'confirmed' })
+    this.injectUserContext(
+      agent,
+      `The user confirmed persisting Cordis ${pending.pluginId}/${pending.packageId} as governance plugin `
+        + `${pending.plan.persistedId} rev ${pending.plan.provenance.rev} in ${written.dir}. Nothing runs yet: `
+        + 'after a restart it enters the governance roster disabled until the user approves and enables it.',
+    )
+    return await Promise.resolve({
+      ok: true,
+      exportId,
+      pluginId: pending.pluginId,
+      packageId: pending.packageId,
+      persistedId: pending.plan.persistedId,
+      dir: written.dir,
+      files: written.files,
+      rev: pending.plan.provenance.rev,
+      digests: pending.digests,
+    })
+  }
+
+  /**
+   * Decline one pending export request without writing anything.
+   * @param agent - Agent whose Session owns the request being settled.
+   * @param exportId - Pending request identity to settle once.
+   * @returns An acknowledgement, or a typed refusal when the request cannot be settled by this session.
+   */
+  @Remote('rejectDynamicExport')
+  async rejectDynamicExport(
+    agent: Agent,
+    exportId: CordisDynamicExportId,
+  ): Promise<{ ok: true } | DynamicCordisExportSettlementFailure> {
+    const claimed = this.claimExportFor(agent, exportId)
+    if (!claimed.ok) return claimed.failure
+    this.ctx.emit('cordis/request-export-resolved', { exportId, outcome: 'rejected' })
+    this.injectUserContext(
+      agent,
+      `The user declined persisting Cordis Plugin ${claimed.pending.pluginId} (${claimed.pending.packageId}). `
+        + 'Nothing was written to disk. Do not request the same persistence again unless the user asks.',
+    )
+    return await Promise.resolve({ ok: true })
+  }
+
+  /**
+   * Build and digest the export plan for one stored definition at request
+   * time. The pending request keeps this exact object so confirmation writes
+   * byte-for-byte what the summary announced.
+   * @param sessionId - Session that owns the source bytes.
+   * @param pluginId - Stable Plugin identity being persisted.
+   * @param packageId - Immutable Package identity being persisted.
+   * @param definition - The stored definition supplying name, purpose, and Host bytes.
+   * @returns the plan, its digests, and any artifact already occupying the target.
+   */
+  private preparePersistedPlan(
+    sessionId: SessionId,
+    pluginId: CordisDynamicPluginId,
+    packageId: CordisDynamicPackageId,
+    definition: DynamicCordisDefinition,
+  ): { plan: PersistedPackagePlan; digests: PersistedExportDigests; existing?: ExistingPersistedArtifact } {
+    const seed = buildPersistedPackagePlan({
+      pluginId: String(pluginId),
+      packageId: String(packageId),
+      sessionId: String(sessionId),
+      name: definition.name,
+      purpose: definition.purpose,
+      hostCode: definition.hostCode ?? '',
+      rev: 1,
+    })
+    const existing = inspectExistingPersistedArtifact(this.persistedPluginsRoot, seed)
+    const plan = buildPersistedPackagePlan({
+      pluginId: String(pluginId),
+      packageId: String(packageId),
+      sessionId: String(sessionId),
+      name: definition.name,
+      purpose: definition.purpose,
+      hostCode: definition.hostCode ?? '',
+      rev: existing === undefined || existing.rev === null ? 1 : existing.rev + 1,
+    })
+    return { plan, digests: digestPersistedPlan(plan), ...(existing === undefined ? {} : { existing }) }
+  }
+
+  /**
+   * Claim one pending export on behalf of its owning session exactly once.
+   * @param agent - Agent attempting the settlement.
+   * @param exportId - Pending request identity.
+   * @returns the claimed request, or a typed failure to surface instead.
+   */
+  private claimExportFor(
+    agent: Agent,
+    exportId: CordisDynamicExportId,
+  ): { ok: true; pending: NonNullable<ReturnType<DynamicCordisRegistry['claimExportRequest']>> }
+    | { ok: false; failure: DynamicCordisExportSettlementFailure } {
+    const pending = this.registry.peekExportRequest(exportId)
+    if (pending === undefined) {
+      return {
+        ok: false,
+        failure: { ok: false, reason: 'request-missing', message: `persist request "${exportId}" is no longer pending` },
+      }
+    }
+    if (agent.id !== pending.agentId) {
+      return {
+        ok: false,
+        failure: { ok: false, reason: 'forbidden-session', message: `persist request "${exportId}" belongs to another session` },
+      }
+    }
+    const claimed = this.registry.claimExportRequest(exportId)
+    /* v8 ignore next -- single-threaded verbs cannot interleave between peek and claim */
+    if (claimed === undefined) {
+      return {
+        ok: false,
+        failure: { ok: false, reason: 'request-missing', message: `persist request "${exportId}" was settled concurrently` },
+      }
+    }
+    return { ok: true, pending: claimed }
+  }
+
   private resolvePlan(
     agent: Agent,
     pluginId: CordisDynamicPluginId,
@@ -1171,6 +1428,13 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     this.announceResolved(requestId, { ok: false, reason: 'rejected' }, 'cancelled')
   }
 
+  /** Cancel every pending export of one Plugin; nothing was ever written for them. */
+  private cancelPendingExports(pluginId: CordisDynamicPluginId): void {
+    for (const pending of this.registry.disarmExportsFor(pluginId)) {
+      this.ctx.emit('cordis/request-export-resolved', { exportId: pending.exportId, outcome: 'cancelled' })
+    }
+  }
+
   private createAttempt(plan: ActivationPlan): DynamicCordisRunAttempt {
     return {
       pluginRunId: CordisDynamicPluginRunId(this.registry.mintPluginRunId()),
@@ -1242,6 +1506,17 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
 
 function missingFor(ctx: Context, run: DynamicCordisRun): string[] {
   return run.fiber === undefined ? [] : missingServices(ctx, run.fiber)
+}
+
+/**
+ * Resolve the default persisted-artifacts root the same way the harness home
+ * resolves elsewhere (`$DSH_HOME` when set, else `~/.dsh`), plus `plugins`.
+ * @returns the absolute default plugins root.
+ */
+function defaultPersistedPluginsRoot(): string {
+  const override = process.env.DSH_HOME
+  const home = override !== undefined && override.trim().length > 0 ? resolve(override) : join(homedir(), '.dsh')
+  return join(home, 'plugins')
 }
 
 function missingPluginMessage(id: CordisDynamicPluginId): string {

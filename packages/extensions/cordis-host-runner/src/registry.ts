@@ -5,8 +5,9 @@
 
 import type { Fiber } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { PersistedExportDigests, PersistedPackagePlan } from './export.ts'
 import type {
-  ApprovalRequestId, CordisDynamicPackageId, CordisDynamicPluginId, CordisDynamicPluginRunId,
+  ApprovalRequestId, CordisDynamicExportId, CordisDynamicPackageId, CordisDynamicPluginId, CordisDynamicPluginRunId,
   CordisDynamicRunMode, DynamicCordisRenderFailure, DynamicCordisRunAttempt,
 } from './types.ts'
 
@@ -81,6 +82,25 @@ export interface DynamicCordisPendingRequest {
   requiresApproval: boolean
 }
 
+/** One persisted-package export waiting for an out-of-band human decision. */
+export interface DynamicCordisPendingExport {
+  /** Correlation identity answered by the confirming gesture. */
+  exportId: CordisDynamicExportId
+  /** Session that owns the source bytes. */
+  agentId: SessionId
+  /** Stable Plugin identity being persisted. */
+  pluginId: CordisDynamicPluginId
+  /** Immutable Package identity being persisted. */
+  packageId: CordisDynamicPackageId
+  /**
+   * The exact plan whose digests were announced. Confirmation writes this
+   * object, so the artifact on disk always matches what the user saw.
+   */
+  plan: PersistedPackagePlan
+  /** Full-length digests over the plan's Host source and manifest. */
+  digests: PersistedExportDigests
+}
+
 /** Request accepted by `define`; it never crosses the Remote transport. */
 export interface DynamicCordisDefineRequest {
   /** Session that owns the plugin. */
@@ -141,10 +161,12 @@ export interface DynamicCordisPackageInspection extends DynamicCordisReference {
 export class DynamicCordisRegistry {
   private readonly plugins = new Map<CordisDynamicPluginId, DynamicCordisPlugin>()
   private readonly pendingRequests = new Map<ApprovalRequestId, DynamicCordisPendingRequest>()
+  private readonly pendingExports = new Map<CordisDynamicExportId, DynamicCordisPendingExport>()
   private nextPlugin = 1
   private nextPackage = 1
   private nextRun = 1
   private nextApproval = 1
+  private nextExport = 1
 
   /**
    * Mint a semantic plugin ID without reusing a prior suffix.
@@ -164,6 +186,14 @@ export class DynamicCordisRegistry {
    */
   mintPackageId(): string {
     return `pkg-${this.nextPackage++}`
+  }
+
+  /**
+   * Mint a persisted-export request ID.
+   * @returns a process-unique Export request ID.
+   */
+  mintExportRequestId(): string {
+    return `export-${this.nextExport++}`
   }
 
   /**
@@ -272,5 +302,62 @@ export class DynamicCordisRegistry {
       if (request.pluginId === pluginId) return requestId
     }
     return undefined
+  }
+
+  /**
+   * Publish one pending export request.
+   * @param id - export request ID.
+   * @param pending - owner and target identities retained until settlement.
+   */
+  armExportRequest(id: CordisDynamicExportId, pending: DynamicCordisPendingExport): void {
+    this.pendingExports.set(id, pending)
+  }
+
+  /**
+   * Read one pending export without claiming it.
+   * @param id - export request ID.
+   * @returns the pending export, or `undefined` when absent.
+   */
+  peekExportRequest(id: CordisDynamicExportId): DynamicCordisPendingExport | undefined {
+    return this.pendingExports.get(id)
+  }
+
+  /**
+   * Claim one pending export; first answer wins.
+   * @param id - export request ID.
+   * @returns the claimed export, or `undefined` when already settled.
+   */
+  claimExportRequest(id: CordisDynamicExportId): DynamicCordisPendingExport | undefined {
+    const pending = this.pendingExports.get(id)
+    if (pending !== undefined) this.pendingExports.delete(id)
+    return pending
+  }
+
+  /**
+   * Find a pending export for one Plugin regardless of its request ID.
+   * @param pluginId - stable Plugin ID.
+   * @returns its pending export, or `undefined` when none is pending.
+   */
+  pendingExportFor(pluginId: CordisDynamicPluginId): DynamicCordisPendingExport | undefined {
+    for (const pending of this.pendingExports.values()) {
+      if (pending.pluginId === pluginId) return pending
+    }
+    return undefined
+  }
+
+  /**
+   * Drop every pending export belonging to one Plugin.
+   * @param pluginId - stable Plugin ID whose requests are discarded.
+   * @returns the claimed pendings so the caller can announce their cancellation.
+   */
+  disarmExportsFor(pluginId: CordisDynamicPluginId): DynamicCordisPendingExport[] {
+    const dropped: DynamicCordisPendingExport[] = []
+    for (const [id, pending] of this.pendingExports) {
+      if (pending.pluginId === pluginId) {
+        this.pendingExports.delete(id)
+        dropped.push(pending)
+      }
+    }
+    return dropped
   }
 }

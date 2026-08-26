@@ -100,3 +100,18 @@ export function presentRunCall(args: { pluginId: string; packageId: string; mode
 export function presentStopCall(args: { pluginId: string }): GenericCallView {
   return { card: 'generic', kind: 'execute', title: `Stop Cordis Plugin ${args.pluginId}` }
 }
+
+/**
+ * Render a persisted-package export preparation. The call only creates a
+ * pending request; the write itself belongs to the user's out-of-band
+ * confirmation, so this stays an intent view without claiming success.
+ * @param args - target Plugin and Package identity.
+ * @returns replay-safe generic call presentation.
+ */
+export function presentExportCall(args: { pluginId: string; packageId: string }): GenericCallView {
+  return {
+    card: 'generic',
+    kind: 'execute',
+    title: `Prepare persisting Cordis Plugin ${args.pluginId} · ${args.packageId} (awaits user confirmation)`,
+  }
+}

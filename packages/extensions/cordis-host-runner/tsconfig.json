@@ -42,6 +42,9 @@
       "path": "../../runtime-diagnostics/invariants"
     },
     {
+      "path": "../../plugins/plugin-governance"
+    },
+    {
       "path": "../../typert/protocol"
     }
   ]

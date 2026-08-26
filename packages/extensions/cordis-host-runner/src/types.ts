@@ -18,6 +18,9 @@ export type CordisDynamicPluginRunId = Branded<'CordisDynamicPluginRunId'>
 /** Identity of one human approval request. */
 export type ApprovalRequestId = Branded<'ApprovalRequestId'>
 
+/** Identity of one pending persisted-package export request. */
+export type CordisDynamicExportId = Branded<'CordisDynamicExportId'>
+
 /** Identity of one cross-page inspect query. */
 export type CordisInspectRequestId = Branded<'CordisInspectRequestId'>
 
@@ -357,6 +360,80 @@ export type DynamicCordisInvokeResult =
   | { ok: true; value: JsonValue }
   | ({ ok: false; code: 'plugin-not-running' | 'stale-run' | 'method-not-found' | 'handler-error' } & CordisErrorDetails)
 
+/** sha256 digests over the exact bytes a confirmed export will write. */
+export interface DynamicCordisExportDigests {
+  /** Digest of the verbatim Host-half source. */
+  host: string
+  /** Digest of the canonical manifest JSON that lands as package.json. */
+  manifest: string
+}
+
+/** Summary emitted with `cordis/request-export` for the out-of-band confirmation surface. */
+export interface CordisExportRequestSummary {
+  /** Correlation identity used by the confirming gesture. */
+  exportId: CordisDynamicExportId
+  /** Session that owns the source bytes and receives the outcome. */
+  agentId: SessionId
+  /** Stable Plugin identity being persisted. */
+  pluginId: CordisDynamicPluginId
+  /** Immutable Package identity being persisted. */
+  packageId: CordisDynamicPackageId
+  /** Package label. */
+  name: string
+  /** User-facing purpose. */
+  purpose: string
+  /** Governance id the artifact will register under after a future boot audit. */
+  persistedId: string
+  /** Directory (below the configured plugins root) the artifact will occupy. */
+  targetDirSuffix: string
+  /** Digests over exactly the bytes a confirmation will write. */
+  digests: DynamicCordisExportDigests
+  /** Previous artifact at the same target, when one exists and will be replaced. */
+  replaces?: {
+    /** Previous re-export revision, or null when unreadable or foreign. */
+    rev: number | null
+    /** Session recorded by the previous artifact, when readable. */
+    originSession?: string
+  }
+}
+
+/** One settled export request broadcast to confirmation surfaces. */
+export interface CordisExportRequestResolved {
+  /** Request that left the pending state. */
+  exportId: CordisDynamicExportId
+  /** How it settled; `cancelled` covers undefine cleanup without a human answer. */
+  outcome: 'confirmed' | 'rejected' | 'cancelled'
+}
+
+/** Receipt returned when a confirmation wrote the artifact. */
+export interface DynamicCordisExportReceipt {
+  /** Success discriminator shared with the settlement-failure branch. */
+  ok: true
+  /** Settled request identity. */
+  exportId: CordisDynamicExportId
+  /** Source Plugin identity. */
+  pluginId: CordisDynamicPluginId
+  /** Source Package identity. */
+  packageId: CordisDynamicPackageId
+  /** Governance id recorded in the written manifest. */
+  persistedId: string
+  /** Absolute directory holding the artifact. */
+  dir: string
+  /** File names written into `dir`. */
+  files: readonly string[]
+  /** Re-export revision written. */
+  rev: number
+  /** Digests verified immediately before the write. */
+  digests: DynamicCordisExportDigests
+}
+
+/** Failure of one confirm/reject settlement. */
+export interface DynamicCordisExportSettlementFailure {
+  ok: false
+  reason: 'request-missing' | 'forbidden-session' | 'source-vanished' | 'persistence-failed'
+  message: string
+}
+
 declare module '@deepseek-ai/cordis' {
   interface Events {
     /**
@@ -395,5 +472,17 @@ declare module '@deepseek-ai/cordis' {
      * @mode emit
      */
     'cordis/inspect-query-resolved'(resolved: CordisInspectQueryResolved): void
+    /**
+     * A confirmed-source export request awaits an out-of-band human decision.
+     * @param summary - correlation, owner, target identities, digests, and any replaced artifact.
+     * @mode emit
+     */
+    'cordis/request-export'(summary: CordisExportRequestSummary): void
+    /**
+     * A pending export request left the answerable state.
+     * @param resolved - request identity and outcome.
+     * @mode emit
+     */
+    'cordis/request-export-resolved'(resolved: CordisExportRequestResolved): void
   }
 }

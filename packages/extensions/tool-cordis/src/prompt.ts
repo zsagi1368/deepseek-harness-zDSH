@@ -18,6 +18,7 @@ Dynamic Cordis plugins temporarily extend the current DSH process. A Plugin uses
 - cordis_run may require user approval. When it returns awaiting-approval, explain that the user must allow or reject it in the UI. Do not wait, retry, or claim that it is running.
 - When it returns starting, explain that the request has entered the asynchronous flow and the Client is still activating. starting does not mean success. Wait for the system to report the final result through steering context.
 - Do not request approval again after the user rejects it. After a technical failure, fix the same Plugin from its diagnostics; do not silently create a replacement Plugin.
+- cordis_export never completes on its own. When it returns awaiting-confirmation, tell the user which digest prefixes to expect and that they confirm or reject it in the plugin-management UI. Never claim something was persisted before the user confirmed, and after a rejection do not prepare the same persistence again unless asked. A persisted plugin stays disabled in the governance roster after a restart until the user approves and enables it.
 
 ## Recommended workflow and Tools
 
@@ -30,6 +31,7 @@ Before creating, modifying, or repairing a Plugin, load the cordis-plugin-develo
 5. cordis_run: activate an exact Package. Use run for the first activation, restarting current, or rollback; use update to switch versions.
 6. cordis_stop: remove the current Run and pending approval request while retaining definitions, grants, and version pointers.
 7. cordis_undefine: permanently stop and delete a Plugin and all of its Packages. Use it only after confirming that the user no longer needs them.
+8. cordis_export: prepare persisting a Plugin's current Package as a governed manifest plugin so it can outlive this process. It only prepares the artifact and reports digests; nothing is written until the user confirms outside this conversation in the plugin-management UI.
 
 - Inspect and Catalog data only confirm capabilities, names, signatures, types, and registration protocols before code is written; they do not replace business APIs.
 - Query Service.listService and Event.listEvents without input to choose from their compact signature directories, then query the exact service or event before using it. Exact queries return the structured contract and only its referenced types.

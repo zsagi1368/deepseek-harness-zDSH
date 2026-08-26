@@ -17,8 +17,8 @@ import type { ToolExecution } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { missingServices, providedServices } from './inspect.ts'
 import {
-  presentDefineCall, presentInspectListCall, presentInspectQueryCall, presentInspectSelfCall, presentRunCall,
-  presentStopCall, presentUndefineCall,
+  presentDefineCall, presentExportCall, presentInspectListCall, presentInspectQueryCall, presentInspectSelfCall,
+  presentRunCall, presentStopCall, presentUndefineCall,
 } from './present.ts'
 import { CORDIS_SYSTEM_PROMPT } from './prompt.ts'
 import { hostInspectProviders } from './providers.ts'
@@ -376,6 +376,63 @@ export function apply(ctx: Context): void {
       return { pluginId: args.pluginId, wasRunning: receipt.wasRunning }
     },
     presentCall: presentUndefineCall,
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'cordis_export',
+    description:
+      'Prepare persisting one current Package of a dynamic Plugin as a governed manifest plugin so it can survive a '
+      + 'process restart. This Tool only prepares the artifact and reports its sha256 digests plus target directory; '
+      + 'it never writes to disk. The user must confirm or reject the request in the plugin-management UI outside '
+      + 'this conversation, comparing the digests shown there. Persisted plugins enter the governance roster disabled '
+      + 'after a restart and run only after the user approves and enables them. Use this only when the user explicitly '
+      + 'asks to keep or persist a dynamic Plugin. After a rejection, do not prepare it again unless asked.',
+    parameters: {
+      pluginId: { type: 'string', required: true, description: 'Stable Plugin ID whose current Package is persisted.' },
+      packageId: { type: 'string', required: true, description: 'Exact immutable Package ID to persist; it must currently be the active version of that Plugin.' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          status: { type: 'string', const: 'awaiting-confirmation', required: true },
+          exportId: { type: 'string', required: true },
+          pluginId: { type: 'string', required: true },
+          packageId: { type: 'string', required: true },
+          persistedId: { type: 'string', required: true },
+          targetDirSuffix: { type: 'string', required: true },
+          manifestDigest: { type: 'string', required: true },
+          hostDigest: { type: 'string', required: true },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: `Prepared persisting ${value.pluginId}/${value.packageId} as governance plugin "${value.persistedId}". `
+          + 'Nothing was written yet. The user must confirm in the plugin-management UI; there they should see '
+          + `manifest digest ${value.manifestDigest.slice(0, 12)} and host digest ${value.hostDigest.slice(0, 12)}. `
+          + 'Do not wait for the decision and do not re-request it.',
+      }],
+      presentationMeta: (_args, value) => ({ pluginId: value.pluginId, packageId: value.packageId }),
+    },
+    execute(args, exec) {
+      const summary = ctx.dynamicCordisRunner.requestExport(
+        requireAgent(exec),
+        CordisDynamicPluginId(args.pluginId),
+        CordisDynamicPackageId(args.packageId),
+      )
+      return Promise.resolve({
+        status: 'awaiting-confirmation',
+        exportId: String(summary.exportId),
+        pluginId: String(summary.pluginId),
+        packageId: String(summary.packageId),
+        persistedId: summary.persistedId,
+        targetDirSuffix: summary.targetDirSuffix,
+        manifestDigest: summary.digests.manifest,
+        hostDigest: summary.digests.host,
+      })
+    },
+    presentCall: presentExportCall,
   }))
 
   ctx.on('agent/pre-step', async ({ agent, messages, signal }, next): Promise<PreStepDecision> => {
