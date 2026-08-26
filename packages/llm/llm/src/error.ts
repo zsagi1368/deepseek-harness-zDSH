@@ -58,6 +58,17 @@ export const TRUNCATED_TOOL_CALL_CODE = 'TRUNCATED_TOOL_CALL'
  */
 export const INVALID_CREDENTIAL_CODE = 'INVALID_CREDENTIAL'
 
+/**
+ * Canonical provider-neutral code for a stream the repetition guard stopped
+ * because the model appeared stuck in a degenerate output loop (a verbatim
+ * fragment repeating indefinitely or one character flooding the response).
+ * Distinct from transport codes so surfaces can say "suspected model
+ * repetition loop" instead of "network error". Deliberately outside the
+ * default retryable set — an immediate silent retry of a looping model
+ * usually loops again; the caller decides whether to continue manually.
+ */
+export const REPETITION_LOOP_CODE = 'REPETITION_LOOP'
+
 /** Structured codes and plain phrases that explicitly name a context bound being exceeded. */
 const STRUCTURED_CONTEXT_OVERFLOW = new RegExp(
   String.raw`(?:^|[^a-z0-9])context[\s_-](?:length|window)[\s_-]`

@@ -7,6 +7,7 @@
  */
 
 import { Context, Service } from '@deepseek-ai/cordis'
+import z from '@deepseek-ai/schemastery'
 import type {
   GenerateOptions,
   LlmConfigurableProvider,
@@ -26,10 +27,20 @@ import type { ResolvedRetryPolicy } from './retry-policy.ts'
 import type { ProviderRequestId } from './brand.ts'
 import { callConfigEquals, deepFreeze } from './call-config.ts'
 import type { LlmCallConfig, LlmCallConfigAdapterDefaults } from './call-config.ts'
-import { HarnessError, INVALID_CREDENTIAL_CODE } from './error.ts'
+import { HarnessError, INVALID_CREDENTIAL_CODE, REPETITION_LOOP_CODE } from './error.ts'
 import { normalizeLlmFailure } from './adapter-failure.ts'
 import { normalizeApiKey } from './api-key.ts'
 import { contentHasImage, projectImagesForTextModel } from './content.ts'
+import {
+  StreamRepetitionMonitor,
+  renderRepetitionLoopMessage,
+  resolveRepetitionGuardConfig,
+  RepetitionGuardSchema,
+} from './repetition-guard.ts'
+import type {
+  RepetitionGuardConfig,
+  ResolvedRepetitionGuardSettings,
+} from './repetition-guard.ts'
 
 export * from './attribution.ts'
 export * from './brand.ts'
@@ -40,6 +51,7 @@ export * from './types.ts'
 export * from './content.ts'
 export * from './message.ts'
 export * from './retry-policy.ts'
+export * from './repetition-guard.ts'
 export { BlockAssembler } from './assembler.ts'
 export { callConfigEquals, deepFreeze, isAgentLoopRequest, markAgentLoopRequest } from './call-config.ts'
 export type { LlmCallConfig, LlmCallConfigAdapterDefaults } from './call-config.ts'
@@ -304,20 +316,39 @@ export interface DirectoryRegistrationHandle {
   replace(entries: readonly LlmConfigurableProvider[]): void
 }
 
+/** Service-level configuration for the LLM runtime. */
+export interface LlmRuntimeConfig {
+  /**
+   * Streaming repetition-loop guard thresholds (S-16). The guard watches the
+   * visible text of every streamed block and stops a stream that has collapsed
+   * into a degenerate repetition loop, surfacing a `REPETITION_LOOP` failure
+   * instead of burning tokens on garbage. Omission keeps the conservative
+   * defaults; set `enabled: false` to turn monitoring off entirely.
+   */
+  repetitionGuard?: RepetitionGuardConfig
+}
+
 /**
  * The abstract `llm` service: an adapter registry plus a streaming model-call
  * API, interceptable via the `llm/stream` waterfall.
  */
 export class LlmRuntime extends Service {
+  /** Runtime schema for {@link LlmRuntimeConfig}, applied by the plugin loader. */
+  static Config: z<LlmRuntimeConfig> = z.object({
+    repetitionGuard: RepetitionGuardSchema,
+  })
+
   private adapters = new Map<string, AdapterRegistration>()
   private directory = new Map<string, LlmConfigurableProvider>()
   private discoveries = new Map<
     string,
     (request: LlmModelDiscoveryRequest) => Promise<readonly LlmDiscoveredModel[]>
   >()
+  private readonly guardSettings: ResolvedRepetitionGuardSettings
 
-  constructor(ctx: Context) {
+  constructor(ctx: Context, config?: LlmRuntimeConfig) {
     super(ctx, 'llm')
+    this.guardSettings = resolveRepetitionGuardConfig(config?.repetitionGuard)
   }
 
   /** Notify topology observers without letting one broken listener veto the commit. */
@@ -941,6 +972,7 @@ export class LlmRuntime extends Service {
       return
     }
 
+    const monitor = this.guardSettings.enabled ? new StreamRepetitionMonitor(this.guardSettings) : undefined
     let completed = false
     try {
       while (true) {
@@ -958,6 +990,27 @@ export class LlmRuntime extends Service {
         if (item.done) {
           completed = true
           return
+        }
+        if (monitor !== undefined) {
+          const finding = monitor.observe(item.value)
+          if (finding !== undefined) {
+            // Stop consuming the looping stream: the triggering delta is held
+            // back (it survives in the diagnostic sample), the underlying
+            // adapter iterator closes through the finally below, and the
+            // failure is a terminal REPETITION_LOOP finish — visible, coded,
+            // and outside the default retryable set, so nothing retries it
+            // silently.
+            const message = renderRepetitionLoopMessage(finding, {
+              provider: options.provider,
+              model: options.model,
+            })
+            this.ctx.logger.warn(message)
+            yield {
+              type: 'finish',
+              reason: { kind: 'error', failure: normalizeRepetitionFailure(message) },
+            }
+            return
+          }
         }
         // End the adapter-owned try before yielding: consumer/middleware
         // failures resumed into this generator must remain thrown.
@@ -978,7 +1031,9 @@ export class LlmRuntime extends Service {
    * asynchronous exact-model resolution and dispatch. Adapter selection,
    * dispatch, and iteration failures become terminal `error` or `aborted`
    * finish chunks; middleware, nested-call, cleanup, and consumer failures
-   * remain thrown.
+   * remain thrown. When the repetition guard is enabled and a streamed text or
+   * reasoning block collapses into a degenerate loop, the stream stops early
+   * with a terminal `error` finish carrying the `REPETITION_LOOP` code.
    * @param options - the full request; `options.provider` selects the adapter.
    * @returns the chunk stream, possibly wrapped by `llm/stream` listeners.
    */
@@ -1008,6 +1063,11 @@ function adapterFailureChunk(error: unknown, signal?: AbortSignal): StreamChunk 
       ? { kind: 'aborted', failure }
       : { kind: 'error', failure },
   }
+}
+
+/** Build the serializable failure facts for a repetition-loop stop. */
+function normalizeRepetitionFailure(message: string): LlmFailure {
+  return Object.freeze({ message, code: REPETITION_LOOP_CODE })
 }
 
 interface AdapterRegistration {
