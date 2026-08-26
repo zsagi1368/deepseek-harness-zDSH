@@ -1118,6 +1118,25 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'modelSlots',
+    summary: 'Registry of deployment-level auxiliary-model routes keyed by slot identity.',
+    description: 'Registry of deployment-level auxiliary-model routes keyed by slot identity. Consumers consult it right before each auxiliary dispatch; every successful resolution with a session sink appends the durable `slots/dispatch` audit record naming the exact route and the tier that produced it.',
+    methods: [
+      {
+        signature: 'register(slot: SlotId, route: ModelRoute): () => void',
+        description: 'Register one programmatic slot route. Configuration-pinned slots reject registration so a deployment statement cannot be silently replaced at runtime.',
+        parameters: [{ name: 'slot', description: 'slot identity the route serves.' }, { name: 'route', description: 'exact provider/model pair dispatched under the slot.' }],
+        returns: 'an effect-scoped disposer removing the route again.',
+      },
+      {
+        signature: 'resolve(slot: SlotId, input: ModelSlotResolveInput = {}): ResolvedModelSlot | null',
+        description: 'Resolve one auxiliary-model route through the fixed precedence: the slot\'s own statement, then the deployment default, then the conversation\'s main-model route. With a session sink, the durable `slots/dispatch` record is appended before the caller dispatches.',
+        parameters: [{ name: 'slot', description: 'slot identity to resolve.' }, { name: 'input', description: 'main-model route fallback and audit sink.' }],
+        returns: 'the frozen resolution, or `null` when no tier can supply a route.',
+      },
+    ],
+  },
+  {
     key: 'permissionPresets',
     summary: 'Owns the deployment\'s permission presets and their write path.',
     description: 'Owns the deployment\'s permission presets and their write path. Requires a confining `ctx.shell` executor and `ctx.approval`; unmatched knob values are reported as CUSTOM_PRESET, not an error.',
@@ -2654,6 +2673,22 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'resolved', description: 'exact query identity that is no longer answerable.' }],
   },
   {
+    name: 'cordis/request-export',
+    mode: 'emit',
+    signature: '\'cordis/request-export\'(summary: CordisExportRequestSummary): void',
+    summary: 'A confirmed-source export request awaits an out-of-band human decision.',
+    description: 'A confirmed-source export request awaits an out-of-band human decision.',
+    parameters: [{ name: 'summary', description: 'correlation, owner, target identities, digests, and any replaced artifact.' }],
+  },
+  {
+    name: 'cordis/request-export-resolved',
+    mode: 'emit',
+    signature: '\'cordis/request-export-resolved\'(resolved: CordisExportRequestResolved): void',
+    summary: 'A pending export request left the answerable state.',
+    description: 'A pending export request left the answerable state.',
+    parameters: [{ name: 'resolved', description: 'request identity and outcome.' }],
+  },
+  {
     name: 'cordis/request-run',
     mode: 'emit',
     signature: '\'cordis/request-run\'(request: DynamicCordisRunRequest): void',
@@ -3258,6 +3293,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ContinuableSubagentDescriptorData extends SubagentDescriptorBase {\n    readonly mode: \'continuable\';\n    readonly label: string;\n    readonly agentProvider?: string;\n    readonly agentModel?: string;\n    readonly persona?: string;\n    readonly toolFilter?: ToolRestriction;\n}',
   },
   {
+    name: 'CordisDynamicExportId',
+    declaration: 'export type CordisDynamicExportId = Branded<\'CordisDynamicExportId\'>;',
+  },
+  {
     name: 'CordisDynamicPackageId',
     declaration: 'export type CordisDynamicPackageId = Branded<\'CordisDynamicPackageId\'>;',
   },
@@ -3272,6 +3311,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'CordisDynamicRunMode',
     declaration: 'export type CordisDynamicRunMode = \'run\' | \'update\';',
+  },
+  {
+    name: 'CordisExportRequestResolved',
+    declaration: 'export interface CordisExportRequestResolved {\n    exportId: CordisDynamicExportId;\n    outcome: \'confirmed\' | \'rejected\' | \'cancelled\';\n}',
+  },
+  {
+    name: 'CordisExportRequestSummary',
+    declaration: 'export interface CordisExportRequestSummary {\n    exportId: CordisDynamicExportId;\n    agentId: SessionId;\n    pluginId: CordisDynamicPluginId;\n    packageId: CordisDynamicPackageId;\n    name: string;\n    purpose: string;\n    persistedId: string;\n    targetDirSuffix: string;\n    digests: DynamicCordisExportDigests;\n    replaces?: {\n        rev: number | null;\n        originSession?: string;\n    };\n}',
   },
   {
     name: 'CordisInspectQueryRequest',
@@ -3412,6 +3459,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'DshEnvironmentKey',
     declaration: 'export type DshEnvironmentKey = `${typeof DSH_ENV_PREFIX}${string}`;',
+  },
+  {
+    name: 'DynamicCordisExportDigests',
+    declaration: 'export interface DynamicCordisExportDigests {\n    host: string;\n    manifest: string;\n}',
   },
   {
     name: 'DynamicCordisPackage',
@@ -3942,6 +3993,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ModelModalityMap {\n    text: \'text\';\n    image: \'image\';\n}',
   },
   {
+    name: 'ModelRoute',
+    declaration: 'export interface ModelRoute {\n    readonly provider: string;\n    readonly model: string;\n}',
+  },
+  {
+    name: 'ModelSlotResolveInput',
+    declaration: 'export interface ModelSlotResolveInput {\n    readonly mainRoute?: ModelRoute;\n    readonly session?: Session;\n}',
+  },
+  {
+    name: 'ModelSlotSource',
+    declaration: 'export type ModelSlotSource = \'slot\' | \'deployment-default\' | \'main-route\';',
+  },
+  {
     name: 'ObjectJsonSchema',
     declaration: 'export type ObjectJsonSchema = JsonSchemaNode & {\n    type: \'object\';\n};',
   },
@@ -4100,6 +4163,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ResolvedCredential',
     declaration: 'export interface ResolvedCredential {\n    value: string;\n    source: string;\n}',
+  },
+  {
+    name: 'ResolvedModelSlot',
+    declaration: 'export interface ResolvedModelSlot {\n    readonly slot: SlotId;\n    readonly provider: string;\n    readonly model: string;\n    readonly source: ModelSlotSource;\n}',
   },
   {
     name: 'ResolvedNormalRetryPolicy',
@@ -4556,6 +4623,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SkillViewOptions',
     declaration: 'export interface SkillViewOptions extends SkillLookupOptions {\n    readonly scope?: ScopeKey | undefined;\n}',
+  },
+  {
+    name: 'SlotId',
+    declaration: 'export type SlotId = Branded<\'SlotId\'>;',
   },
   {
     name: 'SpawnTeammateRequest',

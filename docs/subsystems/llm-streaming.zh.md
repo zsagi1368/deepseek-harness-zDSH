@@ -905,6 +905,37 @@ stream(options: GenerateOptions): AsyncIterable<StreamChunk>
 
 Source: [`packages/llm/llm/src/index.ts`](../../packages/llm/llm/src/index.ts)
 
+<a id="ctxmodelslots--modelslotregistry"></a>
+
+### `ctx.modelSlots` — `ModelSlotRegistry`
+
+Registry of deployment-level auxiliary-model routes keyed by slot identity. Consumers consult it right before each auxiliary dispatch; every successful resolution with a session sink appends the durable `slots/dispatch` audit record naming the exact route and the tier that produced it.
+
+```ts cordis-catalog
+/**
+ * Register one programmatic slot route. Configuration-pinned slots reject
+ * registration so a deployment statement cannot be silently replaced at
+ * runtime.
+ * @param slot - slot identity the route serves.
+ * @param route - exact provider/model pair dispatched under the slot.
+ * @returns an effect-scoped disposer removing the route again.
+ */
+register(slot: SlotId, route: ModelRoute): () => void
+
+/**
+ * Resolve one auxiliary-model route through the fixed precedence: the
+ * slot's own statement, then the deployment default, then the conversation's
+ * main-model route. With a session sink, the durable `slots/dispatch`
+ * record is appended before the caller dispatches.
+ * @param slot - slot identity to resolve.
+ * @param input - main-model route fallback and audit sink.
+ * @returns the frozen resolution, or `null` when no tier can supply a route.
+ */
+resolve(slot: SlotId, input: ModelSlotResolveInput = {}): ResolvedModelSlot | null
+```
+
+Source: [`packages/llm/model-slots/src/index.ts`](../../packages/llm/model-slots/src/index.ts)
+
 <a id="llm-events"></a>
 
 ### `llm/*` events

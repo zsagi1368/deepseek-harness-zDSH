@@ -116,6 +116,15 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Adapters register provider implementations; the loop and compaction call the provider-neutral stream service.',
   },
   {
+    key: 'modelSlots',
+    pkg: 'model-slots',
+    title: 'Auxiliary model slot registry',
+    mode: 'seam',
+    implementations: ['model-slots'],
+    consumers: ['session-title-llm', 'compaction-basic'],
+    note: 'Named side-task slots resolve through slot declaration, deployment default, then the main-model route; every dispatch appends a slots/dispatch audit event.',
+  },
+  {
     key: 'tokenMeter',
     pkg: 'token-meter',
     title: 'Replay token measurement',

@@ -298,6 +298,40 @@ inspectPackage( agent: Agent, pluginId: CordisDynamicPluginId, packageId: Cordis
  * @returns The JSON result or a typed invocation failure.
  */
 @Remote('invoke') async invoke( pluginId: CordisDynamicPluginId, pluginRunId: CordisDynamicPluginRunId, method: string, args: JsonValue, ): Promise<DynamicCordisInvokeResult>
+
+/**
+ * Prepare one confirmed-source persisted-package export for the current
+ * Plugin. This only builds the manifest plan, digests the exact bytes that
+ * would be written, and announces a pending request on
+ * `cordis/request-export`; nothing touches disk until a human settles the
+ * request through `confirmDynamicExport` outside the session.
+ * @param agent - Agent whose Session must own the Plugin.
+ * @param pluginId - Stable Plugin identity to persist.
+ * @param packageId - Immutable Package identity to persist; it must be this Plugin's current version.
+ * @returns The pending summary (digests included) for confirmation surfaces.
+ * @throws when the Plugin is not owned, the Package is absent or not current, the halves are not
+ *   host-only, or a request is already pending.
+ */
+requestExport( agent: Agent, pluginId: CordisDynamicPluginId, packageId: CordisDynamicPackageId, ): CordisExportRequestSummary
+
+/**
+ * Honor one pending export request: verify the digests against the still-
+ * stored bytes and write the artifact under the configured plugins root.
+ * The write happens only here — never in the model-facing tool — so a
+ * persisted artifact always traces to an out-of-band human decision.
+ * @param agent - Agent whose Session owns the request being settled.
+ * @param exportId - Pending request identity to settle once.
+ * @returns The written receipt, or a typed refusal.
+ */
+@Remote('confirmDynamicExport') async confirmDynamicExport( agent: Agent, exportId: CordisDynamicExportId, ): Promise<DynamicCordisExportReceipt | DynamicCordisExportSettlementFailure>
+
+/**
+ * Decline one pending export request without writing anything.
+ * @param agent - Agent whose Session owns the request being settled.
+ * @param exportId - Pending request identity to settle once.
+ * @returns An acknowledgement, or a typed refusal when the request cannot be settled by this session.
+ */
+@Remote('rejectDynamicExport') async rejectDynamicExport( agent: Agent, exportId: CordisDynamicExportId, ): Promise<{ ok: true } | DynamicCordisExportSettlementFailure>
 ```
 
 Types: [Agent](core.zh.md)
@@ -504,6 +538,40 @@ Notify every Client that an inspect query has settled or been cancelled.
  * @mode emit
  */
 'cordis/inspect-query-resolved'(resolved: CordisInspectQueryResolved): void
+```
+
+Source: [`packages/extensions/cordis-host-runner/src/types.ts`](../../packages/extensions/cordis-host-runner/src/types.ts)
+
+<a id="cordisrequest-export--emit"></a>
+
+#### `cordis/request-export` — emit
+
+A confirmed-source export request awaits an out-of-band human decision.
+
+```ts cordis-catalog
+/**
+ * A confirmed-source export request awaits an out-of-band human decision.
+ * @param summary - correlation, owner, target identities, digests, and any replaced artifact.
+ * @mode emit
+ */
+'cordis/request-export'(summary: CordisExportRequestSummary): void
+```
+
+Source: [`packages/extensions/cordis-host-runner/src/types.ts`](../../packages/extensions/cordis-host-runner/src/types.ts)
+
+<a id="cordisrequest-export-resolved--emit"></a>
+
+#### `cordis/request-export-resolved` — emit
+
+A pending export request left the answerable state.
+
+```ts cordis-catalog
+/**
+ * A pending export request left the answerable state.
+ * @param resolved - request identity and outcome.
+ * @mode emit
+ */
+'cordis/request-export-resolved'(resolved: CordisExportRequestResolved): void
 ```
 
 Source: [`packages/extensions/cordis-host-runner/src/types.ts`](../../packages/extensions/cordis-host-runner/src/types.ts)

@@ -618,10 +618,16 @@ Requires: `tools`
 export interface Config {
   /** Maximum synchronous VM evaluation time in milliseconds. */
   vmTimeoutMs?: number
+  /**
+   * Directory that confirmed persisted-package artifacts are written under;
+   * defaults to `<harness home>/plugins`, where the harness home honors
+   * `DSH_HOME` and otherwise is `~/.dsh` (matching @deepseek-ai/dsh-home-paths).
+   */
+  persistedPluginsRoot?: string
 }
 ```
 
-Source: [`packages/extensions/cordis-host-runner/src/index.ts:88`](../packages/extensions/cordis-host-runner/src/index.ts)
+Source: [`packages/extensions/cordis-host-runner/src/index.ts:113`](../packages/extensions/cordis-host-runner/src/index.ts)
 
 <a id="deepseek-aidsh-credentials-local"></a>
 
@@ -1721,6 +1727,30 @@ export interface Config {
 ```
 
 Source: [`packages/feedback/message-feedback/src/index.ts:49`](../packages/feedback/message-feedback/src/index.ts)
+
+<a id="deepseek-aidsh-model-slots"></a>
+
+## `@deepseek-ai/dsh-model-slots`
+
+```ts config-catalog
+/** Deployment-level slot policy supplied as plugin configuration or direct construction. */
+export interface ModelSlotsConfig {
+  /** Explicit route per built-in slot id; a present entry pins that slot. */
+  readonly slots?: Readonly<Record<string, ModelSlotRouteConfig>>
+  /** Deployment default applied when a slot has no explicit entry. */
+  readonly fallback?: ModelSlotRouteConfig
+}
+
+/** One configured route entry; `provider` and `model` are a required pair. */
+export interface ModelSlotRouteConfig {
+  /** Registered LLM provider route. */
+  readonly provider: string
+  /** Provider model id. */
+  readonly model: string
+}
+```
+
+Source: [`packages/llm/model-slots/src/index.ts:82`](../packages/llm/model-slots/src/index.ts)
 
 <a id="deepseek-aidsh-permission-presets"></a>
 
@@ -3013,7 +3043,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/shell/tool-pwsh/src/index.ts:52`](../packages/shell/tool-pwsh/src/index.ts)
+Source: [`packages/shell/tool-pwsh/src/index.ts:54`](../packages/shell/tool-pwsh/src/index.ts)
 
 <a id="deepseek-aidsh-tool-pwsh-persistent"></a>
 

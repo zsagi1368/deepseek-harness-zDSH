@@ -667,7 +667,20 @@ Source: [`packages/session/session-title/src/index.ts:100`](../packages/session/
 
 Types: [SessionTitleLlmRequestEventData](subsystems/session-title.zh.md)
 
-Source: [`packages/session/session-title-llm/src/index.ts:43`](../packages/session/session-title-llm/src/index.ts)
+Source: [`packages/session/session-title-llm/src/index.ts:44`](../packages/session/session-title-llm/src/index.ts)
+
+### `slots/*`
+
+<a id="slotsdispatch--log-only"></a>
+
+#### `slots/dispatch` — log-only
+
+```ts persistence-catalog
+/** Log-only pre-dispatch record naming the auxiliary route one slot dispatch will use. */
+'slots/dispatch': ModelSlotDispatchEventData
+```
+
+Source: [`packages/llm/model-slots/src/index.ts:46`](../packages/llm/model-slots/src/index.ts)
 
 ### `step/*`
 
