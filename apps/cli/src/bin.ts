@@ -10,8 +10,20 @@
 
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { loadLayeredEnv } from '@deepseek-ai/dsh-app-boot'
 import { parseDshArgs } from './args.ts'
+import { describeRuntimeSupport } from './runtime-guard.ts'
+
+// Runtime guard — the launcher's first statement. It probes for a capability
+// (`AbortSignal.timeout`, Node >= 17.3, also absent from some embedded
+// runtimes) whose lack otherwise explodes as an opaque TypeError from deep
+// inside a boot. Only light launcher code (node builtins, the arg parser, this
+// probe) has loaded by now: every mode tree below is a dynamic import reached
+// only after this check passes.
+const runtimeSupport = describeRuntimeSupport()
+if (!runtimeSupport.ok) {
+  process.stderr.write(`${runtimeSupport.detail}\n`)
+  process.exit(1)
+}
 
 // Both the source tree (apps/cli/src) and the bundled bin (apps/cli/lib) sit
 // one directory under apps/cli, so the checked-in manifest resolves with the
@@ -28,6 +40,9 @@ const invocation = parseDshArgs(process.argv.slice(2), readVersion())
 
 switch (invocation.mode) {
   case 'profile': {
+    // Loaded with the mode tree, after the runtime guard: no heavy dependency
+    // may evaluate before the launcher has proven the host can run at all.
+    const { loadLayeredEnv } = await import('@deepseek-ai/dsh-app-boot')
     const { runProfile } = await import('./profile-boot.ts')
     await runProfile({
       environment: loadLayeredEnv('dsh'),
