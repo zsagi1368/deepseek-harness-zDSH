@@ -11,9 +11,22 @@ The `dsh` command is the product launcher for profiles: ordered stacks of plugin
 | `dsh --profile <name>` | Boot the named profile under `$DSH_HOME/profiles/<name>`. |
 | `dsh --profile headless "job"` | Run one fresh persisted session, print the final answer, and exit. |
 | `dsh web` | Alias of `--profile web`. |
+| `dsh acp` | Serve DeepSeek Harness over the Agent Client Protocol (JSON-RPC stdio) for external GUI clients. |
 | `dsh plugin --profile <name> <pnpm args>` | Manage a profile's plugins by forwarding to pnpm in the profile directory. |
 
 The invoking directory is the default workspace root. The `web` and `headless` profiles auto-initialize on first use from shipped templates; any other profile must be created through `dsh plugin`.
+
+## ACP entrypoint
+
+`dsh acp` is the stable entrypoint for external workbenches that speak the [Agent Client Protocol](https://agentclientprotocol.com): it boots a standard profile composition with the `@deepseek-ai/dsh-acp` bridge mounted on top and then serves JSON-RPC over stdin/stdout. stdout carries protocol frames only (no banner, no progress lines); diagnostics go to stderr. `--provider <name>` and `--model <id>` pick the route for sessions created over the bridge; `--dump-config` prints the composed tree including the bridge row.
+
+```sh
+dsh acp                                        # default profile `acp`, composition model defaults
+dsh acp --provider deepseek-official --model deepseek-v4-pro
+dsh acp --dump-config                          # inspect the tree without booting
+```
+
+The `acp` profile (base bundle only, no pre-created agents) auto-initializes on first use; `--profile <name>` serves any existing profile's composition instead. An ACP client is a trusted programmatic peer: it can drive the full harness under the same permission waterfall as every other surface (`DSH_PERMISSION_MODE` applies unchanged), and permission answers are never turned into durable grants.
 
 ## First-run expectations
 

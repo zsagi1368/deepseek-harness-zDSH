@@ -26,8 +26,16 @@ const NAME = 'dsh'
  * (the recovery diagnostic for a broken `cordis.patch.yml`, which is then
  * never parsed).
  * @param patches - `--patch` overlay paths, in argv order.
+ * @param extraLayers - launcher-derived layers printed after every file layer
+ * (the same rows {@link runProfile} would boot with); skipped by `defaultOnly`
+ * like the other non-bundle layers.
  */
-export function runDumpConfig(profile: string, defaultOnly: boolean, patches: readonly string[]): void {
+export function runDumpConfig(
+  profile: string,
+  defaultOnly: boolean,
+  patches: readonly string[],
+  extraLayers: readonly ConfigDumpLayer[] = [],
+): void {
   const loaded = prepareProfile(profile, !defaultOnly)
   const layers: ConfigDumpLayer[] = loaded.layers.map(layer => ({
     label: layer.packageName,
@@ -46,6 +54,7 @@ export function runDumpConfig(profile: string, defaultOnly: boolean, patches: re
       const absolute = resolve(file)
       layers.push({ label: absolute, patches: loadOverlayPatches(NAME, absolute) })
     }
+    layers.push(...extraLayers)
   }
   // The dump anchors on the same empty root file the boot includes.
   process.stdout.write(renderConfigDump(NAME, join(loaded.dir, PROFILE_ROOT_FILENAME), layers))

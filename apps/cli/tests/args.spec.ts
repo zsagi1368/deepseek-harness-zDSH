@@ -98,9 +98,38 @@ describe('parseDshArgs', () => {
     expect(exitCode(['--profile', 'x', 'plugin', 'add', 'y'])).toBe(1)
   })
 
+  it('routes the acp stdio entrypoint with its bridge flags', () => {
+    expect(parse(['acp'])).toEqual({ mode: 'acp', patches: [] })
+    expect(parse(['acp', '--provider', 'deepseek-official', '--model', 'deepseek-v4-pro']))
+      .toEqual({ mode: 'acp', patches: [], provider: 'deepseek-official', model: 'deepseek-v4-pro' })
+    expect(parse(['acp', '--profile', 'custom']))
+      .toEqual({ mode: 'acp', patches: [], profile: 'custom' })
+    expect(parse(['acp', '--patch', 'a.yml', '--patch', 'b.yml']))
+      .toEqual({ mode: 'acp', patches: ['a.yml', 'b.yml'] })
+    // Dump requests ride the same invocation shape.
+    expect(parse(['acp', '--dump-config'])).toEqual({ mode: 'acp', patches: [], dump: 'config' })
+    expect(parse(['acp', '--dump-config', '--profile', 'x', '--provider', 'p']))
+      .toEqual({ mode: 'acp', patches: [], dump: 'config', profile: 'x', provider: 'p' })
+    expect(parse(['acp', '--dump-default-config'])).toEqual({ mode: 'acp', patches: [], dump: 'default' })
+  })
+
+  it('rejects acp invocations that would corrupt the stdio contract', () => {
+    expect(exitCode(['acp', 'task'])).toBe(1) // the bridge has no app arguments
+    expect(exitCode(['acp', '--future-acp-flag'])).toBe(1) // no inner app owns unknown flags here
+    expect(exitCode(['acp', '--profile', ''])).toBe(1)
+    expect(exitCode(['acp', '--patch='])).toBe(1)
+    expect(exitCode(['acp', '--dump-config', '--dump-default-config'])).toBe(1)
+    expect(exitCode(['acp', '--dump-default-config', '--patch', 'w.yml'])).toBe(1)
+    expect(exitCode(['--profile', 'x', 'acp'])).toBe(1) // parent options before a subcommand
+    expect(exitCode(['--patch', 'a.yml', 'acp'])).toBe(1)
+  })
+
   it('keeps its own help for an invocation with no app to hand it to', () => {
     expect(exitCode(['--help'])).toBe(0)
     expect(exitCode(['-h'])).toBe(0)
     expect(exitCode(['--version'])).toBe(0)
+    // The acp surface owns its help too: no inner app exists to take it.
+    expect(exitCode(['acp', '--help'])).toBe(0)
+    expect(exitCode(['acp', '-h'])).toBe(0)
   })
 })

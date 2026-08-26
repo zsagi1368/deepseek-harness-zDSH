@@ -45,7 +45,8 @@ const invocation = parseDshArgs(process.argv.slice(2), version)
 // npx's own download window before this line is outside our control. Profile
 // boots only: a config dump's machine-read text and `plugin`'s pnpm forwarding
 // stay silent even on a terminal, and the banner itself prints on interactive
-// terminals only.
+// terminals only. `acp` stays silent unconditionally: stdout carries its
+// JSON-RPC protocol frames.
 if (invocation.mode === 'profile') printStartupBanner(version, invocation.profile)
 
 switch (invocation.mode) {
@@ -60,6 +61,12 @@ switch (invocation.mode) {
       patchFiles: invocation.patches,
       args: invocation.args,
     })
+    break
+  }
+  case 'acp': {
+    const { loadLayeredEnv } = await import('@deepseek-ai/dsh-app-boot')
+    const { runAcp } = await import('./acp.ts')
+    await runAcp(invocation, loadLayeredEnv('dsh'))
     break
   }
   case 'plugin': {

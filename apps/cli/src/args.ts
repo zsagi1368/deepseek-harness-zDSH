@@ -11,7 +11,8 @@
  * and `dsh --profile web -h` prints the web app's help, not this one's.
  *
  * `web` is a hardcoded alias for `--profile web`; `plugin` manages a profile's
- * plugin dependencies by forwarding to pnpm.
+ * plugin dependencies by forwarding to pnpm; `acp` serves the Agent Client
+ * Protocol over stdio for external GUI clients.
  * @module @deepseek-ai/dsh/args
  */
 
@@ -44,8 +45,26 @@ interface PluginInvocation {
   args: string[]
 }
 
+/**
+ * Serve the Agent Client Protocol over stdio (`dsh acp`): boot a profile's
+ * composition with the ACP bridge row mounted on top, then speak JSON-RPC on
+ * stdin/stdout. The bridge is the surface — no inner app arguments exist.
+ */
+export interface AcpInvocation {
+  mode: 'acp'
+  /** The profile whose composition serves under the bridge; absent = the default `acp` profile. */
+  profile?: string
+  patches: string[]
+  /** Provider route for sessions created over the bridge; absent = the composition's model defaults. */
+  provider?: string
+  /** Model id for sessions created over the bridge; absent = the composition's model defaults. */
+  model?: string
+  /** Print the composed tree and exit instead of booting: `'config'` includes the bridge row, `'default'` bundle layers only. */
+  dump?: 'config' | 'default'
+}
+
 /** The resolved `dsh` invocation. Help, version, and errors exit inside {@link parseDshArgs}. */
-export type DshInvocation = ProfileInvocation | DumpConfigInvocation | PluginInvocation
+export type DshInvocation = ProfileInvocation | DumpConfigInvocation | PluginInvocation | AcpInvocation
 
 /** Launcher flags shared by the default command and the `web` alias. */
 interface BootOptions {
@@ -65,6 +84,7 @@ const HELP_EXAMPLES = `
 Examples:
   dsh --profile web                          boot the web profile (same as: dsh web)
   dsh --profile headless "run the tests"     answer one task, print the result, and exit
+  dsh acp                                    serve the Agent Client Protocol on stdio (external GUIs)
   dsh --profile tui --patch ./extra.yml      boot a custom profile with one extra overlay
   dsh --profile tui --resume <session>       arguments after the launcher flags reach the app
   dsh --profile web --help                   the web app's own flags and help
@@ -178,6 +198,47 @@ export function parseDshArgs(argv: readonly string[], version: string): DshInvoc
       if (options.profile === '') program.error('error: --profile needs a name')
       if (args.length === 0) program.error('error: plugin needs pnpm arguments to forward (e.g. add <package>)')
       resolved = { mode: 'plugin', profile: options.profile, args }
+    })
+
+  // Unlike web/plugin, unknown acp flags are rejected rather than forwarded:
+  // the bridge speaks stdio JSON-RPC, so there is no inner app a typo could
+  // legitimately belong to, and a stable entrypoint must fail loud on one.
+  const acp = program.command('acp').description('serve DeepSeek Harness over the Agent Client Protocol (JSON-RPC on stdio) for external GUI clients; stdout carries protocol frames only')
+  // The root disables its own help option (the booted app owns -h); this
+  // surface has no inner app, so it takes the help back for itself.
+  acp
+    .helpOption('-h, --help', 'show the acp entrypoint flags')
+    .option('--profile <name>', 'the profile under $DSH_HOME/profiles whose composition serves under the bridge (default: acp, auto-initialized from @deepseek-ai/dsh-base on first use)')
+    .option('--provider <name>', 'provider route for sessions created over the bridge')
+    .option('--model <id>', 'model id for sessions created over the bridge')
+    .option('--patch <path>', 'extra patch-list overlay applied after the profile layer (repeatable)', collect)
+    .option('--dump-config', 'print the composed profile tree including the acp bridge row and exit')
+    .option('--dump-default-config', 'print the profile\'s bundle layers (no user layer or bridge row) and exit')
+    .argument('[args...]', 'must stay empty: the bridge has no app arguments')
+    .action((args: string[], options: BootOptions & { profile?: string; provider?: string; model?: string }) => {
+      rejectParentOptions('acp')
+      if (args.length > 0) {
+        program.error(`error: acp takes no positional arguments, got ${args.map(argument => JSON.stringify(argument)).join(' ')}`)
+      }
+      if (options.profile === '') program.error('error: --profile needs a name')
+      const patches = options.patch ?? []
+      if (patches.includes('')) program.error('error: --patch needs a path')
+      if (options.dumpConfig === true && options.dumpDefaultConfig === true) {
+        program.error('error: --dump-config and --dump-default-config are mutually exclusive')
+      }
+      if (options.dumpDefaultConfig === true && patches.length > 0) {
+        program.error('error: --dump-default-config prints the bundle layers and takes no --patch')
+      }
+      resolved = {
+        mode: 'acp',
+        patches,
+        ...(options.profile !== undefined ? { profile: options.profile } : {}),
+        ...(options.provider !== undefined ? { provider: options.provider } : {}),
+        ...(options.model !== undefined ? { model: options.model } : {}),
+        ...(options.dumpConfig === true
+          ? { dump: 'config' as const }
+          : options.dumpDefaultConfig === true ? { dump: 'default' as const } : {}),
+      }
     })
 
   try {

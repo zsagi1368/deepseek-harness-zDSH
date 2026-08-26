@@ -170,14 +170,17 @@ function allPatches(composed: ComposedProfile): PatchOptions[] {
  * platform on its own rows), the profile's user layer, the home-level user
  * layer (`$DSH_HOME/cordis.patch.yml` — machine-local preferences that apply
  * to every profile, so it outranks the per-profile layer), `--patch` overlays,
- * then the telemetry switch.
+ * the telemetry switch, then launcher-derived extras
+ * ({@link RunProfileOptions.extraPatches}).
  * @param name - the profile name.
  * @param patchFiles - `--patch` overlay paths, in argv order.
+ * @param extraPatches - launcher-derived overlay rows appended after the file layers.
  * @returns the profile, its patch layers, and the composed row index.
  */
 function composeProfile(
   name: string,
   patchFiles: readonly string[],
+  extraPatches: readonly PatchOptions[] = [],
 ): ComposedProfile {
   const profile = prepareProfile(name)
   const homePatches = loadOptionalPatches(NAME, homePatchPath()) ?? []
@@ -202,6 +205,8 @@ function composeProfile(
   }
   const telemetryPatch = resolveTelemetryPatch(process.env.DSH_TELEMETRY_DISABLED, rows.has(TELEMETRY_ROW_ID))
   if (telemetryPatch !== undefined) composedOverlays.push(telemetryPatch)
+  composedOverlays.push(...mergeExtraPatches(extraPatches, rows,
+    line => void process.stderr.write(`${line}\n`)))
   return { profile, bundlePatches, homePatches, overlays: composedOverlays, rows }
 }
 
@@ -215,6 +220,53 @@ export interface RunProfileOptions {
   patchFiles: readonly string[]
   /** The invocation's inner arguments, handed to the tree through `ctx.cmdlineArgs`. */
   args: readonly string[]
+  /**
+   * Launcher-derived overlay rows appended after every file layer (and the
+   * telemetry switch), so they have the last word on their rows. A row an
+   * extra patch inserts under an id the composed tree already mounts is
+   * skipped with a warning instead of double-mounting; id-targeted patches in
+   * this list still apply when their row exists.
+   */
+  extraPatches?: readonly PatchOptions[]
+}
+
+/**
+ * Merge launcher-derived overlay patches after the file layers. Only inserted
+ * rows can collide: mounting an insert under an id the composition already
+ * mounts would register the same plugin twice, so such a patch is skipped with
+ * a warning naming the existing row as the winner. A plain id-targeted patch
+ * is a normal overlay application and always passes through.
+ * @param extras - the launcher-derived patches, in append order.
+ * @param rows - id index of the composition built so far; read-only input, extended internally while merging this batch.
+ * @param warn - sink for skipped-patch diagnostics.
+ * @returns the accepted patches, verbatim, in input order.
+ */
+export function mergeExtraPatches(
+  extras: readonly PatchOptions[],
+  rows: ReadonlyMap<string, EntryOptions>,
+  warn: (line: string) => void,
+): PatchOptions[] {
+  const accepted: PatchOptions[] = []
+  const mounted = new Map(rows)
+  for (const patch of extras) {
+    const inserted = patch.insert ?? []
+    const collision = inserted
+      .map(entry => entry.id)
+      .filter((id): id is string => typeof id === 'string')
+      .find(id => mounted.has(id))
+    if (collision !== undefined) {
+      warn(`${NAME}: profile already mounts row ${JSON.stringify(collision)}; skipping the launcher-injected overlay`)
+      continue
+    }
+    accepted.push(patch)
+    if (patch.id !== undefined) {
+      mounted.set(patch.id, { ...patch } as EntryOptions)
+    }
+    for (const entry of inserted) {
+      if (typeof entry.id === 'string') mounted.set(entry.id, entry)
+    }
+  }
+  return accepted
 }
 
 /**
@@ -262,7 +314,7 @@ export async function runProfile(options: RunProfileOptions): Promise<{ ctx: Con
   const progress = createBootProgress({ prefix: `${NAME} ${options.profile}` })
   const composed = await progress.phase(
     'resolving configuration',
-    () => composeProfile(options.profile, options.patchFiles),
+    () => composeProfile(options.profile, options.patchFiles, options.extraPatches ?? []),
   )
   const app: { current?: Context } = {}
   const shutdown = createProcessShutdown(async () => { await app.current?.fiber.dispose() })

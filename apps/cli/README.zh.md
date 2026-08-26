@@ -11,9 +11,22 @@
 | `dsh --profile <name>` | 启动位于 `$DSH_HOME/profiles/<name>` 的指定 profile。 |
 | `dsh --profile headless "job"` | 运行一个全新的持久化会话，打印最终答案并退出。 |
 | `dsh web` | `--profile web` 的别名。 |
+| `dsh acp` | 通过 Agent Client Protocol（JSON-RPC stdio）对外部 GUI 客户端提供 DeepSeek Harness 服务。 |
 | `dsh plugin --profile <name> <pnpm args>` | 通过在 profile 目录中转发给 pnpm 来管理该 profile 的插件。 |
 
 运行命令时所在的目录将作为默认 workspace 根目录。`web` 和 `headless` profile 在首次使用时会从随附模板自动初始化；其他任何 profile 都必须通过 `dsh plugin` 创建。
+
+## ACP 入口
+
+`dsh acp` 是面向外部工作台的稳定入口，供其通过 [Agent Client Protocol](https://agentclientprotocol.com) 接入：该命令启动一份标准 profile 组合，并在其上挂载 `@deepseek-ai/dsh-acp` 桥接层，随后在 stdin/stdout 上提供 JSON-RPC 服务。stdout 只承载协议帧（无横幅、无进度行）；诊断信息走 stderr。`--provider <name>` 与 `--model <id>` 为桥接创建的会话选择模型路由；`--dump-config` 打印组合后的配置树（含桥接行）。
+
+```sh
+dsh acp                                        # default profile `acp`, composition model defaults
+dsh acp --provider deepseek-official --model deepseek-v4-pro
+dsh acp --dump-config                          # inspect the tree without booting
+```
+
+`acp` profile（仅基础组合包，不预建 agent）会在首次使用时自动初始化；指定 `--profile <name>` 则改为服务任一既有 profile 的组合。ACP 客户端是受信任的程序化对端：它可以在与其他所有入口相同的权限瀑布下驱动完整的 harness（`DSH_PERMISSION_MODE` 原样生效），且权限答复永远不会被推断为持久授权。
 
 ## 首次运行预期
 
