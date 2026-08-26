@@ -179,6 +179,10 @@ function spawnBrowserLauncher(url: string): ChildProcess {
   ], {
     env: scrubbedParentEnv(),
     stdio: ['ignore', 'inherit', 'pipe'],
+    // The opener chain reaches powershell's Start-Process; without this flag
+    // a windowless ancestor (GUI launch, some IDE terminals) makes that
+    // console child allocate a VISIBLE extra console window (S-06).
+    ...process.platform === 'win32' ? { windowsHide: true } : {},
   })
 }
 

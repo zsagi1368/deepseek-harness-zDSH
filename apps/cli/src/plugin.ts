@@ -10,7 +10,7 @@
  * @module @deepseek-ai/dsh/plugin
  */
 
-import { spawnSync } from 'node:child_process'
+import { spawnSync, type SpawnSyncOptions } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import {
@@ -112,6 +112,25 @@ function anchorPathSpec(argument: string, cwd: string): string {
 }
 
 /**
+ * Options for the launcher's one child-process surface, the pnpm forwarder.
+ * Windows resolves pnpm through its `.cmd` shim, which spawn() refuses to run
+ * without a shell since the CVE-2024-27980 hardening; every host also hides
+ * the child's console window (`windowsHide`), so a `dsh plugin` launched from
+ * a terminal host that does not share its console with children never flashes
+ * a second console window (S-06). The flag maps to CREATE_NO_WINDOW and leaves
+ * stdio plumbing, buffering, and exit codes untouched.
+ * @param platform - the host platform (`process.platform`).
+ * @returns the spawnSync options every pnpm forwarding call shares; `cwd` stays at the call site.
+ */
+export function pnpmForwardSpawnOptions(platform: NodeJS.Platform): SpawnSyncOptions {
+  return {
+    stdio: 'inherit',
+    shell: platform === 'win32',
+    windowsHide: true,
+  }
+}
+
+/**
  * Run one `dsh plugin` invocation: init if needed, forward to pnpm, reconcile.
  * @param profile - the profile name.
  * @param args - pnpm arguments with relative path specs anchored to the invoking directory.
@@ -124,12 +143,9 @@ export function runPlugin(profile: string, args: readonly string[]): number {
     process.stderr.write(`${NAME}: initialized profile ${profile} at ${dir}\n`)
   }
   const before = readProfileManifest(NAME, dir)
-  // Windows resolves pnpm through its .cmd shim, which spawn() refuses
-  // without a shell since the CVE-2024-27980 hardening.
   const result = spawnSync('pnpm', args.map(argument => anchorPathSpec(argument, process.cwd())), {
     cwd: dir,
-    stdio: 'inherit',
-    shell: process.platform === 'win32',
+    ...pnpmForwardSpawnOptions(process.platform),
   })
   if (result.error !== undefined) {
     const code = (result.error as NodeJS.ErrnoException).code

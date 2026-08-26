@@ -15,6 +15,14 @@
 
 运行命令时所在的目录将作为默认 workspace 根目录。`web` 和 `headless` profile 在首次使用时会从随附模板自动初始化；其他任何 profile 都必须通过 `dsh plugin` 创建。
 
+## Windows 控制台窗口
+
+在部分 Windows 终端宿主上，`dsh web` 把 URL 交给默认浏览器时会闪出第二个后端控制台窗口。可在禁用浏览器交接的情况下启动，然后手动打开打印出的 URL：
+
+```sh
+dsh web --no-open
+```
+
 ## 应用参数
 
 启动器只解析自身的 flag，并将其后的所有内容交给已启动的 profile；注入该 profile 的任意应用插件都可以解析这份共享的不可变快照（[`dsh-cmdline`](../../packages/boot/cmdline/README.zh.md)）。因此，启动器的 flag 必须写在最前面；启动器无法识别的第一个 token 标志着应用参数的开始：

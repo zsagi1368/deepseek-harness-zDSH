@@ -15,6 +15,14 @@ The `dsh` command is the product launcher for profiles: ordered stacks of plugin
 
 The invoking directory is the default workspace root. The `web` and `headless` profiles auto-initialize on first use from shipped templates; any other profile must be created through `dsh plugin`.
 
+## Windows console window
+
+Some Windows terminal hosts flash a second backend console window while `dsh web` hands its URL to the default browser. Start with the browser handoff disabled and open the printed URL manually:
+
+```sh
+dsh web --no-open
+```
+
 ## App arguments
 
 The launcher parses only its own flags and hands everything after them to the booted profile, where any injected app plugin may parse the shared immutable snapshot ([`dsh-cmdline`](../../packages/boot/cmdline/README.md)). Launcher flags therefore come first, and the first token the launcher does not recognize starts the app's arguments:
