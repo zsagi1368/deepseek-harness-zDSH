@@ -8,8 +8,13 @@
 // (`time` is omitted for mid-turn narration and while the turn still runs);
 // their branch action is enabled only when the node is also the completed
 // turn's transcript tail. Think / tool-head-only nodes stay chrome-free.
+//
+// S-10 visibility guarantee: each rendered block sits behind a per-block
+// visibility boundary, so a crashing rich renderer degrades to a raw-text /
+// raw-JSON face instead of bubbling to the slot boundary whose empty crash
+// div would make produced output vanish from the transcript.
 
-import { Fragment, memo, useMemo } from 'react'
+import { Component, Fragment, memo, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import type { AssistantBlock } from '@deepseek-ai/dsh-client-runtime/client'
 import { JsonBlock, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -29,6 +34,57 @@ export interface AssistantMarkdownProps {
   mentions?: MarkdownFileMentions | undefined
   /** The owning view's locale seat, passed down as a plain prop. */
   t: ChatViewSlotProps['t']
+}
+
+interface BlockVisibilityBoundaryProps {
+  /** What paints instead of the crashed renderer; already localized/marked. */
+  readonly fallback: ReactNode
+  /** Payload identity: a changed token retries the real renderer once per value. */
+  readonly resetToken: string
+  readonly children: ReactNode
+}
+
+/**
+ * Per-block error isolation for one assistant block. A render throw inside the
+ * wrapped subtree swaps in `fallback` locally, keeping the block's content on
+ * the record; sibling blocks and the surrounding entry stay untouched. The
+ * boundary self-heals: when `resetToken` changes after a failure (fresh stream
+ * delta or settled swap), it retries the real renderer — identical input would
+ * just re-throw, so retry granularity is one attempt per new payload.
+ */
+class BlockVisibilityBoundary extends Component<BlockVisibilityBoundaryProps, { failed: boolean }> {
+  override state = { failed: false }
+
+  static getDerivedStateFromError(): { failed: boolean } {
+    return { failed: true }
+  }
+
+  override componentDidCatch(error: unknown): void {
+    console.error('assistant block render failed; showing raw fallback:', error)
+  }
+
+  override componentDidUpdate(previous: BlockVisibilityBoundaryProps): void {
+    if (this.state.failed && previous.resetToken !== this.props.resetToken) {
+      this.setState({ failed: false })
+    }
+  }
+
+  override render(): ReactNode {
+    return this.state.failed ? this.props.fallback : this.props.children
+  }
+}
+
+/** Best-effort serialization for the unknown-block crash face. */
+function RawJsonFallback({ payload }: { payload: unknown }) {
+  let serialized: string
+  try {
+    // lib typing hides stringify's undefined arm (undefined/function/symbol payloads).
+    // oxlint-disable-next-line typescript/no-unnecessary-condition
+    serialized = JSON.stringify(payload, null, 2) ?? String(payload)
+  } catch {
+    serialized = String(payload)
+  }
+  return <pre className={css.rawFallback} data-assistant-fallback="json">{serialized}</pre>
 }
 
 /** Reasoning block as the Think variant summary row (figma 39:28304). */
@@ -53,17 +109,30 @@ export const AssistantMarkdown = memo(function AssistantMarkdown({
     switch (block.kind) {
       case 'text':
         rendered.push(
-          <MarkdownText
+          <BlockVisibilityBoundary
             key={i}
-            text={block.text}
-            streaming={streaming}
-            codeLabels={codeLabels}
-            fileMentions={mentions}
-          />,
+            resetToken={block.text}
+            fallback={<pre className={css.rawFallback} data-assistant-fallback="text">{block.text}</pre>}
+          >
+            <MarkdownText
+              text={block.text}
+              streaming={streaming}
+              codeLabels={codeLabels}
+              fileMentions={mentions}
+            />
+          </BlockVisibilityBoundary>,
         )
         break
       case 'reasoning':
-        rendered.push(<ReasoningRow key={i} text={block.text} running={streaming && i === last} t={t} />)
+        rendered.push(
+          <BlockVisibilityBoundary
+            key={i}
+            resetToken={block.text}
+            fallback={<pre className={css.rawFallback} data-assistant-fallback="reasoning">{block.text}</pre>}
+          >
+            <ReasoningRow text={block.text} running={streaming && i === last} t={t} />
+          </BlockVisibilityBoundary>,
+        )
         break
       case 'image': {
         // Consecutive image blocks share one gallery so several images tile
@@ -94,12 +163,17 @@ export const AssistantMarkdown = memo(function AssistantMarkdown({
         break
       default:
         rendered.push(
-          <JsonBlock
+          <BlockVisibilityBoundary
             key={i}
-            label={t('message.unknownBlock')}
-            payload={block.block}
-            truncatedLabel={total => t('json.truncated', { total })}
-          />,
+            resetToken={String(i)}
+            fallback={<RawJsonFallback payload={block.block} />}
+          >
+            <JsonBlock
+              label={t('message.unknownBlock')}
+              payload={block.block}
+              truncatedLabel={total => t('json.truncated', { total })}
+            />
+          </BlockVisibilityBoundary>,
         )
     }
   }

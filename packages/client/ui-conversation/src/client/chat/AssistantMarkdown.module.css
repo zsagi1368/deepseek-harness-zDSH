@@ -50,6 +50,18 @@
   line-height: 18px;
 }
 
+/* S-10 crash face: when a rich renderer (markdown / reasoning / JSON) throws,
+   the block degrades to this raw face instead of vanishing with the slot's
+   empty crash div — assistant output must stay on the record. */
+.rawFallback {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary);
+}
+
 /* Finalized footer offset (figma 43:32997); chrome lives in MessageIconActions. */
 .actions {
   margin-top: 16px;
