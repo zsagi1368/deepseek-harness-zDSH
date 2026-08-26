@@ -53,6 +53,41 @@ export function homePatchPath(): string {
 /** Absolute path of this dsh installation's package.json (both anchors: src/ and lib/ sit one level under apps/cli). */
 export const INSTALL_ANCHOR = fileURLToPath(new URL('../package.json', import.meta.url))
 
+/** The launcher-injected root entry shape (the shipped presets beside this app). */
+interface SystemRootEntry {
+  path: string
+  trust: 'system'
+}
+
+/**
+ * Merge the shipped preset root into one agent-presets row's config WITHOUT
+ * discarding the user's own roots (#403): the previous overlay replaced the
+ * `roots` array wholesale, so every user-configured custom root silently
+ * never took effect while `--dump-config` (which runs before this injection)
+ * showed the configuration as if it would. The shipped root is appended
+ * unless the user already lists it — resolved paths compared, case-folded on
+ * Windows — so a duplicate never double-scans. A malformed (non-array)
+ * `roots` falls back to the shipped-only list, keeping the boot deterministic.
+ * @param userConfig - the composed user-side agent-presets row config, verbatim.
+ * @returns the final config whose roots carry the user's entries plus the shipped root.
+ */
+export function mergedPresetRootsConfig(userConfig: Record<string, unknown>): Record<string, unknown> {
+  const shipped: SystemRootEntry = { path: SHIPPED_PRESET_ROOT, trust: 'system' }
+  const userRoots = userConfig.roots
+  if (!Array.isArray(userRoots)) return { ...userConfig, roots: [shipped] }
+  const shippedResolved = resolve(SHIPPED_PRESET_ROOT).toLowerCase()
+  const listed = userRoots.some((entry) => {
+    if (typeof entry !== 'object' || entry === null) return false
+    const path = (entry as { path?: unknown }).path
+    if (typeof path !== 'string') return false
+    return process.platform === 'win32'
+      ? resolve(path).toLowerCase() === shippedResolved
+      : resolve(path) === shippedResolved
+  })
+  const userRootEntries = userRoots as unknown[]
+  return listed ? userConfig : { ...userConfig, roots: [...userRootEntries, shipped] }
+}
+
 /** The session-telemetry row id the DSH_TELEMETRY_DISABLED switch targets. */
 const TELEMETRY_ROW_ID = 'session-telemetry-otel'
 
@@ -159,10 +194,9 @@ function composeProfile(
   if (rows.has('agent-presets')) {
     composedOverlays.push({
       id: 'agent-presets',
-      config: {
-        ...(rows.get('agent-presets')?.config ?? {}) as Record<string, unknown>,
-        roots: [{ path: SHIPPED_PRESET_ROOT, trust: 'system' }],
-      },
+      config: mergedPresetRootsConfig(
+        (rows.get('agent-presets')?.config ?? {}) as Record<string, unknown>,
+      ),
     })
   }
   const telemetryPatch = resolveTelemetryPatch(process.env.DSH_TELEMETRY_DISABLED, rows.has(TELEMETRY_ROW_ID))
