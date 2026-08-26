@@ -1,4 +1,4 @@
-import { MessageId, createUserMessage, createMessage } from '@deepseek-ai/dsh-llm'
+import { MessageId, CallId, createUserMessage, createMessage } from '@deepseek-ai/dsh-llm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { appendFile, mkdtemp, mkdir, rm, readFile, writeFile, readdir, stat, symlink } from 'node:fs/promises'
@@ -848,11 +848,19 @@ describe('JsonlSessionPersistence: scanLog unit', () => {
     ].join('\n')))
     expect(scanner.finish().events).toEqual([oneTurnLog()[0]])
 
-    const committed = new SessionLogScanner(header)
-    expect(() => { committed.write(Buffer.from([
-      JSON.stringify({ type: 'turn/end', seq: 1, time: 2, data: { turn: 1, reason: { kind: 'completed' } } }),
+    // A seq REWIND is not corruption anymore (#333): the second copy of seq 0
+    // replaces the first in replay order, and the trailing turn/end commits.
+    const healed = new SessionLogScanner(header)
+    healed.write(Buffer.from([
+      JSON.stringify({ type: 'turn/start', seq: 0, time: 1, data: { turn: 1 } }),
+      JSON.stringify({ type: 'turn/start', seq: 0, time: 2, data: { turn: 2 } }),
+      JSON.stringify({ type: 'turn/end', seq: 1, time: 3, data: { turn: 2, reason: { kind: 'completed' } } }),
       '',
-    ].join('\n'))) }).toThrow(/seq gap in committed region/)
+    ].join('\n')))
+    const healedScan = healed.finish()
+    expect(healedScan.events.map(event => event.seq)).toEqual([0, 1])
+    expect(healedScan.heal).toMatchObject({ replacedEvents: 1, renumberedEvents: 0 })
+    expect(typeof healedScan.heal?.startByte).toBe('number')
   })
 
   it('incrementally scans records split across reusable decoder chunks', () => {
@@ -948,28 +956,34 @@ describe('JsonlSessionPersistence: scanLog unit', () => {
     expect(() => scanLog(Buffer.from(log))).toThrow(/session header/)
   })
 
-  it('a seq gap after the last turn/end bounds the preserved tail (torn fragment tolerated)', () => {
+  it('a seq gap after the last turn/end heals by renumbering (data kept, not dropped)', () => {
     const log = [
       JSON.stringify({ type: 'session', version: 0, id: 'g', createdAt: 1, delegationDepth: 0 }),
       JSON.stringify({ type: 'turn/start', seq: 0, time: 1, data: { turn: 1 } }),
       JSON.stringify({ type: 'step/start', seq: 2, time: 2, data: { turn: 1, step: 1 } }), // gap: missing seq 1
     ].join('\n') + '\n'
-    // No committed turn/end, so the gap is a tolerated crash boundary: scanLog PRESERVES the
-    // contiguous prefix (turn/start seq 0) — real interrupted-turn work, not discarded — and
-    // stops at the gap. `loadCore`, not this scanner, later closes the orphaned turn.
-    expect(scanLog(Buffer.from(log)).events.map(e => e.seq)).toEqual([0])
+    // #333 semantics: a well-formed row whose seq skips forward is renumbered to
+    // the next replay position instead of truncating real interrupted-turn work.
+    // The scanner never refuses; `loadCore` later closes the orphaned turn.
+    const scanned = scanLog(Buffer.from(log))
+    expect(scanned.events.map(e => e.seq)).toEqual([0, 1])
+    expect(scanned.heal).toMatchObject({ replacedEvents: 0, renumberedEvents: 1 })
+    expect(typeof scanned.heal?.startByte).toBe('number')
   })
 
-  it('rejects a seq gap BEFORE a later committed turn/end (committed data damaged)', () => {
+  it('heals a seq gap BEFORE a later committed turn/end by renumbering (#333)', () => {
     const log = [
       JSON.stringify({ type: 'session', version: 0, id: 'g2', createdAt: 1, delegationDepth: 0 }),
       JSON.stringify({ type: 'turn/start', seq: 0, time: 1, data: { turn: 1 } }),
       JSON.stringify({ type: 'step/start', seq: 2, time: 2, data: { turn: 1, step: 1 } }), // gap: missing seq 1
       JSON.stringify({ type: 'turn/end', seq: 3, time: 3, data: { turn: 1, reason: { kind: 'completed' } } }),
     ].join('\n') + '\n'
-    // A turn/end exists, so the prefix up to it is committed — but it has a hole.
-    // Truncating it would silently drop committed data → unloadable.
-    expect(() => scanLog(Buffer.from(log))).toThrow(/seq gap in committed region/)
+    // Previously this shape refused the whole session ("seq gap in committed
+    // region"); replay healing keeps every event and closes the hole in order.
+    const scanned = scanLog(Buffer.from(log))
+    expect(scanned.events.map(event => event.seq)).toEqual([0, 1, 2])
+    expect(scanned.events.map(event => event.type)).toEqual(['turn/start', 'step/start', 'turn/end'])
+    expect(scanned.committedBytes).toBe(Buffer.byteLength(log, 'utf8'))
   })
 
   it('rejects a corrupt line BEFORE a later committed turn/end (committed data damaged)', () => {
@@ -1000,15 +1014,30 @@ describe('JsonlSessionPersistence: scanLog unit', () => {
     expect(scanLog(Buffer.from(log)).events.map(e => e.seq)).toEqual([0])
   })
 
-  it('tolerates a seq gap AFTER a turn/end (uncommitted tail)', () => {
+  it('tolerates a seq gap AFTER a turn/end by renumbering the tail (uncommitted tail kept)', () => {
     const log = [
       JSON.stringify({ type: 'session', version: 0, id: 't', createdAt: 1, delegationDepth: 0 }),
       JSON.stringify({ type: 'turn/start', seq: 0, time: 1, data: { turn: 1 } }),
       JSON.stringify({ type: 'turn/end', seq: 1, time: 2, data: { turn: 1, reason: { kind: 'completed' } } }),
       JSON.stringify({ type: 'step/start', seq: 9, time: 3, data: { turn: 2, step: 1 } }), // gap in uncommitted tail
     ].join('\n') + '\n'
-    const { events } = scanLog(Buffer.from(log))
-    expect(events.map(e => e.seq)).toEqual([0, 1]) // tail dropped
+    // #333 semantics: the well-formed tail row is kept and renumbered rather
+    // than dropped — replay never loses a parseable event over seq numbering.
+    const scanned = scanLog(Buffer.from(log))
+    expect(scanned.events.map(e => e.seq)).toEqual([0, 1, 2])
+    expect(scanned.heal).toMatchObject({ replacedEvents: 0, renumberedEvents: 1 })
+  })
+
+  it('a normal contiguous log reports no heal and keeps legacy scan output byte-for-byte', () => {
+    const log = [
+      JSON.stringify({ type: 'session', version: 0, id: 'clean', createdAt: 1, delegationDepth: 0 }),
+      ...oneTurnLog().map(event => JSON.stringify(event)),
+      '',
+    ].join('\n')
+    const scanned = scanLog(Buffer.from(log))
+    expect(scanned.events).toEqual(oneTurnLog())
+    expect(scanned.committedBytes).toBe(Buffer.byteLength(log, 'utf8'))
+    expect(scanned.heal).toBeUndefined()
   })
 })
 
@@ -1143,18 +1172,19 @@ describe('JsonlSessionPersistence: default packed chunk rows', () => {
     expect(() => scanLog(Buffer.from(logText))).toThrow(/unparsable committed event/)
   })
 
-  it('scanLog: a packed row with a mid-run seq gap after the last turn/end drops the whole row', () => {
+  it('scanLog: a packed row with a mid-run seq gap after the last turn/end heals by renumbering', () => {
     const logText = [
       JSON.stringify({ type: 'session', version: 0, id: 'row-gap', createdAt: 1, delegationDepth: 0 }),
       JSON.stringify({ type: 'turn/start', seq: 0, time: 1, data: { turn: 1 } }),
-      // seq0 skips 1 — the run's first member is already a gap; no turn/end follows.
+      // seq0 skips 1 — the run's first member is already a forward gap; the
+      // whole run is renumbered to the next replay positions (#333).
       JSON.stringify({ type: 'text-chunks', seq0: 2, time0: 2, data: { turn: 1, step: 1, index: 0, dt: [1, 1], texts: ['a', 'b', 'c'] } }),
     ].join('\n') + '\n'
     const scanned = scanLog(Buffer.from(logText))
-    expect(scanned.events.map(e => e.seq)).toEqual([0])
-    // committedBytes stays on the line boundary BEFORE the dropped row.
-    const headerAndTurn = logText.split('\n').slice(0, 2).join('\n') + '\n'
-    expect(scanned.committedBytes).toBe(Buffer.byteLength(headerAndTurn, 'utf8'))
+    expect(scanned.events.map(e => e.seq)).toEqual([0, 1, 2, 3])
+    expect(scanned.heal).toMatchObject({ replacedEvents: 0, renumberedEvents: 3 })
+    // The healed rows are complete records, so the committed cursor advances.
+    expect(scanned.committedBytes).toBe(Buffer.byteLength(logText, 'utf8'))
   })
 
   it('eventLines(packChunks: false) is byte-identical to the pre-packing layout', () => {
@@ -1618,4 +1648,217 @@ describe('JsonlSessionPersistence: edge cases', () => {
     expect(session.events.length).toBe(0)
   })
 
+})
+
+/**
+ * The exact damage shape from issue #333: an interrupted tool call durably
+ * wrote synthetic closers (placeholder `interrupted-tool-result-*` result,
+ * step/end, interrupted turn/end, session/end-seed), and the physically later
+ * real events for the same call were appended with THE SAME seqs, rewinding
+ * the log. Replay must heal (placeholders yield to the reals) instead of
+ * refusing the session, and the writer must never produce such overlap.
+ */
+describe('JsonlSessionPersistence: seq monotonic self-healing (#333)', () => {
+  let ctx: Context
+  let warns: Array<unknown[]>
+  let rootDir: string
+
+  beforeEach(async () => {
+    rootDir = await freshRoot()
+    ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(JsonlSessionPersistence, { root: rootDir, compression: 'none' })
+    warns = []
+    vi.spyOn(ctx.logger, 'warn').mockImplementation((...args: unknown[]) => { warns.push(args) })
+  })
+  afterEach(async () => { await ctx.fiber.dispose() })
+
+  /** A current-vocabulary tool/result whose text distinguishes placeholder from real outcomes. */
+  function toolResult(seq: number, time: number, callId: string, text: string): SessionEvent {
+    const branded = CallId(callId)
+    return {
+      type: 'tool/result',
+      seq,
+      time,
+      data: {
+        turn: 2,
+        step: 1,
+        message: createMessage({
+          role: 'user',
+          content: [{ type: 'tool-result', toolCallId: branded, isError: false, content: [{ type: 'text', text }] }],
+          source: { kind: 'tool', callId: branded },
+        }),
+      },
+      surfaceOp: 'append',
+    } as unknown as SessionEvent
+  }
+
+  function stepEnd(seq: number, time: number, step: number): SessionEvent {
+    return { type: 'step/end', seq, time, data: { turn: 2, step } }
+  }
+
+  function stepStart(seq: number, time: number, step: number): SessionEvent {
+    return { type: 'step/start', seq, time, data: { turn: 2, step } }
+  }
+
+  /**
+   * Plant the corrupted log: committed prefix through an open turn 2 (seqs
+   * 0..6), then the duplicate-seq placeholder block (seqs 7..10) and the real
+   * block replaying the same seqs (7..10), then continuation from 11.
+   */
+  async function plantCorruptedLog(id: string): Promise<SessionHeader> {
+    const m = meta(id, '/work')
+    const chunk = (seq: number, time: number, text: string): SessionEvent => ({
+      type: 'assistant/chunk',
+      seq,
+      time,
+      data: { turn: 2, step: 2, chunk: { type: 'text-delta', index: 0, text } },
+    })
+    const lines = [
+      JSON.stringify(toHeaderLine(m)),
+      ...oneTurnLog().map(event => JSON.stringify(event)),
+      JSON.stringify({ type: 'turn/start', seq: 6, time: 7, data: { turn: 2 } }),
+      // Placeholder block (synthetic interrupt closers), seqs 7..10:
+      JSON.stringify(toolResult(7, 7, 'call-9', 'interrupted placeholder')),
+      JSON.stringify(stepEnd(8, 7, 1)),
+      JSON.stringify({ type: 'turn/end', seq: 9, time: 7, data: { turn: 2, reason: { kind: 'interrupted' } } }),
+      JSON.stringify({ type: 'session/end-seed', seq: 10, time: 7, data: {} }),
+      // Real block replaying the SAME seqs 7..10 — the #333 rewind point:
+      JSON.stringify(toolResult(7, 8, 'call-9', 'real result')),
+      JSON.stringify(stepEnd(8, 9, 1)),
+      JSON.stringify(stepStart(9, 10, 2)),
+      JSON.stringify(chunk(10, 11, 'hello')),
+      // Continuation from the expected next seq 11:
+      JSON.stringify(stepEnd(11, 12, 2)),
+      JSON.stringify({ type: 'turn/end', seq: 12, time: 13, data: { turn: 2, reason: { kind: 'completed' } } }),
+      '',
+    ]
+    await mkdir(sessionDir(rootDir, '/work', m.id), { recursive: true })
+    await writeFile(rawLogPath(rootDir, '/work', m.id), lines.join('\n'))
+    return m
+  }
+
+  it('heals the duplicated interrupt-placeholder block on load and keeps the real events', async () => {
+    const m = await plantCorruptedLog('heal-dup')
+
+    // Acceptance #333-3/#333-1: the scanner recovers instead of refusing, and
+    // resume yields the balanced transcript with strictly contiguous seqs.
+    const loaded = await ctx.sessionPersistence.load(m.id)
+    expect(loaded.events.map(e => e.seq)).toEqual([...Array(13).keys()])
+    const serialized = JSON.stringify(loaded.events)
+    expect(serialized).toContain('real result')
+    expect(serialized).not.toContain('interrupted placeholder')
+    expect(serialized).not.toContain('session/end-seed')
+    // The healed block is exactly the real events in stored order.
+    expect(loaded.events.slice(7, 11).map(e => e.type))
+      .toEqual(['tool/result', 'step/end', 'step/start', 'assistant/chunk'])
+    // Observable trace of the self-healing.
+    expect(warns.some(args => String(args[0]).includes(`healed session log "${m.id}"`))).toBe(true)
+
+    // Acceptance #333-2: the repair commit replaces the duplicated bytes with
+    // the normalized log, so the physical file holds one contiguous copy.
+    const rescan = scanLog(await readFile(rawLogPath(rootDir, '/work', m.id)))
+    expect(rescan.heal).toBeUndefined()
+    expect(rescan.events.map(e => e.seq)).toEqual([...Array(13).keys()])
+    expect(JSON.stringify(rescan.events)).toContain('real result')
+    expect(JSON.stringify(rescan.events)).not.toContain('interrupted placeholder')
+
+    // Reloading the normalized log is warning-free zero-behavior-change.
+    const warnCount = warns.length
+    const reloaded = await ctx.sessionPersistence.load(m.id)
+    expect(reloaded.events).toEqual(loaded.events)
+    expect(warns.length).toBe(warnCount)
+  })
+
+  it('resume appends continue the healed log contiguously after normalization', async () => {
+    const m = await plantCorruptedLog('heal-resume')
+    await ctx.sessionPersistence.load(m.id)
+    await ctx.sessionPersistence.append(m.id, [
+      { type: 'turn/start', seq: 13, time: 14, data: { turn: 3 } },
+      { type: 'turn/end', seq: 14, time: 15, data: { turn: 3, reason: { kind: 'completed' } } },
+    ] as SessionEvent[])
+    const loaded = await ctx.sessionPersistence.load(m.id)
+    expect(loaded.events.map(e => e.seq)).toEqual([...Array(15).keys()])
+    const rescan = scanLog(await readFile(rawLogPath(rootDir, '/work', m.id)))
+    expect(rescan.heal).toBeUndefined()
+    expect(rescan.events).toHaveLength(15)
+  })
+
+  it('a forward seq gap mid-log heals by renumbering without refusing the session', async () => {
+    // Drop one event from an otherwise clean log (a lost row between fsyncs):
+    // replay closes the hole in order instead of rejecting the whole session.
+    const m = meta('heal-gap', '/work')
+    const full = oneTurnLog()
+    const gapped = full.filter(event => event.seq !== 3)
+    const lines = [
+      JSON.stringify(toHeaderLine(m)),
+      ...gapped.map(event => JSON.stringify(event)),
+      '',
+    ]
+    await mkdir(sessionDir(rootDir, '/work', m.id), { recursive: true })
+    await writeFile(rawLogPath(rootDir, '/work', m.id), lines.join('\n'))
+
+    const loaded = await ctx.sessionPersistence.load(m.id)
+    expect(loaded.events.map(e => e.seq)).toEqual([...Array(full.length - 1).keys()])
+    expect(warns.some(args => String(args[0]).includes(`healed session log "${m.id}"`))).toBe(true)
+  })
+
+  it('the backend refuses to append duplicate or regressed seqs over its own writes', async () => {
+    const m = meta('guard-append', '/work')
+    await ctx.sessionPersistence.create(m)
+    await ctx.sessionPersistence.append(m.id, oneTurnLog()) // durable seqs 0..5
+
+    // Direct backend hook (the coordinator pre-validates its own route; this is
+    // the hard backstop for every path that reaches the file layer).
+    const backend = ctx.sessionPersistence as unknown as {
+      appendBatch(header: SessionHeader, events: readonly SessionEvent[], materialized: boolean): Promise<void>
+      commitRepair(header: SessionHeader, marker: unknown, closers: readonly SessionEvent[]): Promise<void>
+    }
+    const rewind = [{ type: 'turn/start', seq: 4, time: 9, data: { turn: 2 } }] as SessionEvent[]
+    await expect(backend.appendBatch(m, rewind, true))
+      .rejects.toThrow(/refusing to duplicate or rewind committed seqs/)
+
+    // The refused batch changed nothing on disk.
+    expect(scanLog(await readFile(rawLogPath(rootDir, '/work', m.id))).events).toEqual(oneTurnLog())
+
+    // Repair closers overlapping the tracked tail are equally refused.
+    const staleCloser = [{ type: 'turn/end', seq: 5, time: 9, data: { turn: 2, reason: { kind: 'interrupted' } } }] as SessionEvent[]
+    await expect(backend.commitRepair(m, undefined, staleCloser))
+      .rejects.toThrow(/refusing to duplicate or rewind committed seqs/)
+  })
+
+  it('materialization requires the fresh log to start at seq 0', async () => {
+    const m = meta('guard-materialize', '/work')
+    const backend = ctx.sessionPersistence as unknown as {
+      appendBatch(header: SessionHeader, events: readonly SessionEvent[], materialized: boolean): Promise<void>
+    }
+    const late = [{ type: 'turn/start', seq: 3, time: 1, data: { turn: 1 } }] as SessionEvent[]
+    await expect(backend.appendBatch(m, late, false)).rejects.toThrow(/starts at seq 0/)
+    expect((await ctx.sessionPersistence.list()).map(h => h.id)).not.toContain(m.id)
+  })
+
+  it('a cold backend still refuses an internally non-contiguous first batch', async () => {
+    // Fresh process, no tracked writes: the batch must still be internally
+    // contiguous — the coordinator baseline never legalizes gaps inside it.
+    const coldRoot = await freshRoot()
+    const coldCtx = new Context()
+    await coldCtx.plugin(SessionStore)
+    await coldCtx.plugin(JsonlSessionPersistence, { root: coldRoot, compression: 'none' })
+    try {
+      const m = meta('guard-cold', '/work')
+      const backend = coldCtx.sessionPersistence as unknown as {
+        appendBatch(header: SessionHeader, events: readonly SessionEvent[], materialized: boolean): Promise<void>
+      }
+      const gapped = [
+        { type: 'turn/start', seq: 0, time: 1, data: { turn: 1 } },
+        { type: 'step/start', seq: 5, time: 2, data: { turn: 1, step: 1 } },
+      ] as SessionEvent[]
+      await expect(backend.appendBatch(m, gapped, true))
+        .rejects.toThrow(/refusing to duplicate or rewind committed seqs/)
+      expect((await coldCtx.sessionPersistence.list()).map(h => h.id)).not.toContain(m.id)
+    } finally {
+      await coldCtx.fiber.dispose()
+      await rm(coldRoot, { recursive: true, force: true })
+    }
+  })
 })

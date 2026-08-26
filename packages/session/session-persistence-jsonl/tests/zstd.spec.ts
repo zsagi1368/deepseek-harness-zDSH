@@ -748,3 +748,67 @@ describe('JsonlSessionPersistence: encoding selection', () => {
     expect((await readdir(sessionDir(root, header.cwd, header.id))).some(name => name.endsWith('.jsonl.zstd'))).toBe(false)
   })
 })
+
+describe('JsonlSessionPersistence: Zstandard seq self-healing (#333)', () => {
+  it('heals a duplicated-seq frame pair on load and rewrites one normalized copy', async () => {
+    const root = await freshRoot()
+    const ctx = await mount(root)
+    const warns: Array<unknown[]> = []
+    vi.spyOn(ctx.logger, 'warn').mockImplementation((...args: unknown[]) => { warns.push(args) })
+
+    const header = meta('heal-zstd', '/work')
+    await ctx.sessionPersistence.create(header)
+    await ctx.sessionPersistence.append(header.id, oneTurnLog()) // seqs 0..5, two frames
+
+    // Append the #333 damage as three frames: the committed turn/start for an
+    // interruptable turn 2, then synthetic interrupt closers (seqs 7..10), then
+    // real events REPLAYING the same seqs 7..8.
+    const path = logPath(root, header.cwd, header.id, 'zstd')
+    const turnStart = [
+      JSON.stringify({ type: 'turn/start', seq: 6, time: 7, data: { turn: 2 } }),
+      '',
+    ].join('\n')
+    const placeholders = [
+      JSON.stringify({ type: 'tool/result', seq: 7, time: 7, data: { turn: 2, step: 1, callId: 'call-9', content: [{ type: 'text', text: 'interrupted placeholder' }], isError: true }, surfaceOp: 'append' }),
+      JSON.stringify({ type: 'step/end', seq: 8, time: 7, data: { turn: 2, step: 1 } }),
+      JSON.stringify({ type: 'turn/end', seq: 9, time: 7, data: { turn: 2, reason: { kind: 'interrupted' } } }),
+      JSON.stringify({ type: 'session/end-seed', seq: 10, time: 7, data: {} }),
+      '',
+    ].join('\n')
+    const reals = [
+      JSON.stringify({ type: 'tool/result', seq: 7, time: 8, data: { turn: 2, step: 1, callId: 'call-9', content: [{ type: 'text', text: 'real result' }], isError: false }, surfaceOp: 'append' }),
+      JSON.stringify({ type: 'step/end', seq: 8, time: 9, data: { turn: 2, step: 1 } }),
+      '',
+    ].join('\n')
+    await writeFile(path, Buffer.concat([
+      await readFile(path),
+      await compressZstdFrame(turnStart),
+      await compressZstdFrame(placeholders),
+      await compressZstdFrame(reals),
+    ]))
+
+    // The rewind point is the real tool/result at seq 7 while replay expects
+    // 11: the placeholder closers yield to the reals, and resume loads
+    // contiguous seqs with the still-open turn 2 closed by a synthetic
+    // interrupted turn/end (seq 9).
+    const loaded = await ctx.sessionPersistence.load(header.id)
+    expect(loaded.events.map(e => e.seq)).toEqual([...Array(10).keys()])
+    const serialized = JSON.stringify(loaded.events)
+    expect(serialized).toContain('real result')
+    expect(serialized).not.toContain('interrupted placeholder')
+    expect(serialized).not.toContain('session/end-seed')
+    expect(warns.some(args => String(args[0]).includes(`healed session log "${header.id}"`))).toBe(true)
+
+    // The repair commit folded everything into normalized complete frames; a
+    // reload finds nothing left to heal and returns the identical transcript.
+    const rescan = scanLog(await decodeCompleteFrames(await readFile(path)))
+    expect(rescan.heal).toBeUndefined()
+    expect(rescan.events.map(e => e.seq)).toEqual([...Array(10).keys()])
+    const warnCount = warns.length
+    await expect(ctx.sessionPersistence.load(header.id)).resolves.toMatchObject({ events: loaded.events })
+    expect(warns.length).toBe(warnCount)
+
+    await ctx.fiber.dispose()
+    await rm(root, { recursive: true, force: true })
+  })
+})

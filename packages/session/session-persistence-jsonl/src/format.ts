@@ -223,10 +223,27 @@ export function eventLines(events: readonly SessionEvent[], packChunks: boolean)
   return records.map(record => JSON.stringify(record)).join('\n')
 }
 
+/**
+ * Replay-repair facts for a stored log whose physical seq numbering diverged
+ * from replay order (duplicated placeholder blocks, rolled-back writers, or
+ * missing rows). The scanner never refuses such a log: it replays it into a
+ * strictly contiguous view, preferring renumbering over data loss (#333).
+ */
+export interface SessionLogHeal {
+  /** Byte offset of the first event row whose seqs diverged from replay order. */
+  startByte: number
+  /** Events discarded because they replayed seqs the committed prefix already held. */
+  replacedEvents: number
+  /** Events whose `seq` was rewritten to restore strict contiguity. */
+  renumberedEvents: number
+}
+
 interface SessionLogScan {
   meta: SessionHeader
   events: SessionEvent[]
   committedBytes: number
+  /** Present iff replay had to deduplicate or renumber at least one event row. */
+  heal?: SessionLogHeal
 }
 
 /** Parse one complete header record supplied independently from event rows. */
@@ -268,6 +285,12 @@ function parseHeaderRecord(record: Buffer): SessionHeader {
  * supplied header record. Newline search and byte offsets stay on raw buffers;
  * only complete records are decoded to UTF-8. A fragment crossing writes is
  * copied because a decoder may reuse its output buffer after `write()` returns.
+ *
+ * Seq anomalies self-heal during replay (#333): a row replaying committed seqs
+ * replaces the shadowed tail, and forward gaps close by renumbering, so the
+ * finished view is always strictly contiguous — duplicated placeholder blocks
+ * from an interrupted writer can never make a session unloadable. Only rows
+ * that fail to parse at all keep the legacy corrupt-suffix semantics.
  */
 export class SessionLogScanner {
   private readonly meta: SessionHeader
@@ -278,6 +301,7 @@ export class SessionLogScanner {
   private committedBytes: number
   private eventLine = 0
   private issue: Error | undefined
+  private heal: SessionLogHeal | undefined
   private finished = false
 
   /**
@@ -336,11 +360,17 @@ export class SessionLogScanner {
 
   /**
    * Finish scanning, ignoring a final record without a newline as a torn tail.
-   * @returns the header, contiguous event prefix, and safe truncation offset.
+   * @returns the header, contiguous healed event prefix, safe truncation
+   *   offset, and replay-repair facts when healing occurred.
    */
   finish(): SessionLogScan {
     this.finished = true
-    return { meta: this.meta, events: this.events, committedBytes: this.committedBytes }
+    return {
+      meta: this.meta,
+      events: this.events,
+      committedBytes: this.committedBytes,
+      ...this.heal !== undefined ? { heal: this.heal } : {},
+    }
   }
 
   /** Decode one complete event row and update the contiguous prefix. */
@@ -359,20 +389,51 @@ export class SessionLogScanner {
       return
     }
 
-    const rowStart = this.events.length
-    for (const event of decoded) {
-      if (event.seq !== this.events.length) {
-        const expected = this.events.length
-        this.events.length = rowStart
-        this.issue = new Error(
-          `corrupt session log: seq gap in committed region at line ${this.eventLine} `
-          + `(expected ${expected}, got ${event.seq})`,
-        )
-        if (decoded.some(candidate => candidate.type === 'turn/end')) throw this.issue
-        return
+    // Fast path — the row continues the committed prefix exactly. Every normal
+    // log takes only this branch, preserving byte-exact legacy scan behavior.
+    const base = this.events.length
+    let aligned = true
+    for (const [i, event] of decoded.entries()) {
+      if (event.seq !== base + i) {
+        aligned = false
+        break
       }
-      this.events.push(event)
     }
+    if (aligned) {
+      for (const event of decoded) this.events.push(event)
+      this.committedBytes = endByte
+      return
+    }
+    this.healRow(decoded, base, endByte - line.length - 1, endByte)
+  }
+
+  /**
+   * Replay-heal one divergent row instead of refusing the log (#333): a row
+   * whose first seq rewinds into the committed prefix replaces that tail
+   * (duplicate placeholder blocks yield to the physically later events they
+   * shadow); any other divergence is a forward gap closed by renumbering.
+   * Either way every well-formed event survives with a strictly contiguous seq.
+   */
+  private healRow(decoded: SessionEvent[], base: number, startByte: number, endByte: number): void {
+    const first = decoded[0]?.seq
+    const rewind = typeof first === 'number' && Number.isSafeInteger(first)
+      && first >= 0 && first < base
+    this.events.length = rewind ? first : base
+    const renumberedFrom = this.events.length
+    let renumberedEvents = 0
+    for (const [i, event] of decoded.entries()) {
+      if (event.seq === renumberedFrom + i) {
+        this.events.push(event)
+      } else {
+        this.events.push({ ...event, seq: renumberedFrom + i })
+        renumberedEvents += 1
+      }
+    }
+    this.heal ??= { startByte, replacedEvents: 0, renumberedEvents: 0 }
+    if (rewind) this.heal.replacedEvents += base - renumberedFrom
+    this.heal.renumberedEvents += renumberedEvents
+    // Healed rows are complete physical records: the committed append offset
+    // advances across them like any aligned row.
     this.committedBytes = endByte
   }
 }

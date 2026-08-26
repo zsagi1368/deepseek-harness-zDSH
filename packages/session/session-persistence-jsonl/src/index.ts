@@ -9,7 +9,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { readdirSync } from 'node:fs'
-import { open, mkdir, readFile, readdir, realpath, link, rm, stat, truncate } from 'node:fs/promises'
+import { open, mkdir, readFile, readdir, realpath, link, rename, rm, stat, truncate } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { scheduler } from 'node:timers/promises'
@@ -25,12 +25,12 @@ import type { SessionEvent, SessionId, SessionHeader, SessionPreparation } from 
 import {
   encodeSegment, eventLines, logPath, logSuffix, parseHeaderMeta, projectDir, scanLog, sessionDir,
   SessionLogScanner, toHeaderLine,
-  type JsonlCompression,
+  type JsonlCompression, type SessionLogHeal,
 } from './format.ts'
 import {
   compressZstdFrame, createZstdFrameDecoder, decompressZstdFrame, decompressZstdPrefix, scanZstdFrames,
 } from './zstd.ts'
-import { ensureDurableDirectoryWin32, publishNewFileWin32 } from './win32.ts'
+import { ensureDurableDirectoryWin32, publishNewFileWin32, replaceExistingFileWin32 } from './win32.ts'
 
 export type { JsonlCompression } from './format.ts'
 
@@ -42,6 +42,13 @@ const DEFAULT_COMPRESSION: JsonlCompression = 'zstd'
  * remains an indivisible synchronous decode.
  */
 const ZSTD_DECODE_YIELD_INTERVAL_MS = 500
+/**
+ * Internal repair-encoding constant: a heal rewrite re-frames the normalized
+ * log in bounded event groups so decode stays yieldable and compress buffers
+ * stay small. Frame boundaries carry no format meaning (every frame decodes
+ * independently), so only rewrite cost is affected.
+ */
+const REWRITE_FRAME_EVENTS = 4096
 
 /** Assert that the independently decodable first frame contains only the header record. */
 function assertZstdHeaderFrame(plaintext: Buffer): void {
@@ -82,10 +89,18 @@ export interface Config {
   writeBatchMaxDelayMs?: number
 }
 
-/** Opaque coordinator token for replacing bytes recovered from a torn frame. */
+/** Opaque coordinator token for repairing bytes recovered from a damaged log. */
 interface JsonlTornMarker {
+  /** Byte offset where the committed region ends and the damaged tail began. */
   truncateTo: number
+  /** Complete events recovered from the damaged tail, in stored order. */
   recoveredEvents: SessionEvent[]
+  /**
+   * Present when replay healed duplicated/regressed/gapped seq rows (#333):
+   * the full healed logical event list (recovered events included), which a
+   * repair commit writes back as the log's normalized physical content.
+   */
+  heal?: { events: SessionEvent[] }
 }
 
 interface FileRevisionIdentity {
@@ -144,6 +159,15 @@ export class JsonlSessionPersistence extends SessionPersistence implements Persi
   private compression: JsonlCompression
   private coordinator: PersistenceCoordinator<JsonlTornMarker>
   private rootEncodingCheck: Promise<void> | undefined
+  /**
+   * Next seq each touched id may durably append, tracked after every successful
+   * physical write (append, materialize, repair). This is the backend-level
+   * monotonic-write backstop (#333): no path through this instance can emit a
+   * duplicate or regressed seq into a log it already wrote. A process restart
+   * resets the map; the first post-restart batch re-baselines from the
+   * coordinator, which validates it against the freshly loaded stored prefix.
+   */
+  private readonly nextSeq = new Map<SessionId, number>()
 
   constructor(ctx: Context, public config: Config) {
     super(ctx)
@@ -319,15 +343,22 @@ export class JsonlSessionPersistence extends SessionPersistence implements Persi
         prefix = await this.readZstdPrefix(buffer, signal)
       } else {
         signal?.throwIfAborted()
-        const { meta, events, committedBytes } = scanLog(buffer)
+        const scanned = scanLog(buffer)
         signal?.throwIfAborted()
         prefix = {
-          meta,
-          events,
-          ...committedBytes < buffer.byteLength
-            ? { tornMarker: { truncateTo: committedBytes, recoveredEvents: [] } }
+          meta: scanned.meta,
+          events: scanned.events,
+          ...scanned.committedBytes < buffer.byteLength || scanned.heal !== undefined
+            ? {
+              tornMarker: {
+                truncateTo: scanned.committedBytes,
+                recoveredEvents: [],
+                ...scanned.heal !== undefined ? { heal: { events: scanned.events } } : {},
+              },
+            }
             : {},
         }
+        this.warnHealed(scanned.meta.id, scanned.heal)
       }
     } catch (error: unknown) {
       // A parse-time format refusal predates any SessionHeader, so the
@@ -341,6 +372,19 @@ export class JsonlSessionPersistence extends SessionPersistence implements Persi
     signal?.throwIfAborted()
     await this.assertStoredIdentity(path, prefix.meta, expectedId, signal)
     signal?.throwIfAborted()
+    // Reconcile the monotonic-write cursor with the log's durable region:
+    // complete rows past a previous crash (or written before this process
+    // started) are part of the committed prefix a repair must continue from.
+    // Events merely RECOVERED from a torn tail are excluded — they stay
+    // undurable until the repair commit re-appends them.
+    const durableLength = prefix.events.length
+      - (prefix.tornMarker !== undefined && prefix.tornMarker.heal === undefined
+        ? prefix.tornMarker.recoveredEvents.length
+        : 0)
+    const trackedSeq = this.nextSeq.get(prefix.meta.id)
+    if (trackedSeq === undefined || trackedSeq < durableLength) {
+      this.nextSeq.set(prefix.meta.id, durableLength)
+    }
     return { ...prefix, revision }
   }
 
@@ -384,7 +428,20 @@ export class JsonlSessionPersistence extends SessionPersistence implements Persi
       }
       if (tornStart === undefined) {
         const prefix = scanner.finish()
-        return { meta: prefix.meta, events: prefix.events }
+        this.warnHealed(prefix.meta.id, prefix.heal)
+        return {
+          meta: prefix.meta,
+          events: prefix.events,
+          ...prefix.heal !== undefined
+            ? {
+              tornMarker: {
+                truncateTo: prefix.committedBytes,
+                recoveredEvents: [],
+                heal: { events: prefix.events },
+              },
+            }
+            : {},
+        }
       }
 
       let recoveredPlaintext: Buffer = Buffer.alloc(0)
@@ -401,12 +458,18 @@ export class JsonlSessionPersistence extends SessionPersistence implements Persi
       scanner.write(recoveredPlaintext)
       const recoveredPrefix = scanner.finish()
       signal?.throwIfAborted()
+      this.warnHealed(recoveredPrefix.meta.id, recoveredPrefix.heal)
       return {
         meta: recoveredPrefix.meta,
         events: recoveredPrefix.events,
         tornMarker: {
           truncateTo: tornStart,
-          recoveredEvents: recoveredPrefix.events.slice(complete.eventCount),
+          // With healing, the recovered events are already folded into the
+          // unified healed list the rewrite commits; without it they are the
+          // tail events a legacy truncate-then-append repair re-durably writes.
+          ...(recoveredPrefix.heal !== undefined
+            ? { recoveredEvents: [] as SessionEvent[], heal: { events: recoveredPrefix.events } }
+            : { recoveredEvents: recoveredPrefix.events.slice(complete.eventCount) }),
         },
       }
     } catch (error) {
@@ -420,27 +483,145 @@ export class JsonlSessionPersistence extends SessionPersistence implements Persi
 
   /** Durably append a batch, lazily materializing the file when not yet present. */
   async appendBatch(meta: SessionHeader, events: readonly SessionEvent[], isMaterialized: boolean): Promise<void> {
+    const first = events.at(0)
+    if (first === undefined) return
     await this.ensureRootEncoding()
     if (isMaterialized) {
+      const tracked = this.nextSeq.get(meta.id)
+      // Cold start (no in-process writes yet): re-baseline from the batch's own
+      // first seq — the coordinator validated it against the stored log. Warm
+      // path: enforce strict continuation of everything this instance wrote.
+      const baseline = tracked ?? first.seq
+      this.assertBatchContiguous(meta.id, events, baseline)
       await this.appendLines(meta, events)
+      this.nextSeq.set(meta.id, baseline + events.length)
     } else {
+      // Materialization starts a fresh log; its first event must be seq 0.
+      if (first.seq !== 0) {
+        throw new Error(
+          `materialize seq mismatch for "${meta.id}": a new log starts at seq 0, got ${first.seq}`,
+        )
+      }
+      this.assertBatchContiguous(meta.id, events, 0)
       await this.materialize(meta, events)
+      this.nextSeq.set(meta.id, events.length)
     }
   }
 
   /**
    * Make a crash repair durable: truncate a torn tail, restore complete events
    * decoded from it, then append synthetic closers. Two fsync'd steps — the seam
-   * does not require this to be atomic.
+   * does not require this to be atomic. A healed marker (#333) instead replaces
+   * the whole artifact with its normalized logical content so duplicated
+   * placeholder rows leave the physical log for good.
    */
   async commitRepair(
     meta: SessionHeader,
     tornMarker: JsonlTornMarker | undefined,
     closers: readonly SessionEvent[],
   ): Promise<void> {
+    if (tornMarker?.heal !== undefined) {
+      const healedLength = await this.rewriteHealed(meta, tornMarker.heal.events, closers)
+      this.nextSeq.set(meta.id, healedLength)
+      return
+    }
     if (tornMarker !== undefined) await this.repair(meta, tornMarker.truncateTo)
     const repairedEvents = [...(tornMarker?.recoveredEvents ?? []), ...closers]
-    if (repairedEvents.length > 0) await this.appendLines(meta, repairedEvents)
+    const firstRepaired = repairedEvents.at(0)
+    if (firstRepaired !== undefined) {
+      const tracked = this.nextSeq.get(meta.id)
+      const baseline = tracked ?? firstRepaired.seq
+      this.assertBatchContiguous(meta.id, repairedEvents, baseline)
+      await this.appendLines(meta, repairedEvents)
+      this.nextSeq.set(meta.id, baseline + repairedEvents.length)
+    }
+  }
+
+  /**
+   * Reject any batch that would write a duplicate or regressed seq over this
+   * process's durable writes (#333 acceptance: overlap must fail loudly, never
+   * silently duplicate). Runs before bytes move; the caller advances the cursor
+   * only after the write commits.
+   */
+  private assertBatchContiguous(id: SessionId, events: readonly SessionEvent[], from: number): void {
+    for (const [i, event] of events.entries()) {
+      if (event.seq !== from + i) {
+        throw new Error(
+          `append seq regression for "${id}": expected ${from + i} at index ${i}, `
+          + `got ${event.seq} (refusing to duplicate or rewind committed seqs)`,
+        )
+      }
+    }
+  }
+
+  /**
+   * Replace the physical log with its healed logical content plus repair
+   * closers, normalizing seqs to strict positions. Published atomically by a
+   * synced temp file renamed over the target, so a crash leaves either the old
+   * damaged log or the complete healed one.
+   * @param meta - the header identifying the artifact to rewrite.
+   * @param healedEvents - replay-healed logical events from the last read.
+   * @param closers - synthetic turn-closing events appended after healing.
+   * @returns the normalized log length (the next writable seq).
+   */
+  private async rewriteHealed(
+    meta: SessionHeader,
+    healedEvents: readonly SessionEvent[],
+    closers: readonly SessionEvent[],
+  ): Promise<number> {
+    const finalEvents: SessionEvent[] = []
+    let regressions = 0
+    for (const [i, event] of [...healedEvents, ...closers].entries()) {
+      if (event.seq !== i) {
+        finalEvents.push({ ...event, seq: i })
+        regressions += 1
+      } else {
+        finalEvents.push(event)
+      }
+    }
+    const path = logPath(this.root, meta.cwd, meta.id, this.compression)
+    const content = await this.encodeHealedLog(meta, finalEvents)
+    const tmp = await this.writeSyncedTempFile(path, content)
+    try {
+      /* v8 ignore next -- native Windows coverage exercises this platform dispatch; Linux covers the POSIX peer */
+      if (process.platform === 'win32') {
+        await replaceExistingFileWin32(tmp, path)
+      } else {
+        await rename(tmp, path)
+        await this.syncDirPosix(dirname(path))
+      }
+    } catch (error: unknown) {
+      await rm(tmp, { force: true })
+      throw error
+    }
+    if (regressions > 0) {
+      this.ctx.logger.warn(
+        `${this.name}: heal rewrite for session "${meta.id}" renumbered ${regressions} event(s) to restore contiguity`,
+      )
+    }
+    return finalEvents.length
+  }
+
+  /** Encode the header line plus a healed log's events in the configured representation. */
+  private async encodeHealedLog(meta: SessionHeader, events: readonly SessionEvent[]): Promise<Buffer | string> {
+    const header = JSON.stringify(toHeaderLine(meta)) + '\n'
+    if (this.compression === 'none') return header + eventLines(events, this.packChunks) + (events.length > 0 ? '\n' : '')
+    const frames: Buffer[] = [await compressZstdFrame(header)]
+    for (let start = 0; start < events.length; start += REWRITE_FRAME_EVENTS) {
+      const group = events.slice(start, start + REWRITE_FRAME_EVENTS)
+      frames.push(await compressZstdFrame(eventLines(group, this.packChunks) + '\n'))
+    }
+    return Buffer.concat(frames)
+  }
+
+  /** Emit the observable self-heal trace (#333): one warning per healed read. */
+  private warnHealed(id: SessionId, heal: SessionLogHeal | undefined): void {
+    if (heal === undefined) return
+    this.ctx.logger.warn(
+      `${this.name}: healed session log "${id}": replay discarded ${heal.replacedEvents} `
+      + `duplicate/regressed-seq event(s) and renumbered ${heal.renumberedEvents} gapped event(s) `
+      + `from byte ${heal.startByte}; the durable copy is normalized by the next repair commit`,
+    )
   }
 
   /** List valid unique stored sessions' metadata (header line only — no full-log parse). */

@@ -6,7 +6,8 @@
  * fsync contract through Node, so the Windows path uses the native durable
  * namespace primitive instead: create a staging object in the target directory
  * and publish it with `MoveFileExW(..., MOVEFILE_WRITE_THROUGH)` without
- * replacement or cross-volume copy fallback.
+ * replacement or cross-volume copy fallback. The crash-repair rewrite uses the
+ * same primitive with `MOVEFILE_REPLACE_EXISTING` to substitute a healed log.
  *
  * @module dsh-session-persistence-jsonl/win32
  */
@@ -28,6 +29,7 @@ interface Win32ErrnoException extends NodeJS.ErrnoException {
 }
 
 const MOVEFILE_WRITE_THROUGH = 0x00000008
+const MOVEFILE_REPLACE_EXISTING = 0x00000001
 const ERROR_FILE_NOT_FOUND = 2
 const ERROR_PATH_NOT_FOUND = 3
 const ERROR_ACCESS_DENIED = 5
@@ -116,6 +118,21 @@ async function assertDirectory(path: string): Promise<boolean> {
 export async function publishNewFileWin32(existing: string, replacement: string): Promise<void> {
   const api = await win32()
   const ok = api.moveFileExW(toNamespacedPath(existing), toNamespacedPath(replacement), MOVEFILE_WRITE_THROUGH)
+  if (ok === 0) throw win32Error('MoveFileExW', api.getLastError(), existing, replacement)
+}
+
+/**
+ * Atomically replace `replacement` with `existing` using Windows write-through
+ * rename semantics (`MOVEFILE_REPLACE_EXISTING`). Used only by the repair
+ * rewrite, which legitimately substitutes a healed log for a damaged one; a
+ * crash resolves to either the old or the new complete file, never a partial one.
+ * @param existing - the synced staging path to move over the target.
+ * @param replacement - the final path to replace in place.
+ */
+export async function replaceExistingFileWin32(existing: string, replacement: string): Promise<void> {
+  const api = await win32()
+  const flags = MOVEFILE_WRITE_THROUGH | MOVEFILE_REPLACE_EXISTING
+  const ok = api.moveFileExW(toNamespacedPath(existing), toNamespacedPath(replacement), flags)
   if (ok === 0) throw win32Error('MoveFileExW', api.getLastError(), existing, replacement)
 }
 

@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const MOVEFILE_WRITE_THROUGH = 0x00000008
+const MOVEFILE_REPLACE_EXISTING = 0x00000001
 const ERROR_FILE_NOT_FOUND = 2
 const ERROR_PATH_NOT_FOUND = 3
 const ERROR_ACCESS_DENIED = 5
@@ -139,6 +140,36 @@ describe('Windows durable namespace helpers', () => {
     await publishNewFileWin32(tmp, final)
     expect(existsSync(tmp)).toBe(false)
     expect(readFileSync(final, 'utf8')).toBe('content')
+  })
+
+  it('replaces an existing file with write-through replace-existing semantics', async () => {
+    // The crash-repair rewrite substitutes a healed log for the damaged one:
+    // the move must carry MOVEFILE_REPLACE_EXISTING and overwrite in place.
+    const flagsSeen: number[] = []
+    const mod = await importWithMove((existing, replacement, flags, setLastError) => {
+      flagsSeen.push(flags)
+      const from = stripNamespace(existing)
+      const to = stripNamespace(replacement)
+      if (!existsSync(from)) { setLastError(ERROR_FILE_NOT_FOUND); return 0 }
+      renameSync(from, to)
+      return 1
+    })
+    const root = await tempRoot()
+    const tmp = join(root, 'healed.tmp')
+    const final = join(root, 'log.jsonl')
+    await writeFile(tmp, 'healed content')
+    await writeFile(final, 'damaged content')
+
+    await mod.replaceExistingFileWin32(tmp, final)
+    expect(flagsSeen).toEqual([MOVEFILE_WRITE_THROUGH | MOVEFILE_REPLACE_EXISTING])
+    expect(existsSync(tmp)).toBe(false)
+    expect(readFileSync(final, 'utf8')).toBe('healed content')
+  })
+
+  it('maps Win32 replace failures to Node-style errno codes', async () => {
+    const { replaceExistingFileWin32 } = await importWithError(ERROR_ACCESS_DENIED)
+    await expect(replaceExistingFileWin32('from', 'to'))
+      .rejects.toMatchObject({ code: 'EACCES', win32Code: ERROR_ACCESS_DENIED, path: 'from', dest: 'to' })
   })
 
   it('maps Win32 publish failures to Node-style errno codes', async () => {
