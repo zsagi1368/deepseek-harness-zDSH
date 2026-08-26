@@ -1,7 +1,9 @@
 /**
  * Register a DeepSeek-backed provider in `ctx.web`. It calls the Anthropic-compatible Messages API
- * with native `web_search_20250305`. The provider reuses `DEEPSEEK_API_KEY` but not
- * `DEEPSEEK_BASE_URL`, because search and chat-completions use different bases.
+ * with native `web_search_20250305`. The key is shared with the chat adapter (`DEEPSEEK_API_KEY`),
+ * and so is the endpoint override (#408): when the chat link points at a gateway, search follows it,
+ * because a gateway-scoped key sent to the official endpoint is a guaranteed authentication failure.
+ * The endpoint resolution order lives in {@link resolveOptions}.
  * @module @deepseek-ai/dsh-web-search-deepseek
  */
 
@@ -48,7 +50,9 @@ export interface Config {
   apiKey?: string
   /** Credential reference resolved for each search; defaults to `DEEPSEEK_API_KEY`. */
   apiKeyEnv?: string
-  /** Anthropic-compatible endpoint base; `/messages` is appended. */
+  /** Anthropic-compatible endpoint base; `/messages` is appended. When unset, search follows the
+   * chat adapter's override (`llm-deepseek.baseURL`, then `$DEEPSEEK_BASE_URL`) before the
+   * official Anthropic-compatible default. */
   baseURL?: string
   /** Anthropic-format model name. Defaults to `deepseek-v4-flash`. */
   model?: string
@@ -74,12 +78,41 @@ export const Config: z<Config> = z.object({
 })
 
 /**
- * Environment variable naming this provider's endpoint. Deliberately distinct
- * from `$DEEPSEEK_BASE_URL`, which belongs to the chat-completions adapter:
- * search speaks the Anthropic-compatible Messages API, so one variable cannot
- * serve both.
+ * Environment variable naming this provider's endpoint. Distinct from
+ * `$DEEPSEEK_BASE_URL`, which names the chat-completions adapter's base:
+ * search speaks the Anthropic-compatible Messages API, so a dedicated
+ * variable lets the two links diverge deliberately. When it is unset, search
+ * falls through to {@link chatBaseOverride} and follows the chat link.
  */
 const SEARCH_BASE_URL_ENV = 'DEEPSEEK_SEARCH_BASE_URL'
+
+/** The chat adapter's base-URL environment variable, followed when its config override is absent. */
+const CHAT_BASE_URL_ENV = 'DEEPSEEK_BASE_URL'
+
+/** The settings namespace the chat-completions adapter registers its section under. */
+const CHAT_SETTINGS_NAMESPACE = settingsNamespace('llm-deepseek')
+
+/** Shape of the chat adapter's section this plugin reads one field from. */
+interface ChatBaseSection {
+  baseURL?: string
+}
+
+/**
+ * The chat link's endpoint override, when the user configured one (#408).
+ * Search shares the chat credential: a key scoped to a gateway is rejected by
+ * the official endpoint, so an overridden chat link must carry the search too.
+ * Only an explicit override counts — neither function here may surface the
+ * official default, or the chain below could never fall back to the
+ * Anthropic-compatible base.
+ * @param ctx - plugin context supplying the settings and environment planes.
+ * @returns the chat adapter's configured base, or undefined when it uses its own default.
+ */
+function chatBaseOverride(ctx: Context): string | undefined {
+  const section = ctx.get('settings')?.get(CHAT_SETTINGS_NAMESPACE) as ChatBaseSection | undefined
+  if (section?.baseURL !== undefined && section.baseURL.length > 0) return section.baseURL
+  const ambient = launchEnvironmentOf(ctx).get(CHAT_BASE_URL_ENV)
+  return ambient !== undefined && ambient.value.length > 0 ? ambient.value : undefined
+}
 
 /** Settings namespace carrying this provider's endpoint, model, and key reference. */
 export const WEB_SEARCH_DEEPSEEK_SETTINGS_NAMESPACE = settingsNamespace('web-search-deepseek')
@@ -107,8 +140,13 @@ function resolveOptions(ctx: Context, config: Config): DeepSeekSearchProviderOpt
       return ambient !== undefined && ambient.value.length > 0 ? ambient.value : undefined
     },
     apiKeyEnv,
+    // Endpoint precedence (#408): this plugin's explicit section, then its
+    // dedicated variable, then the chat link's override (config, then
+    // environment) — the credential follows the same path — and only then the
+    // official Anthropic-compatible default.
     baseURL: config.baseURL
       ?? launchEnvironmentOf(ctx).get(SEARCH_BASE_URL_ENV)?.value
+      ?? chatBaseOverride(ctx)
       ?? DEEPSEEK_DEFAULT_BASE_URL,
     model: config.model ?? DEEPSEEK_DEFAULT_MODEL,
     apiVersion: config.apiVersion ?? DEEPSEEK_DEFAULT_API_VERSION,
