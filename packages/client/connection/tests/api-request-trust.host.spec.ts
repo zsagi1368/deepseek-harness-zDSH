@@ -1,7 +1,7 @@
 /** Behavior of the /api browser-trust fence (rebinding + cross-site defense). */
 
 import { describe, expect, it } from 'vitest'
-import { assertTrustedAuthority, isTrustedApiRequest } from '../src/api-request-trust.ts'
+import { apiTrustRejection, assertTrustedAuthority, forbiddenResponse, isTrustedApiRequest } from '../src/api-request-trust.ts'
 
 function request(headers: Record<string, string | undefined>): { headers: Record<string, string | undefined> } {
   return { headers }
@@ -104,5 +104,58 @@ describe('isTrustedApiRequest', () => {
     expect(isTrustedApiRequest(request({ ...markers, host: 'bad host' }), [])).toBe(false)
     expect(isTrustedApiRequest(request({ ...markers, host: '127.0.0.999' }), [])).toBe(false)
     expect(isTrustedApiRequest(request({ ...markers, host: '128.0.0.1' }), [])).toBe(false)
+  })
+})
+
+describe('apiTrustRejection diagnostics', () => {
+  it('names the fence condition that refused each request shape', () => {
+    expect(apiTrustRejection(request({}), [])).toBe('missing-host')
+    expect(apiTrustRejection(request({ host: 'bad host' }), [])).toBe('bad-host')
+    expect(apiTrustRejection(request({ host: 'evil.example' }), [])).toBe('untrusted-host')
+    expect(apiTrustRejection(request({ host: '127.0.0.1:3080', 'sec-fetch-site': 'cross-site' }), [])).toBe('cross-site')
+    // The literal "null" and non-http(s) schemes are opaque origins.
+    expect(apiTrustRejection(request({ host: '127.0.0.1:3080', origin: 'null' }), [])).toBe('opaque-origin')
+    expect(apiTrustRejection(request({ host: '127.0.0.1:3080', origin: 'chrome-extension://abc/options.html' }), [])).toBe('opaque-origin')
+    expect(apiTrustRejection(request({ host: '127.0.0.1:3080', origin: 'http://evil.example' }), [])).toBe('origin-mismatch')
+    expect(apiTrustRejection(request({ host: '127.0.0.1:3080' }), [])).toBeUndefined()
+  })
+
+  it('treats loopback Origin spellings as one trust domain with a loopback Host (#313/#322)', () => {
+    // The reported lockout shape: page and request name the same machine
+    // differently after an extension or proxy rewrote headers between them —
+    // a stripped port, or the sibling loopback name. The Host fence already
+    // treats these spellings as one authority, so the Origin fence must not
+    // split them; browsers that do send the cross-site label for cross-name
+    // requests are still refused one condition earlier.
+    const pairs = [
+      ['127.0.0.1:3080', 'http://127.0.0.1'],
+      ['127.0.0.1:3080', 'http://localhost:3080'],
+      ['localhost:3080', 'http://127.0.0.1:3080'],
+      ['[::1]:3080', 'http://127.0.0.1'],
+      ['127.0.0.1:3080', 'https://localhost:9999'],
+    ]
+    for (const [host, origin] of pairs) {
+      expect(apiTrustRejection(request({ host, origin, 'sec-fetch-site': 'same-site' }), [])).toBeUndefined()
+    }
+  })
+
+  it('keeps non-loopback authorities on exact host:port equality under the Origin fence', () => {
+    // On the LAN the port is part of who is talking; the loopback tolerance
+    // must not leak into declared authorities.
+    expect(apiTrustRejection(
+      request({ host: 'harness.internal:3080', origin: 'http://harness.internal:9999' }),
+      ['harness.internal:3080'],
+    )).toBe('origin-mismatch')
+    expect(apiTrustRejection(
+      request({ host: '192.168.1.5:3080', origin: 'http://localhost:3080' }),
+      ['192.168.1.5'],
+    )).toBe('origin-mismatch')
+  })
+
+  it('carries the refusal reason in the forbidden response body and header', () => {
+    const response = forbiddenResponse('origin-mismatch')
+    expect(response.status).toBe(403)
+    expect(response.headers.get('x-dsh-api-trust')).toBe('origin-mismatch')
+    void response.text().then((body) => { expect(body).toBe('forbidden (origin-mismatch)') })
   })
 })

@@ -7,7 +7,7 @@ import type { WebRoute, WebUpgradeRoute } from '@deepseek-ai/dsh-host-webserver'
 import { toFetchHandler } from '@deepseek-ai/dsh-host-apiproxy'
 import { API_PATH, HOST_EVENTS_PATH, MUX_EVENTS_PATH } from './api-path.ts'
 import { bridge, DEFAULT_MAX_REQUEST_BODY_BYTES } from './http-bridge.ts'
-import { assertTrustedAuthority, isTrustedApiRequest } from './api-request-trust.ts'
+import { assertTrustedAuthority, apiTrustRejection, forbiddenResponse } from './api-request-trust.ts'
 import { HostConnectionService } from './rpc-host.ts'
 import { rejectWebSocketUpgrade, WebSocketDownlinks } from './websocket-downlink.ts'
 
@@ -143,10 +143,9 @@ export function apply(ctx: Context, config?: ConnectionConfig): void {
       const method = pathname.startsWith(`${API_PATH}/`)
         ? pathname.slice(API_PATH.length + 1)
         : undefined
-      if (method !== undefined
-        && PRIVILEGED_METHODS.has(method)
-        && !isTrustedApiRequest(request, [])) {
-        return new Response('forbidden', { status: 403 })
+      if (method !== undefined && PRIVILEGED_METHODS.has(method)) {
+        const rejection = apiTrustRejection(request, [])
+        if (rejection !== undefined) return forbiddenResponse(rejection)
       }
       if (request.method === 'GET' && (pathname === MUX_EVENTS_PATH || pathname === HOST_EVENTS_PATH)) {
         return new Response('upgrade required', {
@@ -163,9 +162,12 @@ export function apply(ctx: Context, config?: ConnectionConfig): void {
     kind: 'prefix',
     path: API_PATH,
     handler: async (req, res) => {
-      if (!isTrustedApiRequest(req, trustedHosts)) {
-        res.writeHead(403)
-        res.end('forbidden')
+      const rejection = apiTrustRejection(req, trustedHosts)
+      if (rejection !== undefined) {
+        // The reason rides the response so a locked-out user can see which
+        // fence condition their browser's rewritten headers tripped.
+        res.writeHead(403, { 'x-dsh-api-trust': rejection })
+        res.end('forbidden (' + rejection + ')')
         return
       }
       await bridge(req, res, fetchHandler, maxRequestBodyBytes)
@@ -182,8 +184,9 @@ export function apply(ctx: Context, config?: ConnectionConfig): void {
       apiCtx.effect(() => apiCtx.webServer.registerUpgrade({
         path,
         handler: (req, socket, head) => {
-          if (!isTrustedApiRequest(req, trustedHosts)) {
-            rejectWebSocketUpgrade(socket)
+          const rejection = apiTrustRejection(req, trustedHosts)
+          if (rejection !== undefined) {
+            rejectWebSocketUpgrade(socket, rejection)
             return
           }
           return handle(req, socket, head)

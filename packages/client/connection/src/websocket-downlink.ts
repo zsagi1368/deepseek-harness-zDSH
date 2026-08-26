@@ -8,6 +8,7 @@ import type {
   ApiProxy, HostFrame, MuxFrame, RpcRequest, ServerRequest,
 } from '@deepseek-ai/dsh-host-apiproxy/api'
 import { RpcId } from '@deepseek-ai/dsh-host-apiproxy/api'
+import type { ApiTrustRejection } from './api-request-trust.ts'
 
 type Frame = MuxFrame | HostFrame
 
@@ -140,14 +141,17 @@ export class WebSocketDownlinks {
 /**
  * Reject an untrusted upgrade before protocol negotiation.
  * @param socket - Raw HTTP socket that remains owned by the caller.
+ * @param reason - Which fence condition refused the request, for diagnostics.
  */
-export function rejectWebSocketUpgrade(socket: Duplex): void {
+export function rejectWebSocketUpgrade(socket: Duplex, reason: ApiTrustRejection = 'untrusted-host'): void {
+  const body = 'forbidden (' + reason + ')'
   socket.end([
     'HTTP/1.1 403 Forbidden',
     'Connection: close',
     'Content-Type: text/plain; charset=utf-8',
-    'Content-Length: 9',
+    'x-dsh-api-trust: ' + reason,
+    'Content-Length: ' + String(body.length),
     '',
-    'forbidden',
+    body,
   ].join('\r\n'))
 }

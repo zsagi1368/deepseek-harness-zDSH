@@ -11,6 +11,12 @@
  * deployment-derived LAN IP literals, or a declared `trustedHosts` authority.
  * Network reachability and authentication stay out of scope: binding policy
  * belongs to the webserver config, and this fence is not an auth layer.
+ *
+ * Rejections carry their reason (`apiTrustRejection`, surfaced as a
+ * `forbidden (<reason>)` body and an `x-dsh-api-trust` header) so a locked-out
+ * user can self-diagnose instead of blind-debugging extensions and proxies —
+ * every real-world "403 via one loopback name" report was a header rewrite
+ * between the browser and this server.
  */
 
 import type { IncomingHttpHeaders } from 'node:http'
@@ -88,12 +94,39 @@ function isTrustedAuthority(hostUrl: URL, trustedHosts: readonly string[]): bool
 }
 
 /**
- * Decide whether one /api request may reach the RPC bridge.
+ * Why the fence refused one /api request. Surfaced to the caller (response
+ * body and `x-dsh-api-trust` header) because a bare 403 turned every
+ * header-rewriting extension or proxy on the user's machine into an
+ * undebuggable lockout.
+ */
+export type ApiTrustRejection =
+  | 'missing-host'
+  | 'bad-host'
+  | 'untrusted-host'
+  | 'cross-site'
+  | 'opaque-origin'
+  | 'origin-mismatch'
+
+/**
+ * The forbidden response shape shared by every fetch-shaped fence call site.
+ * @param reason - which fence condition refused the request.
+ * @returns the 403 response carrying the reason in body and `x-dsh-api-trust` header.
+ */
+export function forbiddenResponse(reason: ApiTrustRejection): Response {
+  return new Response('forbidden (' + reason + ')', {
+    status: 403,
+    headers: { 'x-dsh-api-trust': reason },
+  })
+}
+
+/**
+ * Decide whether one /api request may reach the RPC bridge, and when not, why.
  * @param request - Node HTTP or Fetch request facts (headers).
  * @param trustedHosts - non-loopback authorities this deployment serves: exact `host:port`, or port-less `host` matching any port.
- * @returns true when the Host is ours (loopback or trusted) and any attached browser markers are same-origin.
+ * @returns undefined when the Host is ours (loopback or trusted) and any
+ * attached browser markers are same-origin; otherwise the refusal reason.
  */
-export function isTrustedApiRequest(request: ApiTrustRequest, trustedHosts: readonly string[]): boolean {
+export function apiTrustRejection(request: ApiTrustRequest, trustedHosts: readonly string[]): ApiTrustRejection | undefined {
   // Host fence (DNS-rebinding defense), applied to every request: the browser
   // fills Host from the URL it believes it is talking to, so a rebound page
   // carries the attacker's domain here even though the socket lands on this
@@ -102,22 +135,43 @@ export function isTrustedApiRequest(request: ApiTrustRequest, trustedHosts: read
   // Fetch-Metadata, indistinguishable from curl, and its response is readable
   // by the rebound page.
   const host = header(request.headers, 'host')
-  if (host === undefined) return false
+  if (host === undefined) return 'missing-host'
   const hostUrl = parseAuthority(host)
-  if (hostUrl === undefined) return false
-  if (!isLoopbackHostname(hostUrl.hostname) && !isTrustedAuthority(hostUrl, trustedHosts)) return false
+  if (hostUrl === undefined) return 'bad-host'
+  if (!isLoopbackHostname(hostUrl.hostname) && !isTrustedAuthority(hostUrl, trustedHosts)) return 'untrusted-host'
   // Cross-site fence: modern browsers label the initiator relationship on
   // every fetch; an explicit cross-site marker is refused regardless of Origin.
-  if (header(request.headers, 'sec-fetch-site') === 'cross-site') return false
-  // Origin fence: when a browser attaches an Origin it must be exactly this
-  // authority (compared through the same normalization as the Host). Absent
-  // Origin is fine — the Host fence above already bound the request. The
-  // literal "null" (sandboxed iframes, file: pages) is an opaque origin, refused.
+  if (header(request.headers, 'sec-fetch-site') === 'cross-site') return 'cross-site'
+  // Origin fence: when a browser attaches an Origin it must name this server.
+  // Absent Origin is fine — the Host fence above already bound the request.
+  // The literal "null" (sandboxed iframes, file: pages) is an opaque origin,
+  // refused, as is anything that fails URL parsing or does not name an http(s)
+  // authority. A loopback Host accepts any loopback-flavor Origin (localhost /
+  // 127.0.0.1 / [::1], any port): those spellings are one trust domain to the
+  // Host fence above, so splitting them here only rejected rewritten headers
+  // from extensions and proxies sitting between the browser and this server.
+  // Non-loopback authorities keep the exact host:port equality — on the LAN
+  // the port is part of who is talking.
   const origin = header(request.headers, 'origin')
-  if (origin === undefined) return true
+  if (origin === undefined) return undefined
+  let originUrl: URL
   try {
-    return new URL(origin).host === hostUrl.host
+    originUrl = new URL(origin)
   } catch {
-    return false
+    return 'opaque-origin'
   }
+  if (originUrl.protocol !== 'http:' && originUrl.protocol !== 'https:') return 'opaque-origin'
+  if (originUrl.host === hostUrl.host) return undefined
+  if (isLoopbackHostname(hostUrl.hostname) && isLoopbackHostname(originUrl.hostname)) return undefined
+  return 'origin-mismatch'
+}
+
+/**
+ * Decide whether one /api request may reach the RPC bridge.
+ * @param request - Node HTTP or Fetch request facts (headers).
+ * @param trustedHosts - non-loopback authorities this deployment serves: exact `host:port`, or port-less `host` matching any port.
+ * @returns true when the Host is ours (loopback or trusted) and any attached browser markers are same-origin.
+ */
+export function isTrustedApiRequest(request: ApiTrustRequest, trustedHosts: readonly string[]): boolean {
+  return apiTrustRejection(request, trustedHosts) === undefined
 }

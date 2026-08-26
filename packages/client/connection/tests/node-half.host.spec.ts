@@ -163,7 +163,7 @@ describe('connection node half', () => {
       host: 'harness.example', origin: 'http://harness.example', 'sec-fetch-site': 'same-origin',
     }), response)
     expect(state.status).toBe(403)
-    expect(state.body).toBe('forbidden')
+    expect(state.body).toBe('forbidden (untrusted-host)')
     await dispose()
   })
 
@@ -190,7 +190,7 @@ describe('connection node half', () => {
         denied.response,
       )
       expect(denied.state.status).toBe(403)
-      expect(denied.state.body).toBe('forbidden')
+      expect(denied.state.body).toBe('forbidden (untrusted-host)')
     }
     const read = fakeResponse()
     await routes[0]!.handler(fakeRequest({ host: 'harness.example' }), read.response)
@@ -317,7 +317,7 @@ describe('connection node half', () => {
 
     const denied = fakeResponse()
     await route.handler(fakePost({ host: 'other.example' }, '/api/goals/create', request), denied.response)
-    expect(denied.state).toMatchObject({ status: 403, body: 'forbidden' })
+    expect(denied.state).toMatchObject({ status: 403, body: 'forbidden (untrusted-host)' })
     expect(calls).toHaveLength(1)
 
     const unclaimed = fakeResponse()
@@ -360,7 +360,7 @@ describe('connection node half', () => {
 
     const denied = fakeResponse()
     await route.handler(fakePost({ host: 'other.example' }, '/rpc/goals/create', {}), denied.response)
-    expect(denied.state).toMatchObject({ status: 403, body: 'forbidden' })
+    expect(denied.state).toMatchObject({ status: 403, body: 'forbidden (untrusted-host)' })
 
     const methodMismatch = fakeResponse()
     await route.handler(fakePost({ host: 'harness.example' }, '/rpc/goals/create', {

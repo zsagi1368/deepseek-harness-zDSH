@@ -12,7 +12,7 @@ import {
   type ServerResponse as RpcServerResponse,
 } from '@deepseek-ai/dsh-host-apiproxy/api'
 import { bridge, type FetchHandler } from './http-bridge.ts'
-import { isTrustedApiRequest } from './api-request-trust.ts'
+import { apiTrustRejection, forbiddenResponse } from './api-request-trust.ts'
 import { API_PATH } from './api-path.ts'
 import type {
   ConnectionRpcEndpointMatcher,
@@ -79,8 +79,9 @@ export class HostConnectionService extends Service implements HostConnectionHand
         if (endpoint === undefined || interceptor === undefined || !interceptor.matches(endpoint)) {
           return fallback.fetch(request)
         }
-        if (interceptor.options.authority === 'loopback' && !isTrustedApiRequest(request, [])) {
-          return Promise.resolve(new Response('forbidden', { status: 403 }))
+        if (interceptor.options.authority === 'loopback') {
+          const rejection = apiTrustRejection(request, [])
+          if (rejection !== undefined) return Promise.resolve(forbiddenResponse(rejection))
         }
         return interceptor.fetchHandler.fetch(request)
       },
@@ -100,9 +101,10 @@ export class HostConnectionService extends Service implements HostConnectionHand
       kind: 'prefix',
       path: channel,
       handler: async (req, res) => {
-        if (!isTrustedApiRequest(req, trustedHosts)) {
-          res.writeHead(403)
-          res.end('forbidden')
+        const rejection = apiTrustRejection(req, trustedHosts)
+        if (rejection !== undefined) {
+          res.writeHead(403, { 'x-dsh-api-trust': rejection })
+          res.end('forbidden (' + rejection + ')')
           return
         }
         await bridge(req, res, fetchHandler)
