@@ -34,7 +34,7 @@ import type { SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandb
 import { ESCALATION_TARGETS, approveEscalation, validateEscalationArgs } from '@deepseek-ai/dsh-sandbox'
 import type { SandboxPolicyService } from '@deepseek-ai/dsh-sandbox-policy'
 import type { ShellRunResult } from '@deepseek-ai/dsh-shell'
-import { parseExitStatus } from '@deepseek-ai/dsh-shell'
+import { parseExitStatus, recursiveWorkspaceRootDelete } from '@deepseek-ai/dsh-shell'
 import { processOutcome } from './background.ts'
 import { renderPwshProcessRead, renderPwshResult } from './render.ts'
 import type { RenderablePwshResult } from './render.ts'
@@ -242,6 +242,47 @@ export function apply(ctx: Context, config: Config = {}): void {
   }
   /* jscpd:ignore-end */
 
+  /* jscpd:ignore-start -- deliberate mirror of dsh-tool-bash's #149 gate (pwsh-tool-and-executor Agent Note). */
+  /**
+   * The #149 confirmation gate: recursive deletion of the session workspace
+   * root is fully in-policy for the path-space permission model, so it would
+   * otherwise destroy a whole workspace silently. When the command matches,
+   * an explicit approval is required BEFORE anything executes — foreground or
+   * background. Fail-closed like every other ask: without an approval service
+   * composed, or with a non-allowing outcome, nothing runs.
+   */
+  const approveRecursiveRootDelete = async (
+    command: string,
+    workdir: string | undefined,
+    standingPolicy: SandboxExecutionPolicy | undefined,
+    exec: ToolExecution,
+  ): Promise<void> => {
+    const workspaceRoot = standingPolicy?.workspaceRoot
+    if (workspaceRoot === undefined) return
+    const reason = recursiveWorkspaceRootDelete({
+      dialect: 'pwsh', command, workspaceRoot, ...workdir !== undefined ? { cwd: workdir } : {},
+    })
+    if (reason === undefined) return
+    const approver = ctx.get('approval')
+    if (approver === undefined) {
+      throw new Error('this command recursively deletes the workspace root and requires approval, but no approval service is composed')
+    }
+    if (exec.agent === undefined) {
+      throw new Error('this command recursively deletes the workspace root and requires approval, but the call has no agent to route it through')
+    }
+    const outcome = await approver.request({
+      agent: exec.agent,
+      toolName: 'pwsh',
+      callId: exec.callId,
+      reason,
+      signal: exec.signal,
+    })
+    if (outcome !== 'allowed-once') {
+      throw new Error(`recursive deletion of the workspace root was not approved (${outcome}) — the command did not run`)
+    }
+  }
+  /* jscpd:ignore-end */
+
   ctx.systemPrompt.section({
     name: 'tool:pwsh',
     order: 105,
@@ -356,6 +397,7 @@ export function apply(ctx: Context, config: Config = {}): void {
         ? standingPolicy
         : { ...(standingPolicy as SandboxExecutionPolicy), mode: approvedMode }
       const workdir = resolveWorkdir(args.workdir, exec)
+      await approveRecursiveRootDelete(args.command, workdir, standingPolicy, exec)
       const request = {
         command: args.command,
         ...workdir !== undefined ? { workdir } : {},

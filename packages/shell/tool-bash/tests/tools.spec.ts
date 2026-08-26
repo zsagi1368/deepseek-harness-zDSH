@@ -1277,3 +1277,50 @@ describe('the model-facing bash tool builds its request from named args only (no
     expect('stdoutMaxBytes' in request).toBe(false)
   })
 })
+
+describe('recursive workspace-root deletion gate (#149)', () => {
+  const destructive = { command: 'rm -rf .', description: 'wipe the workspace' }
+
+  it('asks before executing and lets an allowed command run', async () => {
+    const { ctx, bash } = await setupSandboxed(true)
+    const asked = vi.fn()
+    ctx.on('approval/request', () => {
+      asked()
+      return Promise.resolve<ApprovalOutcome>('allowed-once')
+    })
+    await call(ctx, 'bash', destructive, sandboxAgent())
+    expect(asked).toHaveBeenCalledOnce()
+    expect(bash.modes).toHaveLength(1)
+  })
+
+  it('carries the destructive shape in the ask reason and maps rejection to a refusal', async () => {
+    const { ctx, bash } = await setupSandboxed(true)
+    let reason: string | undefined
+    ctx.on('approval/request', (req) => {
+      reason = req.reason
+      return Promise.resolve<ApprovalOutcome>('rejected')
+    })
+    const result = await call(ctx, 'bash', destructive, sandboxAgent())
+    expect(reason).toContain('workspace root')
+    expect(text(result)).toContain('recursive deletion of the workspace root was not approved (rejected)')
+    expect(bash.modes).toHaveLength(0)
+  })
+
+  it('runs ordinary commands with no prompt at all', async () => {
+    const { ctx, bash } = await setupSandboxed(true)
+    const asked = vi.fn()
+    ctx.on('approval/request', () => {
+      asked()
+      return Promise.resolve<ApprovalOutcome>('allowed-once')
+    })
+    await call(ctx, 'bash', { command: 'rm -rf ./build', description: 'clean build output' }, sandboxAgent())
+    expect(asked).not.toHaveBeenCalled()
+    expect(bash.modes).toHaveLength(1)
+  })
+
+  it('fails closed without an approval service composed', async () => {
+    const { ctx, bash } = await setupSandboxed()
+    expect(text(await call(ctx, 'bash', destructive, sandboxAgent()))).toContain('no approval service is composed')
+    expect(bash.modes).toHaveLength(0)
+  })
+})

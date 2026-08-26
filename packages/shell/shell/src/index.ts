@@ -36,6 +36,8 @@ export type {
 } from './types.ts'
 export { parseExitStatus } from './render.ts'
 export type { ParsedExitStatus } from './render.ts'
+export { recursiveWorkspaceRootDelete } from './recursive-delete.ts'
+export type { RecursiveDeleteProbe, ShellDialect } from './recursive-delete.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
