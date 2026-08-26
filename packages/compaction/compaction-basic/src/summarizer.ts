@@ -10,6 +10,7 @@ import type {
   ContentBlock, FinishReason, GenerateOptions, Message, TokenUsage, ToolSchema,
 } from '@deepseek-ai/dsh-llm'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import { MODEL_SLOT_COMPACTION_SUMMARIZE } from '@deepseek-ai/dsh-model-slots'
 
 interface SummaryConfig {
   readonly summarizationProvider: string
@@ -135,7 +136,26 @@ export async function summarizeWithLlm(
     && agent.options.model.length > 0
     ? { provider: agent.options.provider, model: agent.options.model }
     : undefined
-  const target = configured ?? latest ?? agentTarget
+  // Legacy summarization pair first (unchanged), then the compaction.summarize
+  // slot's registry resolution — slot statement, deployment default, then the
+  // inherited conversation target as its main-route tier — and finally the
+  // unslotted inheritance order.
+  let target = configured
+  if (target === undefined) {
+    const slots = ctx.get('modelSlots')
+    const inherited = latest ?? agentTarget
+    const resolution = slots?.resolve(MODEL_SLOT_COMPACTION_SUMMARIZE, {
+      ...(inherited === undefined ? {} : { mainRoute: inherited }),
+      session: agent.session,
+    })
+    if (resolution !== null && resolution !== undefined) {
+      target = { provider: resolution.provider, model: resolution.model }
+    }
+  }
+  if (target === undefined && latest !== undefined) {
+    target = { provider: latest.provider, model: latest.model }
+  }
+  if (target === undefined && agentTarget !== undefined) target = agentTarget
   if (target === undefined) {
     throw new Error(
       'no provider/model available for summarization: set both BasicCompactionConfig summarization fields, route one request, or set both AgentOptions fields',

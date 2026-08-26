@@ -146,6 +146,7 @@
     // built declarations.
     { "path": "./packages/extensions/plugin-center" },
     { "path": "./packages/llm/llm" },
+    { "path": "./packages/llm/model-slots" },
     { "path": "./packages/llm/token-meter" },
     { "path": "./packages/core/session" },
     { "path": "./packages/core/scope" },

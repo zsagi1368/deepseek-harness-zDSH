@@ -24,6 +24,7 @@ import type {
 } from '@deepseek-ai/dsh-llm'
 import SessionStore, { Session, SessionId } from '@deepseek-ai/dsh-session'
 import TokenMeter from '@deepseek-ai/dsh-token-meter'
+import ModelSlotRegistry, { MODEL_SLOT_COMPACTION_SUMMARIZE } from '@deepseek-ai/dsh-model-slots'
 import { agentEvents, type Agent, type RequestErrorAction } from '@deepseek-ai/dsh-agent'
 import ToolResultPruner from '@deepseek-ai/dsh-compaction-tool-result-pruner'
 
@@ -1159,10 +1160,12 @@ async function summarizerHarness(
   finish?: (StreamChunk & { type: 'finish' })['reason'],
   model = MODEL,
   config: BasicCompactionConfig = { auto: false },
+  slotsConfig?: ConstructorParameters<typeof ModelSlotRegistry>[1],
 ): Promise<{ ctx: Context; adapter: ScriptedAdapter; compact: ExposedCompactionEngine }> {
   const ctx = new Context()
   await ctx.plugin(LlmRuntime)
   void new TokenMeter(ctx)
+  if (slotsConfig !== undefined) await ctx.plugin(ModelSlotRegistry, slotsConfig)
   const adapter = new ScriptedAdapter(blocks, finish)
   ctx.llm.registerAdapter([model], adapter)
   const compact = new ExposedCompactionEngine(ctx, config)
@@ -1876,5 +1879,88 @@ describe('automatic listener and loader composition', () => {
     await preStep(ctx, agent(session, MODEL))
     expect(session.events.some(event => event.type === 'compaction/start')).toBe(false)
     expect(await recover(ctx, agent(session, MODEL), overflow())).toBe(false)
+  })
+})
+
+describe('summarization auxiliary slot routing', () => {
+  it('keeps the legacy summarization pair ahead of a mounted compaction.summarize slot', async () => {
+    const { adapter, compact } = await summarizerHarness(
+      [{ type: 'text', text: 'legacy summary' }],
+      undefined,
+      MODEL,
+      { auto: false, summarizationProvider: MODEL, summarizationModel: MODEL },
+      { slots: { [MODEL_SLOT_COMPACTION_SUMMARIZE]: { provider: 'slot-provider', model: 'slot-model' } } },
+    )
+    // The legacy target serves the request; a stray dispatch to the slot route
+    // would fail loudly against its unregistered adapter instead.
+    const session = conversation(1)
+    const output = await compact.runSummarize(promptInput('history'), agent(session, 'fallback'))
+    expect(output.provider).toBe(MODEL)
+    expect(output.model).toBe(MODEL)
+    expect(adapter.lastOptions).toMatchObject({ provider: MODEL, model: MODEL })
+    expect(session.events.some(event => event.type === 'slots/dispatch')).toBe(false)
+  })
+
+  it('dispatches to the compaction.summarize slot ahead of the routed header', async () => {
+    const { ctx, compact } = await summarizerHarness(
+      [{ type: 'text', text: 'unused default summary' }],
+      undefined,
+      MODEL,
+      undefined,
+      { slots: { [MODEL_SLOT_COMPACTION_SUMMARIZE]: { provider: 'slot-provider', model: 'slot-model' } } },
+    )
+    const slotAdapter = new ScriptedAdapter([{ type: 'text', text: 'slot summary' }])
+    ctx.llm.registerAdapter(['slot-provider'], slotAdapter)
+    const session = conversation(1)
+    session.append('request/header', {
+      header: { config: { provider: 'routed', model: 'routed' } },
+      reason: 'initial',
+    })
+
+    const output = await compact.runSummarize(promptInput('history'), agent(session, 'fallback'))
+
+    expect(output).toMatchObject({ provider: 'slot-provider', model: 'slot-model' })
+    expect(slotAdapter.lastOptions).toMatchObject({
+      provider: 'slot-provider',
+      model: 'slot-model',
+      purpose: 'compaction',
+    })
+    expect(session.events.findLast(event => event.type === 'slots/dispatch')?.data).toEqual({
+      slot: MODEL_SLOT_COMPACTION_SUMMARIZE,
+      provider: 'slot-provider',
+      model: 'slot-model',
+      source: 'slot',
+    })
+  })
+
+  it('records the routed header through the main-route tier when no deployment statement covers the slot', async () => {
+    const { adapter, compact } = await summarizerHarness([{ type: 'text', text: 'summary' }], undefined, 'routed', undefined, {})
+    const session = conversation(1)
+    session.append('request/header', {
+      header: { config: { provider: 'routed', model: 'routed' } },
+      reason: 'initial',
+    })
+    const output = await compact.runSummarize(promptInput('history'), agent(session, 'fallback'))
+    expect(output.provider).toBe('routed')
+    expect(adapter.lastOptions?.provider).toBe('routed')
+    expect(session.events.findLast(event => event.type === 'slots/dispatch')?.data).toEqual({
+      slot: MODEL_SLOT_COMPACTION_SUMMARIZE,
+      provider: 'routed',
+      model: 'routed',
+      source: 'main-route',
+    })
+  })
+
+  it('preserves the unslotted inheritance order when no registry mounts', async () => {
+    const { adapter, compact } = await summarizerHarness([{ type: 'text', text: 'summary' }], undefined, 'routed')
+    const session = conversation(1)
+    session.append('request/header', {
+      header: { config: { provider: 'routed', model: 'routed' } },
+      reason: 'initial',
+    })
+    const output = await compact.runSummarize(promptInput('history'), agent(session, 'fallback'))
+    expect(output.provider).toBe('routed')
+    expect(adapter.lastOptions?.provider).toBe('routed')
+    expect(session.events.some(event => event.type === 'slots/dispatch')).toBe(false)
   })
 })

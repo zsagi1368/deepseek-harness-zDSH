@@ -1,6 +1,6 @@
 {
-  "name": "@deepseek-ai/dsh-session-title-llm",
-  "description": "Shared LLM generation policy for DeepSeek Harness session-title providers",
+  "name": "@deepseek-ai/dsh-model-slots",
+  "description": "Unified auxiliary-model slot registry for the DeepSeek Harness: named side-task routes resolved ahead of every auxiliary LLM dispatch with durable audit records",
   "version": "0.1.1-rc.2-zDSH20260824a",
   "publishConfig": {
     "access": "public"
@@ -8,7 +8,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
-    "directory": "packages/session/session-title-llm"
+    "directory": "packages/llm/model-slots"
   },
   "type": "module",
   "main": "lib/index.js",
@@ -22,7 +22,6 @@
       "types": "./lib/types/invariant.d.ts",
       "default": "./lib/invariant.js"
     },
-    "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
   "files": [
@@ -32,24 +31,18 @@
   ],
   "license": "MIT",
   "peerDependencies": {
+    "@deepseek-ai/dsh-brand": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-llm": "workspace:^",
-    "@deepseek-ai/dsh-model-slots": "workspace:^",
     "@deepseek-ai/dsh-session": "workspace:^",
-    "@deepseek-ai/dsh-session-title": "workspace:^",
-    "@deepseek-ai/dsh-timeout": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "workspace:^"
   },
   "devDependencies": {
+    "@deepseek-ai/dsh-brand": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-llm": "workspace:^",
-    "@deepseek-ai/dsh-model-slots": "workspace:^",
     "@deepseek-ai/dsh-session": "workspace:^",
-    "@deepseek-ai/dsh-session-title": "workspace:^",
-    "@deepseek-ai/dsh-timeout": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^"
   }
 }
