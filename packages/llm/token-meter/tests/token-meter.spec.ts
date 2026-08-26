@@ -1,4 +1,5 @@
 import { describe, expect, expectTypeOf, it } from 'vitest'
+import { performance } from 'node:perf_hooks'
 import { Context } from '@deepseek-ai/cordis'
 import { createUserMessage, CallId, createMessage } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock, Message, TokenUsage } from '@deepseek-ai/dsh-llm'
@@ -696,4 +697,98 @@ describe('malformed replay and listener lifecycle', () => {
     expect(activeMeter.measure(session).logRevision).toBe(3)
     await secondFiber.dispose()
   })
+})
+
+describe('meter-activated append performance (#238)', () => {
+  /** USAGE constant shared with the replay-anchor suite above. */
+  const PERF_USAGE: TokenUsage = { inputTokens: 20, cacheReadTokens: 3, cacheWriteTokens: 4, outputTokens: 7 }
+
+  /**
+   * Shadow the prototype `events` getter on one live session instance and
+   * count defensive-snapshot reads. The incremental listener must keep this
+   * count flat while appends stream past an activated meter; the pre-#238
+   * per-append `_sync` produced exactly one rescan per published event.
+   */
+  function countEventsSnapshotReads(session: Session): { reads(): number } {
+    let reads = 0
+    const getter = Object.getOwnPropertyDescriptor(Session.prototype, 'events')!
+    Object.defineProperty(session, 'events', {
+      get() {
+        reads += 1
+        return getter.get!.call(this) as readonly SessionEvent[]
+      },
+      configurable: true,
+    })
+    return { reads: () => reads }
+  }
+
+  async function bundleContext(): Promise<Context> {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionProjectionRegistry)
+    await ctx.plugin(TokenMeter)
+    return ctx
+  }
+
+  it('keeps durable-log rescans bounded across live appends observed by the meter', async () => {
+    const ctx = await bundleContext()
+    try {
+      const service = ctx.tokenMeter
+      const session = ctx.sessions.create(SessionId('perf-bounded'))
+      service.measure(session)
+      const counter = countEventsSnapshotReads(session)
+      for (let turn = 1; turn <= 60; turn += 1) {
+        appendSuccessfulCall(session, header('deepseek-v4-flash'), {
+          turn,
+          step: 1,
+          usage: PERF_USAGE,
+          providerText: `provider answer ${turn}`,
+        })
+      }
+      // One read per lazily-built projection cell at most; a per-append _sync
+      // would have rescanned once for every one of the 540 appended events.
+      expect(counter.reads()).toBeLessThanOrEqual(10)
+      expect(service.measure(session).logRevision).toBe(session.events.length)
+      expect(service.measure(session).surfaceDeltaTokens).toBe(0)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  /** Append full agent turns until at least `totalEvents` durable events exist, timed without reader snapshots. */
+  async function timedActiveAppend(totalEvents: number): Promise<number> {
+    const ctx = await bundleContext()
+    try {
+      const service = ctx.tokenMeter
+      const session = ctx.sessions.create(SessionId(`perf-scale-${totalEvents}`))
+      service.measure(session)
+      const initialEvents = session.events.length
+      let turn = 0
+      const calls = Math.ceil((totalEvents - initialEvents) / 9)
+      const started = performance.now()
+      for (let call = 0; call < calls; call += 1) {
+        turn += 1
+        appendSuccessfulCall(session, header('deepseek-v4-flash'), {
+          turn,
+          step: 1,
+          usage: PERF_USAGE,
+        })
+      }
+      return performance.now() - started
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  }
+
+  it('at most triples append time when the event count doubles under the default composition', async () => {
+    // Warmup outside both measurements.
+    await timedActiveAppend(200)
+    const fastest = async (totalEvents: number): Promise<number> =>
+      Math.min(await timedActiveAppend(totalEvents), await timedActiveAppend(totalEvents), await timedActiveAppend(totalEvents))
+    const half = await fastest(1_500)
+    const full = await fastest(3_000)
+    // #238 acceptance: doubling events keeps total append cost under ~3x
+    // (the quadratic rebuild grew ~4x or worse at every doubling).
+    expect(full).toBeLessThan(half * 3)
+  }, 60_000)
 })

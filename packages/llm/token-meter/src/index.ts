@@ -33,6 +33,8 @@ interface MeasurementAnchor {
 
 interface ReplayState {
   consumedEvents: number
+  /** Consumed log prefix mirrored by reference (`events[seq]`), keeping provenance lookups off `session.events`. */
+  readonly events: SessionEvent[]
   header: EpochHeader | undefined
   surface: TokenSurfaceNode[]
   surfaceTokens: number
@@ -92,8 +94,21 @@ export class TokenMeter extends Service {
 
     // Readers catch up independently, while eager observation bounds ordinary
     // read latency without creating state for sessions no consumer has read.
-    ctx.on('session/event', (session) => {
-      if (this.states.has(session)) this._sync(session)
+    // The published event folds directly onto the existing state: rebuilding
+    // the session's defensive events snapshot per append would rescan the
+    // whole log and turn a session's total append cost quadratic.
+    ctx.on('session/event', (session, event) => {
+      const state = this.states.get(session)
+      if (state === undefined) return
+      if (event.seq === state.consumedEvents) {
+        this._foldEvent(state, event)
+        state.events.push(event)
+        state.consumedEvents += 1
+      } else {
+        // Discontinuous publication (a fold failed earlier or compensation
+        // reads landed out of band): re-sync against the durable log.
+        this._sync(session)
+      }
     })
   }
 
@@ -156,12 +171,19 @@ export class TokenMeter extends Service {
     return estimateMessage(message)
   }
 
-  /** Catch one session's fold up to the current durable tail. */
+  /**
+   * Catch one session's fold up to the current durable tail.
+   *
+   * Cold start and compensation path: live appends arrive through the
+   * `session/event` listener instead, so this reads the session's defensive
+   * log snapshot once per call rather than once per append.
+   */
   private _sync(session: Session): ReplayState {
     let state = this.states.get(session)
     if (state === undefined) {
       state = {
         consumedEvents: 0,
+        events: [],
         header: undefined,
         surface: [],
         surfaceTokens: 0,
@@ -171,10 +193,12 @@ export class TokenMeter extends Service {
       this.states.set(session, state)
     }
 
-    while (state.consumedEvents < session.events.length) {
+    const log = session.events
+    while (state.consumedEvents < log.length) {
       // oxlint-disable-next-line typescript/no-non-null-assertion -- contiguous session seqs index the durable log
-      const event = session.events[state.consumedEvents]!
-      this._foldEvent(session, state, event)
+      const event = log[state.consumedEvents]!
+      this._foldEvent(state, event)
+      state.events.push(event)
       state.consumedEvents += 1
     }
     return state
@@ -185,7 +209,7 @@ export class TokenMeter extends Service {
    * A malformed event remains unread on every retry instead of partially
    * applying the same mutation more than once.
    */
-  private _foldEvent(session: Session, state: ReplayState, event: SessionEvent): void {
+  private _foldEvent(state: ReplayState, event: SessionEvent): void {
     let nextHeader = state.header
     let nextStepStart = state.stepStart
     let nextAnchor = state.anchor
@@ -231,7 +255,7 @@ export class TokenMeter extends Service {
       const eventTokens = surface!.tokens
       if (event.data.usage !== undefined && nextHeader !== undefined) {
         const providerAssistantTokens = this._estimateProviderAssistant(
-          session,
+          state,
           event,
           eventTokens,
         )
@@ -275,7 +299,7 @@ export class TokenMeter extends Service {
    * provider output; an explicit empty list prices a known empty stream.
    */
   private _estimateProviderAssistant(
-    session: Session,
+    state: ReplayState,
     event: SessionEvent<'assistant/message'>,
     durableEventTokens: number,
   ): number {
@@ -292,9 +316,11 @@ export class TokenMeter extends Service {
         throw new Error(`token meter: assistant/message at seq ${event.seq} repeats source seq ${seq}`)
       }
       seen.add(seq)
-      // Session construction validates contiguous seqs, and the explicit
-      // earlier-than-assistant check above therefore guarantees existence.
-      const source = session.events[seq]
+      // Sources are earlier than this event, so the consumed-prefix mirror
+      // (contiguous session seqs index it exactly like the durable log)
+      // already holds them; reading `session.events` here would rebuild the
+      // whole defensive snapshot on every live assistant append.
+      const source = state.events[seq]
       // oxlint-disable-next-line typescript/no-non-null-assertion
       const sourceEvent = source!
       if (sourceEvent.type !== 'assistant/chunk') {
