@@ -36,6 +36,9 @@ let dist: string | undefined
 beforeEach(() => {
   vi.stubEnv('SSH_CONNECTION', '')
   vi.stubEnv('SSH_TTY', '')
+  // The startup self-probe is a real network call; every glue test pins a quiet
+  // outcome so readiness assertions stay hermetic.
+  internals.apiSelfCheck = async () => ({ kind: 'ok' as const, status: 426 })
 })
 
 afterEach(() => {
@@ -44,12 +47,14 @@ afterEach(() => {
   vi.unstubAllEnvs()
   internals.resolveDistIndex = originalResolve
   internals.openBrowser = originalOpenBrowser
+  internals.apiSelfCheck = originalApiSelfCheck
   if (dist !== undefined) rmSync(dist, { recursive: true, force: true })
   dist = undefined
 })
 
 const originalResolve = internals.resolveDistIndex
 const originalOpenBrowser = internals.openBrowser
+const originalApiSelfCheck = internals.apiSelfCheck
 
 type BrowserLauncher = ChildProcess & { stderr: PassThrough }
 
@@ -117,7 +122,7 @@ describe('web-app runtime glue', () => {
     const log = vi.spyOn(console, 'log').mockImplementation((message) => { lifecycle.push(String(message)) })
     const openBrowser = vi.fn(async (url: string) => { lifecycle.push(`open:${url}`) })
     internals.openBrowser = openBrowser
-    apply(ctx, new Config({ openBrowser: true, printUrl: true, surfaceContext: true, trustedHosts: ['lab.internal'] }))
+    apply(ctx, new Config({ openBrowser: true, printUrl: true, surfaceContext: true, trustedHosts: ['lab.internal'], readOnly: false }))
     await ctx.plugin(SystemPrompt, { persona: '' })
     // Settle the injected registrations.
     await new Promise(resolve => setTimeout(resolve, 0))
@@ -154,7 +159,7 @@ describe('web-app runtime glue', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
     const openBrowser = vi.fn(async () => {})
     internals.openBrowser = openBrowser
-    apply(ctx, new Config({ openBrowser: false, printUrl: false, surfaceContext: true, trustedHosts: [] }))
+    apply(ctx, new Config({ openBrowser: false, printUrl: false, surfaceContext: true, trustedHosts: [], readOnly: false }))
     await ctx.plugin(SystemPrompt, { persona: '' })
     await new Promise(resolve => setTimeout(resolve, 0))
     expect(log).not.toHaveBeenCalled()
@@ -176,7 +181,7 @@ describe('web-app runtime glue', () => {
         return () => {}
       },
     } as never)
-    apply(ctx, new Config({ openBrowser: false, printUrl: false, surfaceContext: false, trustedHosts: [] }))
+    apply(ctx, new Config({ openBrowser: false, printUrl: false, surfaceContext: false, trustedHosts: [], readOnly: false }))
     await ctx.plugin(SystemPrompt, { persona: '' })
     await new Promise(resolve => setTimeout(resolve, 0))
     const assembly = await ctx.systemPrompt.assemble()
@@ -191,9 +196,83 @@ describe('web-app runtime glue', () => {
     const ctx = new Context()
     ctx.provide('webServer', fakeHttpServer().server)
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
-    apply(ctx, new Config({ openBrowser: false, printUrl: true, surfaceContext: true, trustedHosts: [] }))
+    apply(ctx, new Config({ openBrowser: false, printUrl: true, surfaceContext: true, trustedHosts: [], readOnly: false }))
     await new Promise(resolve => setTimeout(resolve, 0))
     expect(log).toHaveBeenCalledWith('dsh web: http://127.0.0.1:4567')
+    await ctx.fiber.dispose()
+  })
+
+  it('names the read-only posture on the URL line when the flag is set', async () => {
+    stageDist()
+    const ctx = new Context()
+    ctx.provide('webServer', fakeHttpServer().server)
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    apply(ctx, new Config({ openBrowser: false, printUrl: true, surfaceContext: true, trustedHosts: [], readOnly: true }))
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(log).toHaveBeenCalledWith('dsh web: http://127.0.0.1:4567 (read-only)')
+    await ctx.fiber.dispose()
+  })
+
+  it('self-checks the printed URL once after readiness and stays quiet when the fence passes', async () => {
+    stageDist()
+    const ctx = new Context()
+    ctx.provide('webServer', fakeHttpServer().server)
+    const probe = vi.fn(async () => ({ kind: 'ok' as const, status: 426 }))
+    internals.apiSelfCheck = probe
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const diagnostic = vi.spyOn(console, 'error').mockImplementation(() => {})
+    apply(ctx, new Config({ openBrowser: false, printUrl: true, surfaceContext: false, trustedHosts: [], readOnly: false }))
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(log).toHaveBeenCalledWith('dsh web: http://127.0.0.1:4567')
+    expect(probe).toHaveBeenCalledTimes(1)
+    expect(probe).toHaveBeenCalledWith('http://127.0.0.1:4567')
+    expect(diagnostic).not.toHaveBeenCalled()
+    await ctx.fiber.dispose()
+  })
+
+  it('prints fence guidance with the reason and both remedies when the self-check is rejected (S-24)', async () => {
+    stageDist()
+    const ctx = new Context()
+    ctx.provide('webServer', fakeHttpServer().server)
+    internals.apiSelfCheck = async () => ({ kind: 'fenced' as const, reason: 'untrusted-host' })
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const diagnostic = vi.spyOn(console, 'error').mockImplementation(() => {})
+    apply(ctx, new Config({ openBrowser: false, printUrl: true, surfaceContext: false, trustedHosts: [], readOnly: false }))
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(diagnostic).toHaveBeenCalledWith(expect.stringContaining('forbidden (untrusted-host)'))
+    expect(diagnostic).toHaveBeenCalledWith(expect.stringContaining('--trusted-host <host[:port]>'))
+    expect(diagnostic).toHaveBeenCalledWith(expect.stringContaining('http://127.0.0.1:4567'))
+    expect(log).toHaveBeenCalledWith('dsh web: http://127.0.0.1:4567')
+    await ctx.fiber.dispose()
+  })
+
+  it('reports an unreachable printed address through the self-check guidance', async () => {
+    stageDist()
+    const ctx = new Context()
+    ctx.provide('webServer', fakeHttpServer().server)
+    internals.apiSelfCheck = async () => ({ kind: 'unreachable' as const, detail: 'ECONNREFUSED' })
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const diagnostic = vi.spyOn(console, 'error').mockImplementation(() => {})
+    apply(ctx, new Config({ openBrowser: false, printUrl: true, surfaceContext: false, trustedHosts: [], readOnly: false }))
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(log).toHaveBeenCalledWith('dsh web: http://127.0.0.1:4567')
+    expect(diagnostic).toHaveBeenCalledWith(expect.stringContaining('ECONNREFUSED'))
+    expect(diagnostic).toHaveBeenCalledWith(expect.stringContaining('/api/events.mux'))
+    await ctx.fiber.dispose()
+  })
+
+  it('keeps readiness intact when the self-probe itself fails', async () => {
+    stageDist()
+    const ctx = new Context()
+    ctx.provide('webServer', fakeHttpServer().server)
+    internals.apiSelfCheck = async () => { throw new Error('probe exploded') }
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const diagnostic = vi.spyOn(console, 'error').mockImplementation(() => {})
+    apply(ctx, new Config({ openBrowser: false, printUrl: true, surfaceContext: false, trustedHosts: [], readOnly: false }))
+    // The URL line precedes the probe; the swallowed rejection prints nothing.
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(log).toHaveBeenCalledWith('dsh web: http://127.0.0.1:4567')
+    expect(diagnostic).not.toHaveBeenCalled()
     await ctx.fiber.dispose()
   })
 
@@ -208,7 +287,7 @@ describe('web-app runtime glue', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
     const openBrowser = vi.fn(async () => {})
     internals.openBrowser = openBrowser
-    apply(ctx, new Config({ openBrowser: true, printUrl: true, surfaceContext: false, trustedHosts: [] }))
+    apply(ctx, new Config({ openBrowser: true, printUrl: true, surfaceContext: false, trustedHosts: [], readOnly: false }))
     await new Promise(resolve => setTimeout(resolve, 0))
     expect(log).toHaveBeenCalledWith('dsh web: http://127.0.0.1:4567')
     expect(openBrowser).not.toHaveBeenCalled()
@@ -227,7 +306,7 @@ describe('web-app runtime glue', () => {
     const settlement = new Promise<void>((resolve) => { release = resolve })
     provideLoader(settled, () => settlement)
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
-    apply(settled, new Config({ openBrowser: true, printUrl: true, surfaceContext: true, trustedHosts: [] }))
+    apply(settled, new Config({ openBrowser: true, printUrl: true, surfaceContext: true, trustedHosts: [], readOnly: false }))
     await new Promise(resolve => setTimeout(resolve, 0))
     expect(log).not.toHaveBeenCalled()
     expect(openBrowser).not.toHaveBeenCalled()
@@ -244,7 +323,7 @@ describe('web-app runtime glue', () => {
     const failed = new Context()
     failed.provide('webServer', fakeHttpServer().server)
     provideLoader(failed, async () => { throw new Error('boot failed') })
-    apply(failed, new Config({ openBrowser: true, printUrl: true, surfaceContext: true, trustedHosts: [] }))
+    apply(failed, new Config({ openBrowser: true, printUrl: true, surfaceContext: true, trustedHosts: [], readOnly: false }))
     await new Promise(resolve => setTimeout(resolve, 0))
     expect(log).not.toHaveBeenCalled()
     expect(openBrowser).not.toHaveBeenCalled()
@@ -262,7 +341,7 @@ describe('web-app runtime glue', () => {
     let releaseTorn: () => void
     const tornSettlement = new Promise<void>((resolve) => { releaseTorn = resolve })
     provideLoader(torn, () => tornSettlement)
-    apply(torn, new Config({ openBrowser: true, printUrl: true, surfaceContext: true, trustedHosts: [] }))
+    apply(torn, new Config({ openBrowser: true, printUrl: true, surfaceContext: true, trustedHosts: [], readOnly: false }))
     await child.dispose() // the webServer service goes away
     releaseTorn!()
     await new Promise(resolve => setTimeout(resolve, 0))
@@ -279,7 +358,7 @@ describe('web-app runtime glue', () => {
     const { server } = fakeHttpServer()
     Object.defineProperty(server, 'port', { get: () => undefined })
     ctx.provide('webServer', server)
-    apply(ctx, new Config({ openBrowser: false, printUrl: false, surfaceContext: true, trustedHosts: [] }))
+    apply(ctx, new Config({ openBrowser: false, printUrl: false, surfaceContext: true, trustedHosts: [], readOnly: false }))
     await ctx.plugin(SystemPrompt, { persona: '' })
     await new Promise(resolve => setTimeout(resolve, 0))
     await expect(ctx.systemPrompt.assemble()).rejects.toThrow('webServer service missing')
@@ -308,7 +387,7 @@ describe('web-app runtime glue', () => {
     internals.openBrowser = vi.fn(async () => { throw failure })
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
     const diagnostic = vi.spyOn(console, 'error').mockImplementation(() => {})
-    apply(ctx, new Config({ openBrowser: true, printUrl: false, surfaceContext: false, trustedHosts: [] }))
+    apply(ctx, new Config({ openBrowser: true, printUrl: false, surfaceContext: false, trustedHosts: [], readOnly: false }))
     await new Promise(resolve => setTimeout(resolve, 0))
     expect(log).toHaveBeenCalledWith('dsh web: opening the default browser; pass --no-open to disable')
     expect(diagnostic).toHaveBeenCalledWith(

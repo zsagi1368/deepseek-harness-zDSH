@@ -59,6 +59,7 @@ export const apply = ctx => globalThis.__webStartupApply(ctx)
     '    openBrowser: !!js ctx.webStartup.openBrowser',
     '    port: !!js ctx.webStartup.port ?? 3080',
     '    trustedHosts: !!js ctx.webStartup.trustedHosts',
+    '    readOnly: !!js ctx.webStartup.readOnly',
     '- id: provider',
     `  name: ${pathToFileURL(join(dir, 'provider.mjs')).href}`,
     '',
@@ -100,6 +101,7 @@ describe('web command-line provider', () => {
       openBrowser: false,
       port: 8080,
       trustedHosts: ['lab.internal', 'lab-2.internal', '10.0.0.9'],
+      readOnly: false,
     })
     expect(observed.readerConfig).toEqual(values)
     expect(observed.exits).toEqual([])
@@ -107,13 +109,27 @@ describe('web command-line provider', () => {
 
   it('leaves deployment values to each consumer when flags omit them', async () => {
     const { values, observed } = await bootProvider([])
-    expect(values).toEqual({ openBrowser: true, trustedHosts: [] })
+    expect(values).toEqual({ openBrowser: true, trustedHosts: [], readOnly: false })
     expect(observed.readerConfig).toEqual({
       host: '127.0.0.1',
       openBrowser: true,
       port: 3080,
       trustedHosts: [],
+      readOnly: false,
     })
+  })
+
+  it('publishes --read-only as the gateway posture and reaches the consumer', async () => {
+    const { values, observed } = await bootProvider(['--read-only'])
+    expect(values).toEqual({ openBrowser: true, trustedHosts: [], readOnly: true })
+    expect(observed.readerConfig).toEqual({
+      host: '127.0.0.1',
+      openBrowser: true,
+      port: 3080,
+      trustedHosts: [],
+      readOnly: true,
+    })
+    expect(observed.exits).toEqual([])
   })
 
   it('prints its own help and leaves the consumer pending', async () => {

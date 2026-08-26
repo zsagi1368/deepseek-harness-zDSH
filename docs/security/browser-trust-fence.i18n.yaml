@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/security/browser-trust-fence.md
+browser-trust-fence.md: c9666484ccec42fccd89d3b86dacd7c6cea4eb28
+browser-trust-fence.zh.md: 96e936d9b987cd9f3cc8a2b7ca25d2f1f6770643
