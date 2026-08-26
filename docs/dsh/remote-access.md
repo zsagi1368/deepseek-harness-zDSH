@@ -32,6 +32,18 @@ dsh web --trusted-host workstation.tail1234.ts.net
 
 The flag is repeatable, accepts a bare `host` (any port) or `host:port` (that exact port), and adds the authority to the fence for this invocation.
 
+## Read-only history browsing (`--read-only`)
+
+When the phone only needs to look — tracking progress or reading past sessions — boot with the read-only flag:
+
+```bash
+dsh web --trusted-host workstation.tail1234.ts.net --read-only
+```
+
+The API gateway then serves reads only: the session list, search, full history, image attachments, subagent catalogs, the model catalog, and the session-log export keep working, while every mutation-class RPC — sending prompts, creating/forking/renaming sessions, editing the queue, workspace/preset/settings/credentials management — is refused at the gateway itself with a `read-only-mode` error before it reaches any implementation. The startup line names the posture (`dsh web: http://127.0.0.1:3080 (read-only)`), so one glance at the boot log tells you which face the server presents.
+
+This narrows accidents and exposure for the away-from-desk case, but it is **not authentication**: the fence above stays anti-rebinding and cross-site hardening only, and any device on your tailnet can still read every session's history. Tailnet membership remains the access control (see below). A quick manual check after boot: open a session on the phone, scroll its history, then type into the composer — the send fails with the explainable `read-only-mode` error instead of changing anything on the workstation.
+
 ## Security baseline
 
 - Keep the loopback bind. Never launch with `--host 0.0.0.0` just to reach the phone; the tailnet tunnel already provides private reachability, and an all-interfaces bind widens the attack surface to every LAN neighbor.
@@ -42,5 +54,6 @@ The flag is repeatable, accepts a bare `host` (any port) or `host:port` (that ex
 
 - **Certificate warning on first visit**: `*.ts.net` names are issued a publicly trusted certificate automatically, but the first provisioning can take a minute; retry shortly. A corporate TLS-inspecting proxy on the phone's network can also break the chain — test on a network without interception.
 - **Forbidden errors on API calls**: the Host fence rejected the proxied authority; add the exact tailnet hostname with `--trusted-host` as shown above.
+- **Everything answers `read-only-mode`**: the server booted with `--read-only`; restart without that flag for a writable session.
 - **Stale UI after code changes**: client-plugin hot reloads work only while `pnpm run dev:web` runs from the same checkout; every other change requires rebuilding the web artifacts and refreshing the page. A remote phone behaves like any other browser client here.
 - **URL stopped working after a restart**: launching with `--port 0` lets the OS pick a fresh port each boot; read the URL line printed at startup and re-publish that port with `tailscale serve`.

@@ -21,6 +21,7 @@ import { addHarnessSourceSection } from '@deepseek-ai/dsh-app-boot'
 import * as FrontendStatic from '@deepseek-ai/dsh-host-frontend-static'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
 import { scrubbedParentEnv } from '@deepseek-ai/dsh-subprocess'
+import { apiSelfCheckGuidance, probeApiSelfCheck } from './api-selfcheck.ts'
 import type {} from '@deepseek-ai/cordis-plugin-loader'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-system-prompt'
@@ -53,6 +54,8 @@ export interface Config {
   surfaceContext: boolean
   /** Explicit `--trusted-host` authorities from this invocation. */
   trustedHosts: string[]
+  /** Serve reads only (`--read-only`); the URL line names the posture. */
+  readOnly: boolean
 }
 
 export const Config: z<Config> = z.object({
@@ -60,6 +63,7 @@ export const Config: z<Config> = z.object({
   printUrl: z.boolean().default(true),
   surfaceContext: z.boolean().default(true),
   trustedHosts: z.array(String).default([]),
+  readOnly: z.boolean().default(false),
 })
 
 /** Bind-dependent Web values shared by the trust fence and URL display. */
@@ -215,11 +219,12 @@ async function openBrowser(url: string): Promise<void> {
   })
 }
 
-/** Test hooks for the built dist and native browser handoff; production never mutates them. */
+/** Test hooks for the built dist, native browser handoff, and api self-probe; production never mutates them. */
 export const internals: {
   resolveDistIndex: () => string
   openBrowser: (url: string) => Promise<void>
-} = { resolveDistIndex, openBrowser }
+  apiSelfCheck: typeof probeApiSelfCheck
+} = { resolveDistIndex, openBrowser, apiSelfCheck: probeApiSelfCheck }
 
 /**
  * Mount the Web runtime: dist serving, surface prompt, the bash runtime
@@ -266,7 +271,10 @@ export function apply(ctx: Context, config: Config): void {
       const lanCandidate = runtime.lanAddresses[0]
       const port = ctx.webServer.port
       if (config.printUrl) {
-        console.log(`dsh web: ${webUrl}${lanCandidate === undefined ? '' : ` (LAN: http://${lanCandidate}:${String(port)})`}`)
+        // The read-only marker rides the same line: a supervisor (or a human
+        // pasting the URL elsewhere) must be able to tell the posture from
+        // the boot log alone.
+        console.log(`dsh web: ${webUrl}${config.readOnly ? ' (read-only)' : ''}${lanCandidate === undefined ? '' : ` (LAN: http://${lanCandidate}:${String(port)})`}`)
       }
       if (handoffBrowser) {
         console.log('dsh web: opening the default browser; pass --no-open to disable')
@@ -275,6 +283,14 @@ export function apply(ctx: Context, config: Config): void {
           console.error(`web-app: could not open the default browser because ${reason}; visit ${webUrl} manually`)
         })
       }
+      // Startup self-check: probe our own /api once through the address just
+      // advertised. A fence rejection here means even this process's loopback
+      // request is untrusted — interference the browser is about to hit too —
+      // so say so at boot with the remedies instead of leaving the operator
+      // to debug bare 403s in the page (S-24).
+      void internals.apiSelfCheck(webUrl).then((outcome) => {
+        for (const line of apiSelfCheckGuidance(outcome, webUrl)) console.error(line)
+      }, () => {})
     }
     // This row's own activation can precede a sibling failure. The app owns
     // readiness by waiting for its Loader tree, or announces at once in a

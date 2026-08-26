@@ -113,9 +113,15 @@
       name: '@deepseek-ai/dsh-plugin-governance-host'
 
     # The API gateway: the transport-agnostic dispatch face every client shape
-    # shares. The base layer's agent-default-model service owns the default model.
+    # shares. The base layer's agent-default-model service owns the default
+    # model. `--read-only` flips the gateway to its browsing-only face: every
+    # mutation-class RPC answers `read-only-mode` at this single exit, so all
+    # carriers (fetch bridge, websocket mux) inherit the posture.
     - id: api-gateway
       name: '@deepseek-ai/dsh-host-apiproxy'
+      inject: [webStartup]
+      config:
+        readOnly: !!js ctx.webStartup.readOnly
 
     - id: cordis-host-runner
       name: '@deepseek-ai/dsh-cordis-host-runner'
@@ -163,6 +169,7 @@
         printUrl: true
         surfaceContext: true
         trustedHosts: !!js ctx.webStartup.trustedHosts
+        readOnly: !!js ctx.webStartup.readOnly
 
     # The client-plugin reload chain, always mounted: it is idle until a
     # rebuild watcher (pnpm run dev:web) actually rewrites client bundles. It

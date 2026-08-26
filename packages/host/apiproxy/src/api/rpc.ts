@@ -92,6 +92,13 @@ export interface RpcErrorDetailsMap {
   'subagent-not-resumable': { childSessionId: SessionId }
   'subagent-unauthorized': { childSessionId: SessionId }
   'subagent-delivery-unavailable': { childSessionId: SessionId }
+  /**
+   * The deployment serves reads only (the `--read-only` posture): the method
+   * is mutation-class or configuration-plane and was refused at the gateway
+   * before reaching any implementation. Details are empty — the refusal is a
+   * property of the deployment, not of the request.
+   */
+  'read-only-mode': {}
   'internal': {}
 }
 

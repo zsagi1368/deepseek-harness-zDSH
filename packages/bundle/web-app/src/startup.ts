@@ -29,6 +29,8 @@ export interface WebStartupValues {
   port?: number
   /** Explicit `--trusted-host` authorities, in argument order. */
   trustedHosts: string[]
+  /** `--read-only`: serve browsing reads only; mutation-class APIs refuse. */
+  readOnly: boolean
 }
 
 /** The web flag family, as commander parsed it. */
@@ -36,6 +38,7 @@ interface WebOptions {
   host?: string
   open: boolean
   port?: string
+  readOnly?: boolean
   trustedHost?: string[]
 }
 
@@ -51,12 +54,14 @@ function webCommand(): Command {
     .option('--host <host>', 'bind host')
     .option('--no-open', 'do not open the Web UI in the default browser')
     .option('--port <port>', 'listen port; pass 0 to let the OS pick a free one')
+    .option('--read-only', 'serve reads only: history browsing works, every mutation-class API answers read-only-mode')
     .option('--trusted-host <authority...>', 'extra authority the /api browser-trust fence accepts (host or host:port; repeatable)')
     .addHelpText('after', `
 Examples:
   dsh --profile web                          serve on the composed host and port
   dsh --profile web --no-open                serve without opening a browser
   dsh --profile web --port 8080              serve on another port
+  dsh --profile web --read-only              share history over Tailscale without write access
 `)
 }
 
@@ -82,6 +87,7 @@ export function apply(ctx: Context): void {
       ...options.host !== undefined && { host: options.host },
       ...options.port !== undefined && { port: Number(options.port) },
       trustedHosts: options.trustedHost ?? [],
+      readOnly: options.readOnly === true,
     } satisfies WebStartupValues)
   })
   parseCmdline(ctx, program)

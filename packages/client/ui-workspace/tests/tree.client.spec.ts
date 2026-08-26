@@ -467,3 +467,14 @@ describe('relativeTime', () => {
     expect(relativeTime(0, now)).toEqual({ unit: 'years', n: 1 })
   })
 })
+
+describe('project metadata projection', () => {
+  it('carries the session cwd into flat and grouped nodes for rows outside their group header', () => {
+    const sessions = list(summary('home', 30, '/work/dsh'), summary('stray', 20))
+    const flat = deriveFlat(sessions, noArchive)
+    expect(flat.find(row => row.id === sid('home'))?.cwd).toBe('/work/dsh')
+    expect(flat.find(row => row.id === sid('stray'))?.cwd).toBeUndefined()
+    const grouped = deriveGroups(sessions, [workspace('proj', ['home'])], noArchive, view(['proj']))
+    expect(grouped.find(group => group.key === 'proj')!.sessions[0]!.cwd).toBe('/work/dsh')
+  })
+})

@@ -603,3 +603,36 @@ describe('workspace browser rows', () => {
     expect(screen.getByRole('treeitem').className).toMatch(/dropAfter/)
   })
 })
+
+describe('session row project chip', () => {
+  const node = (over: Partial<SessionNode> = {}): SessionNode => ({
+    id: sid('s1'), title: 'fix login flow', blank: false, running: false,
+    runningSubagentCount: 0, completed: false, updatedAt: 0,
+    cwd: 'G:/work/dsh/apps/cli', ...over,
+  })
+  const renderRow = (over: { node?: SessionNode; showProject?: boolean } = {}) => render(
+    <SessionNodeItem
+      node={node(over.node)} currentId={undefined} now={0} onOpen={vi.fn()}
+      onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()}
+      showProject={over.showProject} t={t}
+    />,
+  )
+
+  it('surfaces the project basename for rows outside their project group', () => {
+    renderRow({ showProject: true })
+    const chip = screen.getByTitle('G:/work/dsh/apps/cli')
+    expect(chip.textContent).toBe('cli')
+  })
+
+  it('omits the chip inside real workspace groups (the header already names it)', () => {
+    renderRow({})
+    expect(screen.queryByTitle('G:/work/dsh/apps/cli')).toBeNull()
+  })
+
+  it('omits the chip when the host recorded no cwd or the row is a blank placeholder', () => {
+    renderRow({ showProject: true, node: { cwd: undefined } })
+    expect(screen.queryByText('cli')).toBeNull()
+    renderRow({ showProject: true, node: { blank: true } })
+    expect(screen.queryByTitle('G:/work/dsh/apps/cli')).toBeNull()
+  })
+})

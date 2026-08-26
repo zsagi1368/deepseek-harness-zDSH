@@ -14,7 +14,7 @@ import {
   IconPlusOutline16, IconTrashOutline16, IconTriangleRightFill14, Menu, StateDot,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { StateDotState } from '@deepseek-ai/dsh-client-ui-primitives'
-import { abbreviateHomePath } from '@deepseek-ai/dsh-client-runtime/client'
+import { abbreviateHomePath, workspaceTitleOf } from '@deepseek-ai/dsh-client-runtime/client'
 import type { WorkspaceBrowserProps } from '../contract/slots.ts'
 import type { GroupNode, SearchResultNode, SessionNode } from '../tree.ts'
 import { relativeTime } from '../tree.ts'
@@ -288,11 +288,14 @@ function SessionStatusDots({ statuses }: { statuses: readonly [SessionStatus, ..
 }
 
 /** Hover-card body: full title, relative time, and every relevant live status. */
-function SessionHoverContent({ node, now, t }: { node: SessionNode; now: number; t: RowTranslate }) {
+function SessionHoverContent({ node, home, now, t }: { node: SessionNode; home?: string | undefined; now: number; t: RowTranslate }) {
   const statuses = sessionStatuses(node, t)
   return (
     <div className={css.hoverContent}>
       <div className={css.hoverTitle}>{displayTitle(node, t)}</div>
+      {/* The project path the row's chip abbreviates (absent when the host
+          recorded no cwd for the session). */}
+      {node.cwd !== undefined && <div className={css.hoverPath}>{abbreviateHomePath(node.cwd, home)}</div>}
       {/* Same placeholder rule as the row's trailing cell: no timestamp
           before the first prompt. */}
       {!node.blank && <div className={css.hoverTime}>{hoverTimeLabel(node.updatedAt, now, t)}</div>}
@@ -370,7 +373,8 @@ function IconPin({ size = 16, filled = false }: { size?: number; filled?: boolea
 
 /**
  * One top-level 34px session row: status dot (pending user interaction outranks
- * own or descendant activity), title, relative time, and the row actions menu.
+ * own or descendant activity), title, optional project chip, relative time, and
+ * the row actions menu.
  * @param props.node - derived session node.
  * @param props.currentId - selected session id (row highlight).
  * @param props.now - epoch ms for relative-time formatting.
@@ -381,12 +385,16 @@ function IconPin({ size = 16, filled = false }: { size?: number; filled?: boolea
  * @param props.pinned - the session is pinned to the top of its list.
  * @param props.onTogglePin - pin/unpin the session (browser-local view state).
  * @param props.drag - optional draggable-row wiring.
- * @param props.flat - omit the empty status slot in the hierarchy-free flat list.
+ * @param props.flat - the row is rendered without a parent Workspace header.
+ * @param props.showProject - surface the project basename (rows whose group
+ *   header does not already name the project: flat list, Ungrouped bucket).
+ * @param props.home - host account home for hover-path abbreviation.
  * @param props.t - the browser root's locale seat.
  * @returns the session row.
  */
 export function SessionNodeItem({
-  node, currentId, now, onOpen, onRename, onFork, onArchive, pinned = false, onTogglePin, drag, flat = false, t,
+  node, currentId, now, onOpen, onRename, onFork, onArchive, pinned = false, onTogglePin, drag, flat = false,
+  showProject = false, home, t,
 }: {
   node: SessionNode
   currentId: string | undefined
@@ -406,6 +414,10 @@ export function SessionNodeItem({
   drag?: RowDragProps | undefined
   /** The row is rendered without a parent Workspace header. */
   flat?: boolean | undefined
+  /** Render the project basename chip (off inside real Workspace groups). */
+  showProject?: boolean | undefined
+  /** Host account home; hover-card paths display as `~`-rooted when given. */
+  home?: string | undefined
   t: RowTranslate
 }) {
   const row = node
@@ -474,6 +486,12 @@ export function SessionNodeItem({
         </span>
       )}
       <span className={css.title}>{title}</span>
+      {/* Project chip for rows outside their project's group header: the
+          basename only (the hover card carries the full path). A blank New
+          Session row is a placeholder with no content to attribute. */}
+      {showProject && !row.blank && node.cwd !== undefined && (
+        <span className={css.project} title={node.cwd}>{workspaceTitleOf(node.cwd)}</span>
+      )}
       {/* A blank New Session row is a provisional placeholder: nothing has
           happened in it yet, so a "now" timestamp and the row verbs
           (rename/fork/archive) would all act on content that does not
@@ -517,7 +535,7 @@ export function SessionNodeItem({
   return (
     <HoverCard
       anchor={ownRow}
-      content={<SessionHoverContent node={node} now={now} t={t} />}
+      content={<SessionHoverContent node={node} home={home} now={now} t={t} />}
       disabled={menuOpen || drag?.active === true}
       copyText={row.blank ? undefined : row.title}
       copyLabel={t('copy')}

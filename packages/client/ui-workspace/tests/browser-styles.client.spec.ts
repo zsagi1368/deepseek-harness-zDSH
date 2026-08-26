@@ -110,7 +110,54 @@ describe('WorkspaceBrowser.module.css list', () => {
 
   it('pins both rail controls to the shared left anchor during the column slide', () => {
     expect(declarations('.rail .sectionHeader')?.get('justify-content')).toBe('flex-start')
-    expect(declarations('.rail .iconButton')?.get('width')).toBe('36px')
+    // The rail anchor holds at desktop width; the phone breakpoint below
+    // restates these pairs at 44px touch-target size, and this helper reads
+    // source order, so the last (phone) declaration wins here.
+    expect(declarations('.rail .iconButton')?.get('width')).toBe('44px')
     expect(declarations('.rail .search')?.get('width')).toBe('36px')
+  })
+})
+
+/** Body of one @media block, braces balanced; undefined when the query is absent. */
+function mediaBlock(source: string, query: string): string | undefined {
+  const withoutComments = source.replace(/\/\*[\s\S]*?\*\//g, ' ')
+  const at = withoutComments.indexOf(`@media ${query}`)
+  if (at === -1) return undefined
+  const open = withoutComments.indexOf('{', at)
+  let depth = 1
+  let body = ''
+  for (let i = open + 1; i < withoutComments.length && depth > 0; i++) {
+    const ch = withoutComments[i]!
+    if (ch === '{') depth++
+    else if (ch === '}') depth--
+    if (depth > 0) body += ch
+  }
+  return depth === 0 ? body : undefined
+}
+
+describe('Rows.module.css touch and phone usability', () => {
+  it('keeps row actions mounted on coarse pointers (no hover to synthesize)', () => {
+    const coarse = mediaBlock(rowsCss, '(pointer: coarse)')
+    expect(coarse).toBeDefined()
+    expect(coarse).toContain('.rowActions')
+    expect(coarse).toContain('display: inline-flex')
+  })
+
+  it('grows rows and action glyphs at the phone viewport', () => {
+    const phone = mediaBlock(rowsCss, '(max-width: 768px)')
+    expect(phone).toBeDefined()
+    expect(phone).toContain('.projectRow')
+    expect(phone).toContain('.sessionRow')
+    expect(phone).toContain('min-height: 40px')
+    expect(phone).toContain('.iconButton')
+    expect(phone).toContain('width: 28px')
+    expect(phone).toContain('height: 28px')
+  })
+
+  it('caps the project chip so a long basename squeezes the title, not the trailing cells', () => {
+    const project = rowDeclarations('.project')
+    expect(project?.get('max-width')).toBe('40%')
+    expect(project?.get('overflow')).toBe('hidden')
+    expect(project?.get('text-overflow')).toBe('ellipsis')
   })
 })

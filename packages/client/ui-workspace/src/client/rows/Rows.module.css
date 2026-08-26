@@ -360,10 +360,51 @@
   color: var(--dsw-alias-label-caption);
 }
 
+/* Project chip on rows whose group header does not already name the project
+   (flat list, Ungrouped bucket): the basename in the same tertiary grey as
+   the trailing time. Capped so a long basename squeezes the title instead of
+   pushing the row's trailing cells out; the full path lives on the chip's
+   title tooltip and the row's hover card. */
+.project {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sessionRow,
   .arrow {
     animation: none;
     transition: none;
+  }
+}
+
+/* Touch surfaces have no hover: keep the row actions mounted so rename/fork/
+   archive are reachable without first tapping to synthesize a hover state.
+   The pointer-only swap rules above stay untouched for mice. */
+@media (pointer: coarse) {
+  .rowActions {
+    display: inline-flex;
+  }
+}
+
+/* Phone viewport: taller rows and larger action glyphs keep the tree
+   operable with a thumb — the browsing-region header grows its controls at
+   the same width (WorkspaceBrowser.module.css). min-height wins over the
+   fixed base heights without re-declaring them. */
+@media (max-width: 768px) {
+  .projectRow,
+  .sessionRow {
+    min-height: 40px;
+  }
+
+  .iconButton {
+    width: 28px;
+    height: 28px;
   }
 }

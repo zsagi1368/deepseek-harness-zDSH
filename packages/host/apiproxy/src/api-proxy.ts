@@ -665,6 +665,123 @@ export interface ApiProxyDefaults {
    * falls back to platform detection ({@link canOpenNativePath}).
    */
   canOpenPath?: () => boolean
+  /**
+   * Serve reads only (the remote-browsing posture of `dsh web --read-only`):
+   * every mutation-class RPC answers the fixed `read-only-mode` error before
+   * reaching its implementation, while the browsing surface
+   * ({@link BROWSE_SAFE_METHODS}) and the read-side event/export channels stay
+   * live. Absent or false keeps the full read-write face.
+   */
+  readOnly?: boolean
+}
+
+/**
+ * Wire methods a read-only deployment still serves: exactly the surface a
+ * remote history viewer renders — session list/search/history/models/attachment,
+ * subagent catalogs, the workspace/skill/preset listings, host description,
+ * and the model catalog.
+ *
+ * Membership is explicit and every RpcMethodMap key outside the set counts as
+ * mutation-class under --read-only, so a method added to an Api domain later
+ * is refused by default and only becomes servable once it is marked here
+ * (fail-closed). Configuration-plane reads stay out on purpose:
+ * settings/credentials describe and preset contents are reconnaissance the
+ * trust fence already pins to loopback (PRIVILEGED_METHODS in
+ * dsh-client-connection), and a remote viewer has no use for them.
+ */
+const BROWSE_SAFE_METHODS: ReadonlySet<keyof RpcMethodMap> = new Set<keyof RpcMethodMap>([
+  'session.list',
+  'session.search',
+  'session.history',
+  'session.models',
+  'session.attachment',
+  'subagent.list',
+  'subagent.history',
+  'workspace.list',
+  'skill.list',
+  'agentPreset.list',
+  'host.describe',
+  'llm.providers',
+  'llm.models',
+])
+
+/** The ApiProxy domains whose rows carry wire methods (the read-side channels and the respond seam are excluded). */
+type MutationDomain = Exclude<keyof ApiProxy, 'events' | 'downloads' | 'respond'>
+
+/**
+ * One entry per mutation domain: the ApiProxy namespace property and its
+ * RpcMethodMap path prefix (dot included). The satisfies clause ties both
+ * sides to the interface shape — every domain must appear exactly once, and a
+ * renamed domain breaks compilation instead of silently escaping the guard.
+ */
+const READ_ONLY_DOMAIN_PREFIX = {
+  sessions: 'session.',
+  subagents: 'subagent.',
+  host: 'host.',
+  workspace: 'workspace.',
+  skills: 'skill.',
+  agentPresets: 'agentPreset.',
+  goals: 'goal.',
+  settings: 'settings.',
+  credentials: 'credentials.',
+  llm: 'llm.',
+} as const satisfies Record<MutationDomain, `${string}.`>
+
+/** The fixed refusal every mutation-class row answers under --read-only. */
+function readOnlyRejection(request: RpcRequest<never>): RpcResponse<never> {
+  return err(request, {
+    code: 'read-only-mode',
+    message: 'this deployment serves reads only (--read-only): mutation-class methods are refused',
+    details: {},
+  })
+}
+
+/**
+ * Overwrite one domain's non-browse-safe rows with {@link readOnlyRejection},
+ * keyed by the domain object's OWN runtime method names joined onto its wire
+ * prefix. Iterating live keys instead of enumerating names here is the other
+ * fail-closed half: a row added to an Api domain later is wrapped by default.
+ * The single cast reattaches the untouched member types; the stub never reads
+ * the payload, so its narrower request parameter cannot misbehave.
+ * @param domain - one composed ApiProxy domain object.
+ * @param prefix - the domain's RpcMethodMap path prefix (dot included).
+ * @returns a same-shaped domain where every non-browse-safe row refuses.
+ */
+function readOnlyDomain<T extends object>(domain: T, prefix: string): T {
+  const wrapped: Record<string, unknown> = {}
+  for (const [name, row] of Object.entries(domain)) {
+    wrapped[name] = BROWSE_SAFE_METHODS.has(`${prefix}${name}` as keyof RpcMethodMap)
+      ? row
+      : readOnlyRejection
+  }
+  return wrapped as T
+}
+
+/**
+ * Read-only face over a composed proxy: browsing rows pass through untouched;
+ * everything mutation-class or configuration-plane refuses with the fixed
+ * code. The event streams and the session-log export keep serving (they are
+ * how a viewer watches and takes away a copy), and `respond` keeps routing so
+ * a late answer degrades to `not-pending` instead of a transport error.
+ * @param proxy - the fully composed ApiProxy implementation.
+ * @returns the guarded view createApiProxy hands back under --read-only.
+ */
+function readOnlyView(proxy: ApiProxy): ApiProxy {
+  return {
+    sessions: readOnlyDomain(proxy.sessions, READ_ONLY_DOMAIN_PREFIX.sessions),
+    subagents: readOnlyDomain(proxy.subagents, READ_ONLY_DOMAIN_PREFIX.subagents),
+    host: readOnlyDomain(proxy.host, READ_ONLY_DOMAIN_PREFIX.host),
+    workspace: readOnlyDomain(proxy.workspace, READ_ONLY_DOMAIN_PREFIX.workspace),
+    skills: readOnlyDomain(proxy.skills, READ_ONLY_DOMAIN_PREFIX.skills),
+    agentPresets: readOnlyDomain(proxy.agentPresets, READ_ONLY_DOMAIN_PREFIX.agentPresets),
+    goals: readOnlyDomain(proxy.goals, READ_ONLY_DOMAIN_PREFIX.goals),
+    settings: readOnlyDomain(proxy.settings, READ_ONLY_DOMAIN_PREFIX.settings),
+    credentials: readOnlyDomain(proxy.credentials, READ_ONLY_DOMAIN_PREFIX.credentials),
+    llm: readOnlyDomain(proxy.llm, READ_ONLY_DOMAIN_PREFIX.llm),
+    events: proxy.events,
+    downloads: proxy.downloads,
+    respond: message => proxy.respond(message),
+  }
 }
 
 /** The tool/call payload fields the presenter path reads. */
@@ -3747,4 +3864,8 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
       return Promise.resolve({ accepted: true })
     },
   }
+  // The read-only decoration wraps the composed face at the single gateway
+  // exit, so every physical carrier (fetch bridge, websocket downlink,
+  // in-process client) inherits the same refusal semantics.
+  return defaults.readOnly === true ? readOnlyView(proxy) : proxy
 }

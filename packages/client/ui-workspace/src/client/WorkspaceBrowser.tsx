@@ -546,6 +546,11 @@ function SessionTree({
                     pinned={pinnedSessions.includes(node.id)}
                     onTogglePin={onTogglePin}
                     drag={dragProps}
+                    // The Ungrouped bucket has no project header above it, so
+                    // its rows name their own project; real Workspace rows
+                    // would be redundant.
+                    showProject={workspaceId === undefined}
+                    home={home}
                     t={t}
                   />
                 )
@@ -669,6 +674,7 @@ function FlatList({
               pinned={pinnedSessions.includes(node.id)}
               onTogglePin={onTogglePin}
               flat
+              showProject
               drag={{
                 start: () => {
                   dropCommitted.current = false
