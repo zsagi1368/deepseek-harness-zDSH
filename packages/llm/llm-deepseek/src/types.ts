@@ -138,6 +138,14 @@ export interface WireDelta {
    * open a reasoning block); absent entirely in non-thinking mode.
    */
   reasoning_content?: string | null
+  /**
+   * CoT alias some self-hosted serving stacks stream instead of
+   * `reasoning_content` (measured against vLLM serving DeepSeek thinking
+   * models, where every official-field delta arrives under this name). Never
+   * meaningful alongside a non-empty `reasoning_content`; translate prefers
+   * the official field and reads this one only as a fallback.
+   */
+  reasoning?: string | null
   tool_calls?: WireToolCallDelta[]
 }
 

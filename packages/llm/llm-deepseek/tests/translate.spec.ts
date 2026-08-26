@@ -96,6 +96,72 @@ describe('translate: reasoning', () => {
       { type: 'block-start', index: 0, blockType: 'text' },
     ])
   })
+
+  it('collects vLLM-style delta.reasoning aliases into one reasoning block (#199 wire capture)', async () => {
+    const chunks = await collect(translate(feed(
+      // Live vLLM 0.25.2 serving deepseek-v4-flash streams exactly this shape:
+      // the CoT rides `delta.reasoning`, never the official field.
+      { choices: [{ delta: { role: 'assistant', content: null } }] },
+      { choices: [{ delta: { reasoning: 'We' } }] },
+      { choices: [{ delta: { reasoning: ' need answer' } }] },
+      { choices: [{ delta: { content: 'answer' }, finish_reason: 'stop' }], usage: { prompt_tokens: 4, completion_tokens: 6 } },
+      DONE,
+    )))
+    expect(chunks).toEqual([
+      { type: 'block-start', index: 0, blockType: 'reasoning' },
+      { type: 'reasoning-delta', index: 0, text: 'We' },
+      { type: 'reasoning-delta', index: 0, text: ' need answer' },
+      { type: 'block-start', index: 1, blockType: 'text' },
+      { type: 'text-delta', index: 1, text: 'answer' },
+      { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'We need answer' } },
+      { type: 'block-end', index: 1, block: { type: 'text', text: 'answer' } },
+      { type: 'usage', usage: { inputTokens: 4, outputTokens: 6 } },
+      { type: 'finish', reason: { kind: 'stop' } },
+    ])
+  })
+
+  it('hands the alias-collected reasoning block to the persistence assembler intact', async () => {
+    const assembler = new BlockAssembler()
+    for await (const chunk of translate(feed(
+      { choices: [{ delta: { role: 'assistant' } }] },
+      { choices: [{ delta: { reasoning: 'chain of thought' } }] },
+      { choices: [{ delta: { content: 'visible' } }] },
+      { choices: [{ delta: {}, finish_reason: 'stop' }] },
+      DONE,
+    ))) {
+      assembler.push(chunk)
+    }
+    expect(assembler.message().content).toEqual([
+      { type: 'reasoning', text: 'chain of thought' },
+      { type: 'text', text: 'visible' },
+    ])
+  })
+
+  it('prefers the official reasoning_content field when both spellings arrive', async () => {
+    const chunks = await collect(translate(feed(
+      { choices: [{ delta: { reasoning_content: 'official', reasoning: 'alias' } }] },
+      { choices: [{ delta: { reasoning_content: null, reasoning: 'more alias' } }] },
+      { choices: [{ delta: {}, finish_reason: 'stop' }] },
+      DONE,
+    )))
+    expect(chunks).toEqual([
+      { type: 'block-start', index: 0, blockType: 'reasoning' },
+      { type: 'reasoning-delta', index: 0, text: 'official' },
+      { type: 'reasoning-delta', index: 0, text: 'more alias' },
+      { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'officialmore alias' } },
+      { type: 'finish', reason: { kind: 'stop' } },
+    ])
+  })
+
+  it('does not open an alias-carrying empty first chunk as a reasoning block', async () => {
+    const chunks = await collect(translate(feed(
+      { choices: [{ delta: { role: 'assistant', content: null, reasoning: '' } }] },
+      { choices: [{ delta: { content: 'plain' } }] },
+      { choices: [{ delta: {}, finish_reason: 'stop' }] },
+      DONE,
+    )))
+    expect(chunks.some(chunk => chunk.type === 'block-start' && chunk.blockType === 'reasoning')).toBe(false)
+  })
 })
 
 describe('translate: tool calls', () => {

@@ -128,8 +128,12 @@ export async function* translate(payloads: AsyncIterable<string>): AsyncGenerato
       const delta = choice.delta
 
       // Reasoning first: thinking mode interleaves it before text. The
-      // empty-string first chunk must not open a block.
-      const reasoning = delta?.reasoning_content
+      // empty-string first chunk must not open a block. Some self-hosted
+      // serving stacks (measured on vLLM) stream the same CoT under the
+      // `reasoning` alias instead of the official field; the official name
+      // wins whenever it is present (including its empty first chunk), so a
+      // stack sending both never doubles a delta.
+      const reasoning = delta?.reasoning_content ?? delta?.reasoning
       if (typeof reasoning === 'string' && reasoning.length > 0) {
         if (!reasoningBlock) {
           reasoningBlock = open('reasoning')
