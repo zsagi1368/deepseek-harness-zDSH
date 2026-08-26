@@ -9,9 +9,9 @@
  * @module dsh-subprocess-local/windows-inspector
  */
 
-import { spawnSync } from 'node:child_process'
 import koffi from 'koffi'
 import type { SubprocessTerminalSignal } from '@deepseek-ai/dsh-subprocess'
+import { systemTaskkillTree } from './system-taskkill.ts'
 import type { ProcessIdentity, ProcessInspector } from './process-inspector.ts'
 
 /** One Toolhelp32 process-table row. */
@@ -129,14 +129,6 @@ export function createWindowsProcessInspector(
   internals: WindowsProcessInspectorInternals = defaultWindowsProcessInternals(),
 ): WindowsProcessInspector {
   return new WindowsProcessInspector(internals)
-}
-
-/** Terminate one Windows process tree with taskkill, contained like POSIX group signalling. */
-function taskkillTree(pid: number, force: boolean): void {
-  if (pid <= 0) return
-  // Outcome deliberately unchecked: an already-absent tree, exit races, and a
-  // missing taskkill binary are as tolerable here as ESRCH is for POSIX.
-  spawnSync('taskkill', ['/PID', String(pid), '/T', ...(force ? ['/F'] : [])], { stdio: 'ignore' })
 }
 
 declare const nativePtr: unique symbol
@@ -320,6 +312,6 @@ function defaultWindowsProcessInternals(): WindowsProcessInspectorInternals {
   return {
     snapshot: () => snapshotWindowsProcesses(win32Bindings()),
     processState: pid => windowsProcessState(win32Bindings(), pid),
-    taskkill: taskkillTree,
+    taskkill: systemTaskkillTree,
   }
 }

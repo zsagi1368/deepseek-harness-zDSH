@@ -7,13 +7,14 @@
  * @module dsh-subprocess-local/spawn
  */
 
-import { type ChildProcess, spawn, spawnSync } from 'node:child_process'
+import { type ChildProcess, spawn } from 'node:child_process'
 import type { Readable } from 'node:stream'
 import { randomBytes } from 'node:crypto'
 import { closeSync, mkdtempSync, openSync, unlinkSync, writeSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as sleepMs } from 'node:timers/promises'
+import { systemTaskkillTree } from './system-taskkill.ts'
 import { scrubbedParentEnv } from '@deepseek-ai/dsh-subprocess'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import type {
@@ -267,18 +268,16 @@ export function killGroup(pid: number, sig: NodeJS.Signals): void {
 }
 
 /**
- * Terminate one Windows process tree with `taskkill /T /F`. Contained like
- * POSIX group signalling — delivery races tree exit, so an absent tree, a
- * nonzero status, or a missing taskkill binary must not break idempotent
- * teardown.
+ * Terminate one Windows process tree with `taskkill /T /F`, spawned by its
+ * absolute System32 path. Contained like POSIX group signalling — delivery
+ * races tree exit, so an absent tree, a nonzero status, or a missing binary
+ * must not break idempotent teardown.
  * @param pid - root process id; non-positive is a no-op.
  */
 export function taskkillProcessTree(pid: number): void {
-  if (pid <= 0) return
-  // Outcome deliberately unchecked: an already-absent tree (status 128), exit
-  // races, and a missing taskkill binary (spawnSync reports, never throws) are
-  // as tolerable here as ESRCH is for a POSIX group signal.
-  spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' })
+  // The absolute System32 path keeps the host from resolving a bare name
+  // against the (model-writable) working directory first.
+  systemTaskkillTree(pid, true)
 }
 
 /**
