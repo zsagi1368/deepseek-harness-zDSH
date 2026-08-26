@@ -2444,6 +2444,9 @@ importers:
       '@deepseek-ai/dsh-plugin-governance-host':
         specifier: workspace:^
         version: link:../../host/plugin-governance-host
+      '@deepseek-ai/dsh-typert-protocol':
+        specifier: workspace:^
+        version: link:../../typert/protocol
       '@types/react':
         specifier: ~18.3.1
         version: 18.3.31

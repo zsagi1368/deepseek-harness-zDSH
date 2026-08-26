@@ -346,6 +346,8 @@ function projectPagesInto(
   context: ProjectionContext,
   pageContent: (markdown: string, page: DocsPage) => string,
   entries: DocsPage[] = context.pages,
+  /** Relative target paths recorded as they are claimed; used by the twin pass's stale-output manifest. */
+  claimedLog?: string[],
 ): void {
   const routes = new Set<string>()
   /** Projected path to the repository file that claimed it, pages and images alike. */
@@ -362,7 +364,9 @@ function projectPagesInto(
     }
     // A file the projection did not claim is another producer's output — in
     // the twin pass, the build VitePress just wrote, including `public/`
-    // copies. Overwriting one would silently corrupt the site.
+    // copies. Overwriting one would silently corrupt the site. The twin pass
+    // removes its own prior output before projecting (see its manifest), so
+    // anything still sitting at a claimed path is genuinely foreign.
     if (holder === undefined && existsSync(target)) {
       throw new Error(
         `project-doc-site: ${repoPath(sourceAbs, context.repoRoot)} would overwrite existing build file`
@@ -370,6 +374,7 @@ function projectPagesInto(
       )
     }
     claimed.set(target, sourceAbs)
+    claimedLog?.push(relative(targetRoot, target).split(sep).join('/'))
   }
 
   for (const page of entries) {
@@ -491,17 +496,37 @@ export function rawMarkdownFiles(pages: DocsPage[] = docsPages): string[] {
  * @param outDir Build output directory to emit into.
  * @param context Manifest and repository inputs, defaulting to this repository.
  */
+/** Manifest of every path the twin pass wrote into one build output. */
+const TWIN_MANIFEST = '.dsh-raw-markdown-manifest.json'
+
 export function emitRawMarkdownPages(outDir: string, context: ProjectionContext = defaultProjectionContext()): void {
+  // VitePress's MPA client build hardcodes `emptyOutDir: false`, so the output
+  // of an earlier build survives into this one — twins and their page-beside
+  // images alike, including pages since removed. The manifest records exactly
+  // what the previous pass wrote; those paths are ours to drop before
+  // projecting, while anything unrecorded (a public/ copy above all) still
+  // fails loud in claim().
+  const manifestPath = resolve(outDir, TWIN_MANIFEST)
+  const prior = existsSync(manifestPath)
+    ? JSON.parse(readFileSync(manifestPath, 'utf8')) as string[]
+    : []
+  for (const file of prior) {
+    const stale = lstatSync(resolve(outDir, file), { throwIfNoEntry: false })
+    if (stale?.isFile() === true) rmSync(resolve(outDir, file))
+  }
   const aliases = context.pages.flatMap((page) => {
     const alias = indexAliasRoute(page.route)
     return alias === undefined ? [] : [{ ...page, route: alias }]
   })
+  const written: string[] = []
   projectPagesInto(
     outDir,
     context,
     (markdown, page) => rawMarkdownPageContent(markdown, page.source),
     [...context.pages, ...aliases],
+    written,
   )
+  writeFileSync(manifestPath, JSON.stringify([...new Set([TWIN_MANIFEST, ...written])], undefined, 2))
 }
 
 /**
