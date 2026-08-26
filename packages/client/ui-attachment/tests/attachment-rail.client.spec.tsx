@@ -35,7 +35,13 @@ const labels: AttachmentRailLabels = {
 }
 
 function item(id: string): AttachmentRailItem {
-  return { id, previewUrl: `blob:${id}`, alt: `${id}.png`, removeLabel: `移除图片 ${id}.png` }
+  return {
+    id,
+    kind: 'image',
+    previewUrl: `blob:${id}`,
+    alt: `${id}.png`,
+    removeLabel: `移除图片 ${id}.png`,
+  }
 }
 
 /** Stub the rail's scroll geometry (jsdom reports 0 for every metric). */
@@ -67,6 +73,28 @@ describe('AttachmentRail', () => {
     expect(onOpen).toHaveBeenCalledWith(items[0])
     fireEvent.click(view.getByRole('button', { name: '移除图片 b.png' }))
     expect(onRemove).toHaveBeenCalledWith(items[1])
+  })
+
+  it('renders text items as read-only name cards with no open affordance', () => {
+    const onOpen = vi.fn()
+    const onRemove = vi.fn()
+    const text: AttachmentRailItem = {
+      id: 't1',
+      kind: 'text',
+      alt: 'notes.txt',
+      removeLabel: '移除文本 notes.txt',
+    }
+    const view = render(
+      <AttachmentRail items={[item('a'), text]} labels={labels} onOpen={onOpen} onRemove={onRemove} />,
+    )
+    const card = view.getByTitle('notes.txt')
+    expect(card.textContent).toBe('notes.txt')
+    expect(card.querySelector('img')).toBeNull()
+    // The image keeps its open control; the text card has none to click.
+    expect(view.getAllByTitle('查看原图')).toHaveLength(1)
+    fireEvent.click(view.getByRole('button', { name: '移除文本 notes.txt' }))
+    expect(onRemove).toHaveBeenCalledWith(text)
+    expect(onOpen).not.toHaveBeenCalled()
   })
 
   it('shows edge arrows from scroll geometry and pages a viewport at a time', () => {

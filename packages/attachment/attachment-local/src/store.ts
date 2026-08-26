@@ -26,7 +26,12 @@ function digest(data: Uint8Array): string {
   return createHash('sha256').update(data).digest('hex')
 }
 
-function displayName(value: string | undefined): string | undefined {
+/**
+ * Normalize one submitted display name into the stored reference name.
+ * @param value - raw client-supplied name, possibly a full path or empty.
+ * @returns the cleaned leaf name, or undefined when nothing usable remains.
+ */
+export function displayName(value: string | undefined): string | undefined {
   if (value === undefined) return undefined
   // Strip both separator styles by hand: a POSIX host treats `\` as an
   // ordinary character, so path.basename would keep a Windows client's full
@@ -36,7 +41,13 @@ function displayName(value: string | undefined): string | undefined {
   return clean === '' ? undefined : clean
 }
 
-function objectPath(root: string, sha256: string): string {
+/**
+ * Resolve the durable object path of one content-addressed attachment.
+ * @param root - absolute versioned attachment storage root.
+ * @param sha256 - lowercase hex digest naming the object.
+ * @returns the absolute object file path below the root.
+ */
+export function objectPath(root: string, sha256: string): string {
   return join(root, 'objects', sha256.slice(0, 2), sha256)
 }
 
@@ -176,20 +187,17 @@ async function ensureDurableHome(path: string): Promise<string> {
 }
 
 /**
- * Publish one already verified normalized image below a versioned attachment root.
+ * Publish one verified content-addressed object below a versioned attachment
+ * root. The caller has already proven that `sha256` is `digest(data)`; this
+ * step owns only durability: private directory creation, staging write,
+ * same-filesystem link with an integrity-checked dedupe path, and the entry
+ * syncs that close the crash window before a reference can reach a session
+ * checkpoint.
  * @param root - absolute `DSH_HOME/attachments/v1` root.
- * @param prepared - deterministic normalized bytes and reference.
- * @returns durable content-addressed normalized image reference.
+ * @param sha256 - lowercase hex digest naming the object (the caller verified it).
+ * @param data - exact bytes named by `sha256`.
  */
-export async function commitPreparedImageFile(
-  root: string,
-  prepared: PreparedImageFile,
-): Promise<ImageAttachmentRef> {
-  const normalized = prepared.data
-  const sha256 = ensureReference(prepared.ref)
-  if (digest(normalized) !== sha256 || normalized.byteLength !== prepared.ref.bytes) {
-    throw new AttachmentError('Prepared attachment bytes do not match their reference.', 'ATTACHMENT_CORRUPT')
-  }
+export async function commitObjectFile(root: string, sha256: string, data: Uint8Array): Promise<void> {
   const bucket = join(root, 'objects', sha256.slice(0, 2))
   const staging = join(root, 'tmp')
   // Establish DSH_HOME itself against the filesystem root once per process.
@@ -203,7 +211,7 @@ export async function commitPreparedImageFile(
   let handle
   try {
     handle = await open(temporary, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600)
-    await handle.writeFile(normalized)
+    await handle.writeFile(data)
     await handle.sync()
     await handle.close()
     handle = undefined
@@ -229,15 +237,33 @@ export async function commitPreparedImageFile(
       () => {},
     )
     await unlink(temporary).catch(
-      /* v8 ignore next -- The callback requires a second independent staging-unlink failure. */
+      /* v8 ignore next -- Cleanup is best-effort only for a staging file already removed by a failed operation. */
       (cleanupError: unknown) => {
         /* v8 ignore next -- Cleanup is best-effort only for a staging file already removed by a failed operation. */
         if (!(cleanupError instanceof Error && 'code' in cleanupError && cleanupError.code === 'ENOENT')) throw cleanupError
       },
     )
     if (error instanceof AttachmentError) throw error
-    throw new AttachmentError('Unable to persist image attachment.', 'ATTACHMENT_WRITE_FAILED', { cause: error })
+    throw new AttachmentError('Unable to persist attachment.', 'ATTACHMENT_WRITE_FAILED', { cause: error })
   }
+}
+
+/**
+ * Publish one already verified normalized image below a versioned attachment root.
+ * @param root - absolute `DSH_HOME/attachments/v1` root.
+ * @param prepared - deterministic normalized bytes and reference.
+ * @returns durable content-addressed normalized image reference.
+ */
+export async function commitPreparedImageFile(
+  root: string,
+  prepared: PreparedImageFile,
+): Promise<ImageAttachmentRef> {
+  const normalized = prepared.data
+  const sha256 = ensureReference(prepared.ref)
+  if (digest(normalized) !== sha256 || normalized.byteLength !== prepared.ref.bytes) {
+    throw new AttachmentError('Prepared attachment bytes do not match their reference.', 'ATTACHMENT_CORRUPT')
+  }
+  await commitObjectFile(root, sha256, normalized)
   return prepared.ref
 }
 

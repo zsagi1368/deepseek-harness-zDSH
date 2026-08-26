@@ -3,7 +3,6 @@ import type { AttachmentRailLabels } from '../AttachmentRail.tsx'
 import type { DropOverlayLabels } from '../DropOverlay.tsx'
 import type { ImageLightboxLabels } from '../ImageLightbox.tsx'
 import type { MessageImageLabels } from '../MessageImage.tsx'
-
 /**
  * Resolve original-image lightbox strings from the conversation namespace.
  * @param t - conversation namespace translator.
@@ -31,19 +30,24 @@ export function messageImageLabels(t: TranslateNS<'conversation'>): MessageImage
 
 /**
  * Resolve the document-level drop invitation and its optional limits line.
+ * When the plugin's own translator is available the invitation speaks of
+ * files (text drafts are accepted beside images); otherwise it keeps the
+ * conversation namespace's image wording.
  * @param t - conversation namespace translator.
  * @param accepting - whether the composer can accept dropped files.
  * @param limits - optional translated count and size values.
+ * @param tAttachment - this plugin's bound `attachment` translator, when composed.
  * @returns translated drop-overlay labels.
  */
 export function dropOverlayLabels(
   t: TranslateNS<'conversation'>,
   accepting: boolean,
   limits?: { readonly count: number; readonly size: string },
+  tAttachment?: TranslateNS<'attachment'>,
 ): DropOverlayLabels {
-  if (!accepting) return { title: t('image.dropBlocked') }
+  if (!accepting) return { title: tAttachment === undefined ? t('image.dropBlocked') : tAttachment('text.dropBlocked') }
   return {
-    title: t('image.dropTitle'),
+    title: tAttachment === undefined ? t('image.dropTitle') : tAttachment('text.dropTitle'),
     desc: limits === undefined ? undefined : t('image.dropDesc', limits),
   }
 }

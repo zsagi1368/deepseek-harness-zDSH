@@ -12,9 +12,12 @@ import css from './AttachmentRail.module.css'
 export interface AttachmentRailItem {
   /** Stable identity for the React key. */
   id: string
-  /** Object or data URL rendered as the thumbnail. */
-  previewUrl: string
-  /** Image alt text (display name with the owner's fallback applied). */
+  /** Presentation variant: image items render a clickable thumbnail, text
+   * items render a read-only file-name card. */
+  kind: 'image' | 'text'
+  /** Object or data URL rendered as the thumbnail (image items only). */
+  previewUrl?: string
+  /** Image alt text / text-card label (display name with the owner's fallback applied). */
   alt: string
   /** Accessible label of the item's remove control. */
   removeLabel: string
@@ -53,14 +56,15 @@ function pageBehavior(): ScrollBehavior {
  * panel resizes count, not only window resizes). A vertical wheel pans the
  * rail horizontally and is consumed exclusively (non-passive listener), a
  * newly added item is revealed at the rail's end while a rail that mounts
- * over an existing draft keeps its start position, and each thumbnail opens
- * on a single click while its remove control sits inside the card and
- * reveals on hover or focus. The owner decides mounting; it renders the rail
+ * over an existing draft keeps its start position. Image items open on a
+ * single click while every item's remove control sits inside the card and
+ * reveals on hover or focus; text items render a read-only file-name card
+ * with no open affordance. The owner decides mounting; it renders the rail
  * only while items exist.
  *
  * @param props.items - resolved thumbnails in draft order.
  * @param props.labels - rail-level strings (group name, open tooltip, arrows).
- * @param props.onOpen - single-click open of one item's original image.
+ * @param props.onOpen - single-click open of one image item's original image.
  * @param props.onRemove - remove one item from the draft.
  * @returns the rail group with its paging arrows.
  */
@@ -166,14 +170,18 @@ export function AttachmentRail<T extends AttachmentRailItem>({ items, labels, on
       >
         {items.map(item => (
           <div key={item.id} className={css.item}>
-            <button
-              type="button"
-              className={css.thumbnail}
-              title={labels.open}
-              onClick={() => { onOpen(item) }}
-            >
-              <img src={item.previewUrl} alt={item.alt} />
-            </button>
+            {item.kind === 'text' ? (
+              <span className={css.textCard} title={item.alt}>{item.alt}</span>
+            ) : (
+              <button
+                type="button"
+                className={css.thumbnail}
+                title={labels.open}
+                onClick={() => { onOpen(item) }}
+              >
+                <img src={item.previewUrl} alt={item.alt} />
+              </button>
+            )}
             <button
               type="button"
               className={css.remove}

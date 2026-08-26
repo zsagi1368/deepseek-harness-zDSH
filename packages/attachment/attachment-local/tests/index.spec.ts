@@ -14,6 +14,7 @@ import LocalAttachmentStore, {
   DEFAULT_MAX_IMAGE_PIXELS,
   DEFAULT_MAX_IMAGES_PER_MESSAGE,
   DEFAULT_MAX_MESSAGE_IMAGE_BYTES,
+  DEFAULT_MAX_TEXT_BYTES,
 } from '../src/index.ts'
 
 describe('local attachment service', () => {
@@ -37,6 +38,7 @@ describe('local attachment service', () => {
       maxBytes: DEFAULT_NORMALIZED_IMAGE_MAX_BYTES,
     })
     expect(service.imageCompressionConcurrency).toBe(DEFAULT_IMAGE_COMPRESSION_CONCURRENCY)
+    expect(service.textLimits).toEqual({ maxBytes: DEFAULT_MAX_TEXT_BYTES })
   })
 
   it('resolves and validates the instance image-compression concurrency', () => {
@@ -138,6 +140,42 @@ describe('local attachment service', () => {
         .rejects.toMatchObject({ code: 'IMAGE_TOO_LARGE' })
       await expect(service.validateImage({ data: valid, mediaType: 'image/png' })).resolves.toBeUndefined()
       expect(existsSync(service.root)).toBe(false)
+    } finally {
+      await rm(dshHome, { recursive: true, force: true })
+    }
+  })
+
+  it('saves, validates, and reads text through the service boundary', async () => {
+    const dshHome = await mkdtemp(join(tmpdir(), 'dsh-attachment-text-'))
+    try {
+      const service = new LocalAttachmentStore(new Context(), { dshHome })
+      const data = Uint8Array.from(Buffer.from('# notes\n拖进来的文本', 'utf8'))
+      await service.validateText({ data, name: 'notes.md' })
+      const ref = await service.saveText({ data, name: String.raw`C:\Users\z\notes.md` })
+      expect(ref.mediaType).toBe('text/plain')
+      expect(ref.name).toBe('notes.md')
+      await expect(service.readText(ref)).resolves.toEqual({
+        ref,
+        data,
+        text: '# notes\n拖进来的文本',
+      })
+    } finally {
+      await rm(dshHome, { recursive: true, force: true })
+    }
+  })
+
+  it('enforces the configured text byte cap and binary refusal at the boundary', async () => {
+    const dshHome = await mkdtemp(join(tmpdir(), 'dsh-attachment-text-limit-'))
+    try {
+      const service = new LocalAttachmentStore(new Context(), { dshHome, maxTextBytes: 8 })
+      const utf16 = Uint8Array.from(Buffer.from('a\x00b\x00', 'latin1'))
+      await expect(service.validateText({ data: Uint8Array.of(1, 2, 3, 4, 5, 6, 7, 8, 9) }))
+        .rejects.toMatchObject({ code: 'TEXT_TOO_LARGE' })
+      await expect(service.validateText({ data: utf16 })).rejects.toMatchObject({ code: 'TEXT_IS_BINARY' })
+      expect(existsSync(service.root)).toBe(false)
+      const ref = await new LocalAttachmentStore(new Context(), { dshHome })
+        .saveText({ data: Uint8Array.from(Buffer.from('tiny')) })
+      expect(String(ref.attachmentId)).toMatch(/^sha256:[a-f0-9]{64}$/u)
     } finally {
       await rm(dshHome, { recursive: true, force: true })
     }

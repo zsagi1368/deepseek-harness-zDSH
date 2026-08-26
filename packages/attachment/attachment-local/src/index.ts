@@ -17,12 +17,24 @@ import type { NormalizationPolicy } from './normalization.ts'
 import { CompressionLimiter } from './compression-limiter.ts'
 import { commitPreparedImageFile, prepareImageFile, readImageFile, validateImageFile } from './store.ts'
 import { readRequestImageFile, requestImageVariantId } from './request-image.ts'
+import { DEFAULT_MAX_TEXT_BYTES, readTextFile, saveTextFile, validateTextFile } from './text.ts'
+import type {
+  SaveTextAttachment, StoredTextAttachment, TextAttachmentLimits, TextAttachmentRef,
+} from './text.ts'
 
 export { canPassThroughNormalization, normalizeImage } from './normalization.ts'
 export type { NormalizedImage, NormalizationPolicy } from './normalization.ts'
-export { commitPreparedImageFile, prepareImageFile, readImageFile, saveImageFile, validateImageFile } from './store.ts'
+export { commitPreparedImageFile, commitObjectFile, displayName, objectPath, prepareImageFile, readImageFile, saveImageFile, validateImageFile } from './store.ts'
 export type { PreparedImageFile } from './store.ts'
 export { readRequestImageFile, requestImageDimensions, requestImageVariantId } from './request-image.ts'
+export {
+  commitPreparedTextFile, decodeTextAttachment, DEFAULT_MAX_TEXT_BYTES, isTextFileName, prepareTextFile,
+  readTextFile, saveTextFile, TEXT_FILE_EXTENSIONS, TEXT_FILE_NAMES, validateTextFile,
+} from './text.ts'
+export type {
+  PreparedTextFile, SaveTextAttachment, StoredTextAttachment, TextAdmissionErrorCode,
+  TextAttachmentError, TextAttachmentLimits, TextAttachmentRef,
+} from './text.ts'
 
 /** Default maximum encoded bytes for one submitted image; oversized sources are refused, not shrunk. */
 export const DEFAULT_MAX_IMAGE_BYTES = 20 * 1024 * 1024
@@ -67,6 +79,11 @@ export interface Config {
   normalizedImageMaxBytes?: number
   /** Maximum simultaneous normalization or request-image transformations in this service instance. */
   imageCompressionConcurrency?: number
+  /**
+   * Maximum bytes accepted for one submitted text file; content must decode
+   * as UTF-8 text (see {@link decodeTextAttachment}). Default: 256 KiB.
+   */
+  maxTextBytes?: number
 }
 
 function abortReason(signal: AbortSignal): Error {
@@ -143,6 +160,7 @@ export class LocalAttachmentStore extends AttachmentStore {
     normalizedImageMaxBytes: z.number().step(1).min(1).default(DEFAULT_NORMALIZED_IMAGE_MAX_BYTES),
     imageCompressionConcurrency: z.number().step(1).min(1).max(MAX_IMAGE_COMPRESSION_CONCURRENCY)
       .default(DEFAULT_IMAGE_COMPRESSION_CONCURRENCY),
+    maxTextBytes: z.number().step(1).min(1).default(DEFAULT_MAX_TEXT_BYTES),
   })
 
   /** Absolute versioned storage root. */
@@ -152,6 +170,8 @@ export class LocalAttachmentStore extends AttachmentStore {
   readonly normalizationPolicy: Readonly<NormalizationPolicy>
   /** Resolved instance-level compression limit. */
   readonly imageCompressionConcurrency: number
+  /** Resolved text-admission limits applied by the text branch of this store. */
+  readonly textLimits: TextAttachmentLimits
   private readonly compression: CompressionLimiter
   private readonly requestInflight = new Map<string, SharedRequest<RequestImageAttachment>>()
 
@@ -169,6 +189,9 @@ export class LocalAttachmentStore extends AttachmentStore {
     this.normalizationPolicy = Object.freeze({
       maxDimension: config.normalizedImageMaxDimension ?? DEFAULT_NORMALIZED_IMAGE_MAX_DIMENSION,
       maxBytes: config.normalizedImageMaxBytes ?? DEFAULT_NORMALIZED_IMAGE_MAX_BYTES,
+    })
+    this.textLimits = Object.freeze({
+      maxBytes: config.maxTextBytes ?? DEFAULT_MAX_TEXT_BYTES,
     })
     const compressionConcurrency = config.imageCompressionConcurrency ?? DEFAULT_IMAGE_COMPRESSION_CONCURRENCY
     if (!Number.isSafeInteger(compressionConcurrency)
@@ -205,6 +228,34 @@ export class LocalAttachmentStore extends AttachmentStore {
 
   async readImage(ref: ImageAttachmentRef, signal?: AbortSignal): Promise<StoredImageAttachment> {
     return readImageFile(this.root, ref, signal)
+  }
+
+  /**
+   * Run the full text-admission policy for one submitted file without persisting it.
+   * @param input - submitted bytes and optional display name.
+   * @returns completion once the bytes are proven to be UTF-8 text within limits.
+   */
+  async validateText(input: SaveTextAttachment): Promise<void> {
+    await validateTextFile(input, this.textLimits)
+  }
+
+  /**
+   * Verify and durably commit one text attachment below this store's root.
+   * @param input - submitted bytes and optional display name.
+   * @returns durable content-addressed text reference.
+   */
+  async saveText(input: SaveTextAttachment): Promise<TextAttachmentRef> {
+    return saveTextFile(this.root, input, this.textLimits)
+  }
+
+  /**
+   * Read and verify one stored text attachment.
+   * @param ref - reference recorded in the session log.
+   * @param signal - optional cancellation for filesystem and verification work.
+   * @returns verified bytes and decoded text.
+   */
+  async readText(ref: TextAttachmentRef, signal?: AbortSignal): Promise<StoredTextAttachment> {
+    return readTextFile(this.root, ref, signal)
   }
 
   override async readImageRequest(
