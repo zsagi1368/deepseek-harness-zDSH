@@ -36,6 +36,8 @@ import type { SandboxPolicyService } from '@deepseek-ai/dsh-sandbox-policy'
 import type { ShellRunResult } from '@deepseek-ai/dsh-shell'
 import { parseExitStatus, recursiveWorkspaceRootDelete, hostProcessChain, selfProcessNames, selfTerminationCommand } from '@deepseek-ai/dsh-shell'
 import { processOutcome } from './background.ts'
+import { enrichInvalidArgsError, normalizePwshArguments } from './args.ts'
+import { posixTranslationNote, translatePosixCommand } from './translate.ts'
 import { renderPwshProcessRead, renderPwshResult } from './render.ts'
 import type { RenderablePwshResult } from './render.ts'
 
@@ -307,11 +309,13 @@ export function apply(ctx: Context, config: Config = {}): void {
   ctx.systemPrompt.section({
     name: 'tool:pwsh',
     order: 105,
-    text: 'Non-zero exits are reported as `[exit code: N]` markers; investigate failures before moving on. '
+    text: 'Shell commands run through the tool named exactly `pwsh`; address shell calls to that name. '
+      + 'Common POSIX commands (pwd, ls, cat, ...) are translated to PowerShell equivalents automatically when unambiguous. '
+      + 'Non-zero exits are reported as `[exit code: N]` markers; investigate failures before moving on. '
       + 'On Windows a killed process settles as `[exit code: 1]` without a signal marker; treat a bare exit 1 after an interruption as a termination, not a command failure.',
   })
 
-  ctx.tools.register(defineTool({
+  const definition = defineTool({
     name: 'pwsh',
     description: pwshDescription(backgroundEnabled, escalationModes),
     /* jscpd:ignore-start -- deliberate mirror of dsh-tool-bash's parameter surface (pwsh-tool-and-executor Agent Note). */
@@ -399,18 +403,26 @@ export function apply(ctx: Context, config: Config = {}): void {
         ],
       },
       /* jscpd:ignore-end */
-      render: (_args, value) => [{
-        type: 'text',
-        text: value.kind === 'background'
+      render: (args, value) => {
+        const base = value.kind === 'background'
           ? `started background job ${value.jobId}`
-          : renderPwshResult(value as RenderablePwshResult, escalationModes),
-      }],
+          : renderPwshResult(value as RenderablePwshResult, escalationModes)
+        // #53: when the entry translator rewrote a POSIX command, disclose the
+        // effective text so its results stay auditable against what ran.
+        const note = posixTranslationNote(args.command)
+        return [{ type: 'text', text: note === undefined ? base : `${note}\n${base}` }]
+      },
     },
     /* jscpd:ignore-start -- the execute path mirrors dsh-tool-bash's by design (see the pwsh-tool-and-executor Agent Note). */
     async execute(args: PwshToolArgs, exec) {
       validatePwshArgs(args)
+      // #53: models habitually emit POSIX commands on Windows; translate the
+      // well-known forms so they run natively instead of failing with parser
+      // errors. Gates below evaluate the EFFECTIVE text, and untranslatable
+      // commands pass through unchanged.
+      const command = translatePosixCommand(args.command) ?? args.command
       // Refuse host-directed terminations (#387) before anything can ask or execute.
-      rejectSelfTermination(args.command)
+      rejectSelfTermination(command)
       // Description is display metadata; workdir defaults to the caller's session.
       const standingPolicy = resolveSandboxPolicy(exec)
       const approvedMode = args.sandbox_permissions !== undefined && args.justification !== undefined
@@ -420,9 +432,9 @@ export function apply(ctx: Context, config: Config = {}): void {
         ? standingPolicy
         : { ...(standingPolicy as SandboxExecutionPolicy), mode: approvedMode }
       const workdir = resolveWorkdir(args.workdir, exec)
-      await approveRecursiveRootDelete(args.command, workdir, standingPolicy, exec)
+      await approveRecursiveRootDelete(command, workdir, standingPolicy, exec)
       const request = {
-        command: args.command,
+        command,
         ...workdir !== undefined ? { workdir } : {},
         ...args.timeoutMs !== undefined ? { timeoutMs: args.timeoutMs } : {},
         dshEnv: ctx.shellEnv.collect(exec),
@@ -443,7 +455,8 @@ export function apply(ctx: Context, config: Config = {}): void {
           error.name = 'AbortError'
           throw error
         }
-        // Task preflight finishes before the starter can spawn a process.
+        // Task preflight finishes before the starter can spawn a process; the
+        // label keeps the model-written command for UI continuity.
         const id = jobs.start({
           kind: 'pwsh',
           label: args.command,
@@ -507,5 +520,24 @@ export function apply(ctx: Context, config: Config = {}): void {
       return { card: 'terminal', output: body, ...exit }
     },
     /* jscpd:ignore-end */
-  }))
+  })
+
+  /* jscpd:ignore-start -- registration-wrapper shape unique to this tool; rationale in dsh-tool-pwsh/src/args.ts. */
+  // #121 hardening: normalize near-miss arguments BEFORE schema validation and
+  // enrich the missing-command failure with the received shape plus resend
+  // guidance — the terse canonical violation is what fed the token-burning
+  // repeat loops. Everything else about the definition is unchanged: the
+  // registry still sees the original presenters, finalizer, and schema, and
+  // invalid arguments still fail with a canonical ToolArgsError result.
+  ctx.tools.register({
+    ...definition,
+    async execute(args: unknown, exec) {
+      try {
+        return await definition.execute(normalizePwshArguments(args), exec)
+      } catch (error: unknown) {
+        throw enrichInvalidArgsError(error, args)
+      }
+    },
+  })
+  /* jscpd:ignore-end */
 }

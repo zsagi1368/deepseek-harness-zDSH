@@ -33,6 +33,8 @@ import * as BashEnvPlugin from '@deepseek-ai/dsh-shell-env'
 import type { ShellProcessRead } from '@deepseek-ai/dsh-shell'
 import { processOutcome } from '../src/background.ts'
 import { renderPwshProcessRead, renderPwshResult } from '../src/render.ts'
+import { normalizePwshArguments, describePwshArguments, enrichInvalidArgsError } from '../src/args.ts'
+import { POSIX_TRANSLATIONS, posixTranslationNote, translatePosixCommand } from '../src/translate.ts'
 
 const testToolSignal = new AbortController().signal
 
@@ -337,6 +339,16 @@ describe('registration', () => {
     await fiber.dispose()
     expect(ctx.tools.schemas()).toHaveLength(0)
   })
+
+  it('pins the exact tool name and the translation story in the prompt (#225, #53)', async () => {
+    // #225: models that address shell calls to `powershell`/`shell`/`terminal`
+    // get UNKNOWN_TOOL from the registry (no alias chain exists); the prompt
+    // is the one tool-owned surface that can pin the exact callable name.
+    const { ctx } = await setup()
+    const prompt = renderPrompt(await ctx.systemPrompt.assemble())
+    expect(prompt).toContain('the tool named exactly `pwsh`')
+    expect(prompt).toContain('translated to PowerShell equivalents automatically')
+  })
 })
 
 describe('argument validation', () => {
@@ -346,6 +358,184 @@ describe('argument validation', () => {
     expect(text(await call(ctx, 'pwsh', { command: 'Write-Output hi', description: ' ' }))).toContain('expected a non-empty string')
     expect(text(await call(ctx, 'pwsh', { command: 'Write-Output hi', description: 'd', timeoutMs: -1 })))
       .toContain('invalid timeoutMs: expected a positive number')
+  })
+})
+
+describe('posix→pwsh translation layer (#53)', () => {
+  it.each([
+    ['pwd', 'Get-Location'],
+    ['PWD', 'Get-Location'],
+    ['ls', 'Get-ChildItem'],
+    ['ls -l', 'Get-ChildItem'],
+    ['ls -la', 'Get-ChildItem -Force'],
+    ['ls -al src', 'Get-ChildItem -Force src'],
+    ['cat a.txt b.txt', 'Get-Content a.txt b.txt'],
+    ['cd sub', 'Set-Location sub'],
+    ['echo hi', 'Write-Output hi'],
+    ['rm -rf build', 'Remove-Item -Recurse -Force build'],
+    ['rm -r dist', 'Remove-Item -Recurse dist'],
+    ['cp -r a b', 'Copy-Item -Recurse a b'],
+    ['mv a b', 'Move-Item a b'],
+    ['mkdir -p x/y', 'New-Item -ItemType Directory -Force x/y'],
+    ['which git', 'Get-Command git'],
+    ['grep todo notes.md', 'Select-String -Pattern todo notes.md'],
+    ['head -n 5 log.txt', 'Get-Content log.txt -TotalCount 5'],
+    ['tail -n 20 log.txt', 'Get-Content log.txt -Tail 20'],
+    ['env', 'Get-ChildItem Env:'],
+    ['clear', 'Clear-Host'],
+    ['export FOO=bar', "$env:FOO = 'bar'"],
+    ['export FOO="a b"', "$env:FOO = 'a b'"],
+    // Chains, pipelines, and redirections keep their operators/tails verbatim.
+    ['pwd && ls -la', 'Get-Location && Get-ChildItem -Force'],
+    ['cat x | grep y', 'Get-Content x | Select-String -Pattern y'],
+    ['pwd; ls', 'Get-Location ; Get-ChildItem'],
+    ['echo hi > out.txt', 'Write-Output hi > out.txt'],
+    ['echo err 2> err.log', 'Write-Output err 2> err.log'],
+    // $( ) inside double quotes interpolates in BOTH shells, so the rewrite
+    // preserves semantics and translation may proceed.
+    ['echo "nested $(x)"', 'Write-Output "nested $(x)"'],
+  ])('translates %s', (input, expected) => {
+    expect(translatePosixCommand(input)).toBe(expected)
+  })
+
+  it.each([
+    // PowerShell-native text and unknown verbs run as written.
+    'Get-Process',
+    'docker ps',
+    'kill -9 123',
+    'touch f',
+    // Unrecognized flags never get rewritten into different semantics.
+    'ls --color',
+    'grep -i x y',
+    'head -20 f',
+    // Arity guards: bare rm/cp/mv are invalid POSIX anyway.
+    'rm',
+    'cp a',
+    // Command substitution outside quotes and escapes have divergent semantics.
+    'echo $(pwd)',
+    'echo `pwd`',
+    'echo "a\\"b"',
+    // The bare bash-background operator has no clean PowerShell spelling.
+    'pwd & ls',
+  ])('leaves %s untranslated', (input) => {
+    expect(translatePosixCommand(input)).toBeUndefined()
+  })
+
+  it('exposes the mapping table keys for coverage review', () => {
+    expect(Object.keys(POSIX_TRANSLATIONS).sort()).toEqual([
+      'cat', 'cd', 'clear', 'cp', 'echo', 'env', 'export', 'grep', 'head',
+      'ls', 'mkdir', 'mv', 'pwd', 'rm', 'tail', 'which',
+    ])
+  })
+
+  it('builds the disclosure note only for translated commands', () => {
+    expect(posixTranslationNote('pwd && ls -la')).toBe('[translated to PowerShell: Get-Location && Get-ChildItem -Force]')
+    expect(posixTranslationNote('Get-Process')).toBeUndefined()
+  })
+
+  it('forwards the effective command to the executor and discloses the rewrite to the model', async () => {
+    const { ctx, bash } = await setup()
+    bash.handler = () => runResult('out\n')
+    const args = { command: 'pwd && ls -la', description: 'show directory' }
+    const result = await call(ctx, 'pwsh', args)
+    expect(result.isError).toBe(false)
+    expect(bash.requests[0]?.command).toBe('Get-Location && Get-ChildItem -Force')
+    expect(text(result)).toBe('[translated to PowerShell: Get-Location && Get-ChildItem -Force]\nout\n')
+  })
+
+  it('keeps the pending-call card on the command the model wrote', async () => {
+    const { ctx } = await setup()
+    const view = ctx.tools.get('pwsh')?.presentCall?.({ command: 'pwd && ls -la', description: 'd' })
+    expect(view).toMatchObject({ card: 'terminal', title: 'pwd && ls -la' })
+  })
+
+  it('notes the rewrite on background acknowledgements and runs the translated command', async () => {
+    const { ctx, bash } = await setupWithTasks()
+    const started = await call(ctx, 'pwsh', { command: 'pwd', description: 'cwd', run_in_background: true })
+    expect(text(started)).toBe('[translated to PowerShell: Get-Location]\nstarted background job pwsh-1')
+    expect(bash.specs[0]?.command).toBe('Get-Location')
+    await callUntilText(ctx, 'job_output', { job_id: 'pwsh-1' }, '[status:')
+  })
+
+  it('the #149 gate evaluates the TRANSLATED text (closes the bundled-flag gap)', async () => {
+    // Untranslated, `rm -rf .` slips past the pwsh recursion detector (its
+    // flag check accepts only `-r`/`-rec*`); the translator rewrites it to
+    // `Remove-Item -Recurse -Force .`, which the gate matches — so the ask
+    // fires BEFORE anything runs.
+    const { ctx, bash } = await setupSandboxed(true)
+    let asked = 0
+    ctx.on('approval/request', () => {
+      asked += 1
+      return Promise.resolve<ApprovalOutcome>('allowed-once')
+    })
+    await call(ctx, 'pwsh', { command: 'rm -rf .', description: 'wipe' }, sandboxAgent())
+    expect(asked).toBe(1)
+    expect(bash.modes).toHaveLength(1)
+  })
+
+  it('keeps the #387 refusal effective on untranslated POSIX killers', async () => {
+    // No POSIX verb maps to process management, so hostile commands stay
+    // verbatim and the #387 refusal sees them unchanged.
+    const { ctx, bash } = await setup()
+    const result = await call(ctx, 'pwsh', { command: `kill -9 ${process.pid}`, description: 'restart' })
+    expect(result.isError).toBe(true)
+    expect(text(result)).toContain('would terminate this harness host process itself')
+    expect(bash.requests).toHaveLength(0)
+  })
+})
+
+describe('argument normalization and enriched invalid-args guidance (#121)', () => {
+  it('executes arguments that arrive as a JSON-encoded object string', async () => {
+    const { ctx, bash } = await setup()
+    bash.handler = () => runResult('ok\n')
+    const result = await call(ctx, 'pwsh', '{"command": "Write-Output ok", "description": "ok"}')
+    expect(result.isError).toBe(false)
+    expect(bash.requests[0]?.command).toBe('Write-Output ok')
+  })
+
+  it('enriches the missing-command failure with the received shape and resend guidance', async () => {
+    // The reported loop: empty/partial argument objects parse to {}, the
+    // canonical violation alone gives the model nothing to correct, and the
+    // identical call repeats until the budget dies. The enriched failure
+    // names what arrived and how to fix it.
+    const { ctx } = await setup()
+    const rendered = text(await call(ctx, 'pwsh', {}))
+    expect(rendered).toContain('invalid arguments: missing required property "command"')
+    expect(rendered).toContain('the call received an object with no properties')
+    expect(rendered).toContain('"command": "<one PowerShell command>"')
+    expect(rendered).toContain('resend complete valid arguments instead of repeating this call')
+  })
+
+  it('describes near-miss argument shapes in bounded phrases', () => {
+    expect(describePwshArguments(undefined)).toBe('no arguments object')
+    expect(describePwshArguments(null)).toBe('null')
+    expect(describePwshArguments([])).toBe('a JSON array')
+    expect(describePwshArguments({ description: 'd' })).toBe('an object with properties description')
+    expect(describePwshArguments({ a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8, i: 9 }))
+      .toBe('an object with properties a, b, c, d, e, f, g, h, ...')
+    expect(describePwshArguments('{"comma')).toMatch(/^a JSON string \("/)
+    expect(describePwshArguments('x'.repeat(100))).toContain('...')
+  })
+
+  it('normalizes only salvageable JSON-object payloads', () => {
+    const direct = { command: 'x', description: 'y' }
+    expect(normalizePwshArguments(direct)).toBe(direct)
+    expect(normalizePwshArguments('{"command":"x","description":"y"}')).toEqual(direct)
+    expect(normalizePwshArguments('[1,2]')).toBe('[1,2]')
+    expect(normalizePwshArguments('{"broken')).toBe('{"broken')
+    expect(normalizePwshArguments(undefined)).toBeUndefined()
+  })
+
+  it('leaves other validation failures unenriched', async () => {
+    const { ctx } = await setup()
+    const rendered = text(await call(ctx, 'pwsh', { command: '  ', description: 'd' }))
+    expect(rendered).toContain('expected a non-empty string')
+    expect(rendered).not.toContain('resend complete valid arguments')
+  })
+
+  it('passes non-ToolArgsError throws through the enrichment untouched', () => {
+    const boom = new Error('boom')
+    expect(enrichInvalidArgsError(boom, {})).toBe(boom)
   })
 })
 
@@ -927,6 +1117,23 @@ describe('UI presentation', () => {
       { content: [{ type: 'text', text: 'tool call aborted' }], isError: true },
     )
     expect(out).toEqual({ card: 'generic', content: [{ type: 'text', text: '```console\ntool call aborted\n```' }] })
+  })
+
+  it('a failed call settles as a canonical error result with a generic presentation (#409)', async () => {
+    // The report's "call box pops up and then fails": every pre-execution
+    // failure (validation, gates) must land as ONE canonical error result —
+    // never a pending terminal card without a completion.
+    const { ctx } = await setup()
+    const args = { command: '  ', description: 'blank command' }
+    const result = await call(ctx, 'pwsh', args)
+    expect(result.isError).toBe(true)
+    expect(result.content).toHaveLength(1)
+    expect(text(result)).toBe('Error: invalid command: expected a non-empty string')
+    const view = ctx.tools.get('pwsh')?.presentResult?.(args, result)
+    expect(view).toEqual({
+      card: 'generic',
+      content: [{ type: 'text', text: '```console\nError: invalid command: expected a non-empty string\n```' }],
+    })
   })
 
   it('presentResult falls back to undefined for multi-block or non-text content', async () => {
