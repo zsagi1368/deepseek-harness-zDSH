@@ -147,7 +147,9 @@ describe('ReasoningRow S-41 reading ergonomics', () => {
   }
 
   afterEach(() => {
-    document.querySelectorAll('[data-conversation-scroll]').forEach(node => node.remove())
+    document.querySelectorAll('[data-conversation-scroll]').forEach((node) => {
+      node.remove()
+    })
   })
 
   it('expanding never forces a scroll toward the message head; the head row pins via data-expanded', () => {
@@ -215,7 +217,7 @@ describe('ReasoningRow S-41 reading ergonomics', () => {
     const rects = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
       if (this === host) return { top: 0, bottom: 600 } as DOMRect
       if (this.dataset.variant === 'think') return { top: -510, bottom: -486 } as DOMRect
-      const expandedPhase = (host.querySelector('[data-variant="think"]') as HTMLElement | null)?.dataset.expanded !== undefined
+      const expandedPhase = host.querySelector<HTMLElement>('[data-variant="think"]')?.dataset.expanded !== undefined
       return { top: expandedPhase ? 90 : -550, bottom: expandedPhase ? 130 : -510 } as DOMRect
     })
     try {

@@ -449,7 +449,7 @@ export function ChatView({
         return
       }
       if (event.repeat || event.defaultPrevented || event.isComposing) return
-      // oxlint-disable-next-line typescript/no-deprecated -- legacy IME signal (keyCode 229), same guard as the composer.
+      // Legacy IME signal (keyCode 229), same guard as the composer.
       if ((event as unknown as { keyCode?: number }).keyCode === 229) return
       const facts = escFactsRef.current
       if (facts.openState !== 'open') return

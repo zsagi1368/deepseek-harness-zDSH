@@ -94,9 +94,11 @@ describe('composer appendQuote', () => {
 
   /** Narrow the optional capability: these cases exercise a shell that has it. */
   function requireAppendQuote(shell: SessionInputShell): (text: string) => boolean {
-    const append = shell.actions.appendQuote
-    if (append === undefined) throw new Error('appendQuote unavailable on this shell')
-    return append
+    return (text) => {
+      const result = shell.actions.appendQuote?.(text)
+      if (result === undefined) throw new Error('appendQuote unavailable on this shell')
+      return result
+    }
   }
 
   it('appends to an existing draft as one plain-phase transaction', () => {

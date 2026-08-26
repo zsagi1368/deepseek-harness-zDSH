@@ -26,7 +26,7 @@ export const AssistantNodeView = memo(function AssistantNodeView({
   // this row to the input phase alone — draft keystrokes never re-render it.
   const phase = useInput(s => s.phase)
   const onQuote = useMemo(() => {
-    if (inputActions?.appendQuote === undefined) return undefined
+    if (inputActions.appendQuote === undefined) return undefined
     return (text: string): void => { inputActions.appendQuote?.(formatQuoteBlock(text)) }
   }, [inputActions])
   return (
