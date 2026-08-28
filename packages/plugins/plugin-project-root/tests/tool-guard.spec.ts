@@ -32,7 +32,7 @@ function tool(name: string, body: () => Promise<unknown> = async () => 'ok'): To
     parameters: { type: 'object', properties: {} },
     output: {
       schema: { type: 'string' },
-      render: (_args, value) => [{ type: 'text', text: String(value) }],
+      render: (_args, value) => [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value) }],
     },
     execute: body,
   }
@@ -129,7 +129,7 @@ describe('projectToolWrapper (B-08)', () => {
       runGuard,
     })
     try {
-      ctx.tools.register(tool('hang_tool', () => new Promise(resolve => setTimeout(() => resolve('late'), 200))))
+      ctx.tools.register(tool('hang_tool', () => new Promise(resolve => setTimeout(() => { resolve('late') }, 200))))
       const result = await run(ctx, 'hang_tool')
       expect(result.isError).toBe(true)
       if (result.isError) {

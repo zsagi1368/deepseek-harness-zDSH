@@ -2,9 +2,9 @@
  * Shared fixtures for the plugin-project-root test suites.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync, symlinkSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import type { PluginManifest, PluginSandboxConfig } from '@deepseek-ai/dsh-plugin-governance'
 
 /** A valid PluginSandboxConfig for the project plugin clamp. */

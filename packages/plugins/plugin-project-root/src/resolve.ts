@@ -25,7 +25,7 @@ export const PROJECT_PLUGINS_ROW_ID = 'project-plugins'
 export function resolveProjectPluginEnabled(rows: ReadonlyMap<string, EntryOptions>): boolean {
   const row = rows.get(PROJECT_PLUGINS_ROW_ID)
   if (row === undefined) return false
-  const config = row.config
+  const config: unknown = row.config
   if (typeof config !== 'object' || config === null) return false
   return (config as Record<string, unknown>).enabled === true
 }

@@ -8,7 +8,7 @@
  * @module @deepseek-ai/dsh-plugin-project-root
  */
 
-import { LoadGuard, type Plugin, type PluginManifest, type PluginSandboxConfig } from '@deepseek-ai/dsh-plugin-governance'
+import { LoadGuard, type Plugin } from '@deepseek-ai/dsh-plugin-governance'
 import { clampProjectPluginSandbox } from './clamp.ts'
 import type { DiscoveredProjectPlugin, ProjectPluginCandidate, GateReportEntry } from './types.ts'
 
@@ -65,7 +65,7 @@ export async function gate(
 
     // --- Clamp ---
     const clampResult = clampProjectPluginSandbox(
-      manifest.sandbox as Partial<PluginSandboxConfig>,
+      manifest.sandbox,
       pluginDir,
     )
     for (const rejection of clampResult.rejections) {
@@ -81,7 +81,7 @@ export async function gate(
     if (clampResult.rejections.length > 0) continue
 
     // --- llm-adapter capability rejection (B-03) ---
-    const hasLlmAdapter = (manifest.capabilities ?? []).some(
+    const hasLlmAdapter = manifest.capabilities.some(
       cap => cap.type === 'llm-adapter',
     )
     if (hasLlmAdapter) {
@@ -101,7 +101,7 @@ export async function gate(
       manifest: {
         ...manifest,
         sandbox: clampResult.effective,
-      } as PluginManifest,
+      },
       install: () => {},
       uninstall: () => {},
     }

@@ -5,14 +5,12 @@
  * short-circuit (A-01/A-02).
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { EntryOptions } from '@deepseek-ai/cordis-plugin-loader'
-import { RunGuard } from '@deepseek-ai/dsh-plugin-governance'
 import { createProjectPluginLayer } from '../src/plugin.ts'
 import { gate } from '../src/gate.ts'
 import { discoverProjectPlugins } from '../src/discover.ts'
@@ -72,7 +70,19 @@ describe('ProjectPluginLayer.mount', () => {
     const pluginDir = writePluginPackage(root, 'demo', manifestBlob())
     // A Cordis plugin that registers a tool during apply.
     const entryModule = Object.assign(
-      (inner: { tools: { register: (tool: { name: string; description: string; parameters: unknown; output: unknown; execute: () => Promise<string> }) => void } }) => {
+      (
+        inner: {
+          tools: {
+            register: (tool: {
+              name: string
+              description: string
+              parameters: unknown
+              output: unknown
+              execute: () => Promise<string>
+            }) => void
+          }
+        },
+      ) => {
         inner.tools.register({
           name: 'project_tool',
           description: 'from project plugin',

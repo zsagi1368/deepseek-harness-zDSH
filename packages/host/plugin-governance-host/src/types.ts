@@ -23,10 +23,15 @@ export interface GovernedPluginSummary {
   readonly version: string
   readonly status: PluginGovernanceStatus
   /**
-   * Where this entry came from: mirrored from a Cordis Loader mount, or
-   * registered natively against the governance service itself.
+   * Where this entry came from: mirrored from a Cordis Loader mount ('loader-mirror'),
+   * registered natively against the governance service itself ('native'), or
+   * discovered as a project-level plugin ('project').
    */
-  readonly source: 'loader-mirror' | 'native'
+  readonly source: 'loader-mirror' | 'native' | 'project'
+  /**
+   * Absolute project root path, present only when source is 'project'.
+   */
+  readonly projectRoot?: string
   /**
    * Whether the manifest requests a permission level that needs an explicit
    * user admission decision and has not been auto-approved.
@@ -50,6 +55,12 @@ export interface GovernedSandboxView {
   readonly networkAccess: string
   /** Whether the manifest claims process spawn/exec rights. */
   readonly maySpawnProcesses: boolean
+  /**
+   * Actual runtime tier for project plugins: 'in-process' in M2a (the effective
+   * sandbox.type stays 'inline' because no OS boundary exists yet). Absent for
+   * non-project sources.
+   */
+  readonly runtimeTier?: string
 }
 
 /** One declared capability, projected for clients. */

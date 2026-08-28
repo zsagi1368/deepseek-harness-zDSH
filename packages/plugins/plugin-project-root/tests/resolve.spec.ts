@@ -15,7 +15,7 @@ function row(config: unknown, extra: Partial<EntryOptions> = {}): EntryOptions {
 }
 
 function rowsOf(...entries: EntryOptions[]): Map<string, EntryOptions> {
-  return new Map(entries.map(entry => [String(entry.id), entry]))
+  return new Map(entries.map(entry => [entry.id, entry]))
 }
 
 describe('resolveProjectPluginEnabled', () => {
@@ -27,7 +27,7 @@ describe('resolveProjectPluginEnabled', () => {
   it('turns on only for an exact config.enabled === true', () => {
     expect(resolveProjectPluginEnabled(rowsOf(row({ enabled: true })))).toBe(true)
     for (const value of ['true', '1', 'yes', 1, 0, null, undefined, {}]) {
-      expect(resolveProjectPluginEnabled(rowsOf(row({ enabled: value }))), String(value)).toBe(false)
+      expect(resolveProjectPluginEnabled(rowsOf(row({ enabled: value }))), JSON.stringify(value)).toBe(false)
     }
   })
 

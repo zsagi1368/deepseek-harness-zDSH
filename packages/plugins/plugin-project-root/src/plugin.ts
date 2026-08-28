@@ -101,7 +101,7 @@ function verifyCandidateUnchanged(candidate: ProjectPluginCandidate): boolean {
 function toolNames(ctx: Context): Set<string> {
   try {
     const tools = (ctx as Context & { tools?: { schemas?: (scope?: unknown) => Array<{ name: string }> } }).tools
-    if (typeof tools?.schemas !== 'function') return new Set()
+    if (typeof tools.schemas !== 'function') return new Set()
     return new Set(tools.schemas().map(schema => schema.name))
   } catch {
     return new Set()
@@ -120,7 +120,7 @@ export function createProjectPluginLayer(ctx: Context): ProjectPluginLayer {
   const toolOwners = new Map<string, string>()
   const report: GateReportEntry[] = []
   let disposeWrapper: (() => void) | undefined
-  let provideDisposer: (() => void) | undefined
+  let provideDisposer: (() => Promise<void>) | undefined
 
   const layer: ProjectPluginLayer = {
     runGuard,
@@ -196,11 +196,11 @@ export function createProjectPluginLayer(ctx: Context): ProjectPluginLayer {
             ? 'warned'
             : 'allowed',
         })
-        manifests.set(entryId, candidate.manifest)
+        manifests.set(entryId, { ...candidate.manifest, sandbox: candidate.clampedSandbox })
         // Register a watcher for every mounted plugin (B-08).
         try {
           runGuard.watch(candidate.id, {
-            manifest: { ...candidate.manifest, sandbox: candidate.clampedSandbox } as PluginManifest,
+            manifest: { ...candidate.manifest, sandbox: candidate.clampedSandbox },
             install: () => {},
           })
         } catch (cause) {
@@ -229,7 +229,7 @@ export function createProjectPluginLayer(ctx: Context): ProjectPluginLayer {
     dispose(): void {
       disposeWrapper?.()
       disposeWrapper = undefined
-      provideDisposer?.()
+      void provideDisposer?.()
       provideDisposer = undefined
       for (const id of runGuard.getActiveWatchers()) runGuard.unwatch(id)
     },

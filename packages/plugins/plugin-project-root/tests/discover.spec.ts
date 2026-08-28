@@ -38,7 +38,7 @@ describe('discoverProjectPlugins', () => {
     expect(candidates.map(c => c.id).sort()).toEqual(['fixtures/demo', 'fixtures/other'])
     for (const candidate of candidates) {
       expect(candidate.projectRoot).toBe(root)
-      expect(candidate.pluginDir).toBe(join(root, '.dsh', 'plugins', candidate.id.split('/')[1]))
+      expect(candidate.pluginDir).toBe(join(root, '.dsh', 'plugins', candidate.id.split('/')[1]!))
       expect(candidate.manifestHash).toMatch(/^[0-9a-f]{64}$/)
       expect(candidate.entryFile).toBe(join(candidate.pluginDir, 'index.js'))
       expect(candidate.source).toBe('project')
@@ -136,7 +136,7 @@ describe('discoverProjectPlugins', () => {
     writePluginPackage(root, 'demo', manifest)
     const candidates = discoverProjectPlugins(root, { warn })
     expect(candidates).toHaveLength(1)
-    const candidate = candidates[0]
+    const candidate = candidates[0]!
     // The raw fuzz strings survive verbatim as object fields.
     expect(candidate.name).toBe(fuzz)
     expect(candidate.manifest.capabilities[0]?.tool?.description).toBe(fuzz)
