@@ -43,6 +43,41 @@ Data-dependent. `maxOutputChars` bounds retained command output; fixed clipping,
 
 Append-only tool results follow the reusable request prefix.
 
+## Parameter Surface Differences from `tool-pwsh`
+
+The sibling package `@deepseek-ai/dsh-tool-pwsh` registers an ephemeral `pwsh` tool (each call spawns a fresh `pwsh -Command`). This package (`tool-pwsh-persistent`) keeps one owner-scoped shell alive across calls. The two tools share the `command` parameter but differ in every other dimension:
+
+### Plugin Configuration
+
+| Key | `tool-pwsh` | `tool-pwsh-persistent` |
+|---|---|---|
+| `backendType` | — | string, default `'shell'`; selects the terminal backend for the persistent PTY shell. |
+| `timeoutMs` | — *(per-call arg; see below)* | number, default `300_000`; wall-clock limit for one command. A timeout closes the persistent shell. |
+| `maxOutputChars` | — | number, default `16_000`; retained command-output character cap. |
+| `description` | — *(per-call arg; see below)* | string, default `'Run commands in a persistent PowerShell shell…'`; the model-facing tool description. |
+| `enableRunInBackground` | boolean, default `true` | — |
+
+### Per-Call Model Arguments
+
+| Parameter | `tool-pwsh` | `tool-pwsh-persistent` |
+|---|---|---|
+| `command` | string (required) | string (required) |
+| `description` | string (required, 5-10 words, UI/log only) | — *(set at config level)* |
+| `timeoutMs` | number (optional, per-call override) | — *(config-level only, applies to every command)* |
+| `workdir` | string (optional; per-call cwd) | — *(shell inherits the session cwd at spawn time)* |
+| `run_in_background` | boolean (optional) | — |
+| `sandbox_permissions` | string enum (optional) | — *(PTY-level sandbox, not tool-level)* |
+| `justification` | string (optional) | — |
+
+### Naming Inconsistency
+
+Both tools name the command deadline `timeoutMs`, but in `tool-pwsh` it is a per-call model argument, while in `tool-pwsh-persistent` it is a plugin-level configuration key that applies to every command. Consider unifying the model: either promote `timeoutMs` to a per-call argument in `tool-pwsh-persistent` (allowing the model to override the wall-clock limit for individual commands) or demote it to a config-only key in `tool-pwsh` (removing the per-call override). The same split applies to `description` (per-call in `tool-pwsh`, config-level in `tool-pwsh-persistent`).
+
+### Session Lifecycle
+
+- **`tool-pwsh`**: ephemeral — each call spawns a fresh `pwsh -Command` process; no state persists between calls.
+- **`tool-pwsh-persistent`**: persistent — commands share one PWsh shell per Agent; cwd, `$env:` variables, functions, and background jobs survive across calls. The shell is reset (closed and re-created) on timeout, shell exit, or explicit `sessionStatus.kind === 'exited'`. The `backendType` config selects the terminal backend that hosts the shell.
+
 ## Known Limitations and Deferred Work
 
 - The tool requires an owning Agent and a real terminal backend with a pwsh dialect (Windows ConPTY or a POSIX pwsh).

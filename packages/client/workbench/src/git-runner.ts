@@ -7,9 +7,91 @@
  * - network operations (fetch/pull/push) live behind `confirm: true` and
  *   otherwise answer with a read-only preview instead of acting.
  */
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
+// `win32` (not the host-bound `isAbsolute`): where.exe output is always a
+// Windows path, so the validity check must be win32 semantics on every host —
+// a POSIX `isAbsolute` would reject a valid `C:\...` path on Linux CI.
+import { win32 } from 'node:path'
 import type { RootCache } from './fs-routes.ts'
 import { ensureRealPathInside } from './path-guard.ts'
+
+/**
+ * Resolve a bare executable name to an absolute path. Returns the first match
+ * or null when the name cannot be found.
+ */
+export type BinaryResolver = (name: string) => string | null
+
+/**
+ * Platform default: `where.exe <name>` on Windows (a protected system binary
+ * whose PATH is pinned under SystemRoot), `which <name>` on POSIX.
+ * @param name - the executable name to resolve.
+ * @returns the first absolute path found, or null when resolution fails.
+ */
+function defaultBinaryResolver(name: string): string | null {
+  try {
+    if (process.platform === 'win32') {
+      const result = spawnSync('where.exe', [name], { encoding: 'utf8' })
+      if (result.status === 0) {
+        const resolved = firstLine(result.stdout)
+        // `where.exe` echoes a bare name when the lookup misses; only an
+        // absolute result is a usable binary path, so fail closed rather than
+        // re-entering the PATH dependency this resolver exists to pin down.
+        if (resolved !== null && win32.isAbsolute(resolved)) return resolved
+      }
+      return null
+    }
+    // `command` is a shell builtin with no standalone binary; `spawnSync`
+    // cannot run it directly (ENOENT), so probe through the `which` utility.
+    const result = spawnSync('which', [name], { encoding: 'utf8' })
+    if (result.status === 0) return firstLine(result.stdout)
+    return null
+  } catch {
+    return null
+  }
+}
+
+function firstLine(stdout: string): string | null {
+  for (const line of stdout.split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (trimmed !== '') return trimmed
+  }
+  return null
+}
+
+/** Per-name cache so the PATH lookup runs at most once per process lifetime. */
+const binaryCache = new Map<string, string | null>()
+
+let currentResolver: BinaryResolver = defaultBinaryResolver
+
+/**
+ * Resolve an executable name through the active resolver with caching.
+ * @param name - the executable name to resolve.
+ * @returns the resolved absolute path, or null when unresolvable.
+ */
+export function resolveBinary(name: string): string | null {
+  const cached = binaryCache.get(name)
+  if (cached !== undefined) return cached
+  const resolved = currentResolver(name)
+  binaryCache.set(name, resolved)
+  return resolved
+}
+
+/**
+ * Replace the active binary resolver (test seam; clears the resolution cache).
+ * @param resolver - the resolver to use for subsequent lookups.
+ */
+export function setBinaryResolver(resolver: BinaryResolver): void {
+  currentResolver = resolver
+  binaryCache.clear()
+}
+
+/**
+ * Restore the platform-default resolver and clear the resolution cache.
+ */
+export function resetBinaryResolver(): void {
+  currentResolver = defaultBinaryResolver
+  binaryCache.clear()
+}
 
 /** One git process outcome: exit code plus captured stdout/stderr (byte-capped). */
 export interface GitRunResult {
@@ -45,7 +127,15 @@ export async function runGit(
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const maxBytes = options.maxOutputBytes ?? MAX_OUTPUT_BYTES
   return new Promise((resolve) => {
-    const child = spawn('git', args, {
+    // Never spawn a bare name: resolve `git` to an absolute path first and
+    // fail closed (error result, not a degraded bare-name spawn) when the
+    // PATH lookup comes up empty.
+    const gitPath = resolveBinary('git')
+    if (gitPath === null) {
+      resolve({ code: -1, stdout: '', stderr: 'git: could not resolve the git executable on PATH' })
+      return
+    }
+    const child = spawn(gitPath, args, {
       cwd: rootReal,
       shell: false,
       windowsHide: true,

@@ -43,6 +43,41 @@
 
 追加式工具结果跟随可复用的请求前缀。
 
+## 与 `tool-pwsh` 的参数面差异
+
+姊妹包 `@deepseek-ai/dsh-tool-pwsh` 注册的是**一次性** `pwsh` 工具（每次调用都启动全新的 `pwsh -Command`）。本包（`tool-pwsh-persistent`）为每个 owner 保持一个跨调用存活的 shell。两个工具共享 `command` 参数，其余维度全部不同：
+
+### 插件配置
+
+| 键 | `tool-pwsh` | `tool-pwsh-persistent` |
+|---|---|---|
+| `backendType` | — | string，默认 `'shell'`；选择持久 PTY shell 使用的 terminal backend。 |
+| `timeoutMs` | — *（见下方逐调用参数）* | number，默认 `300_000`；单条命令的墙钟上限。超时会关闭持久 shell。 |
+| `maxOutputChars` | — | number，默认 `16_000`；保留的命令输出字符上限。 |
+| `description` | — *（见下方逐调用参数）* | string，默认 `'Run commands in a persistent PowerShell shell…'`；模型可见的工具描述。 |
+| `enableRunInBackground` | boolean，默认 `true` | — |
+
+### 逐调用模型参数
+
+| 参数 | `tool-pwsh` | `tool-pwsh-persistent` |
+|---|---|---|
+| `command` | string（必填） | string（必填） |
+| `description` | string（必填，5-10 词，仅用于 UI/日志） | — *（在配置层设定）* |
+| `timeoutMs` | number（可选，逐调用覆盖） | — *（仅配置层，作用于每条命令）* |
+| `workdir` | string（可选；本次调用的 cwd） | — *（shell 在启动时继承会话 cwd）* |
+| `run_in_background` | boolean（可选） | — |
+| `sandbox_permissions` | string enum（可选） | — *（沙箱在 PTY 层，不在工具层）* |
+| `justification` | string（可选） | — |
+
+### 命名不一致
+
+两个工具都把命令截止时间命名为 `timeoutMs`，但在 `tool-pwsh` 里它是逐调用的模型参数，而在 `tool-pwsh-persistent` 里它是作用于每条命令的插件配置键。建议统一模型：要么把 `timeoutMs` 提升为 `tool-pwsh-persistent` 的逐调用参数（允许模型对单条命令覆盖墙钟上限），要么把它降为 `tool-pwsh` 的纯配置键（移除逐调用覆盖）。`description` 存在同样的分裂（`tool-pwsh` 逐调用、`tool-pwsh-persistent` 配置层）。
+
+### 会话生命周期
+
+- **`tool-pwsh`**：一次性——每次调用启动全新的 `pwsh -Command` 进程；调用之间不保留任何状态。
+- **`tool-pwsh-persistent`**：持久——每条命令共享每个 Agent 的一个 PWsh shell；cwd、`$env:` 变量、函数与后台任务跨调用保留。超时、shell 退出或显式 `sessionStatus.kind === 'exited'` 时，shell 被重置（关闭并重新创建）。`backendType` 配置选择承载该 shell 的 terminal backend。
+
 ## 已知限制与延后工作
 
 - 工具需要拥有 Agent 与一个真实支持 pwsh 方言的 terminal backend（Windows ConPTY 或 POSIX 上的 pwsh）。

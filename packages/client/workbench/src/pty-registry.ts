@@ -14,7 +14,10 @@
  */
 import { spawnSync } from 'node:child_process'
 import { accessSync, constants as fsConstants } from 'node:fs'
-import { basename } from 'node:path'
+// `win32` (not the host-bound `isAbsolute`): where.exe output is always a
+// Windows path, so the validity check must be win32 semantics on every host —
+// a POSIX `isAbsolute` would reject a valid `C:\...` path on Linux CI.
+import { basename, win32 } from 'node:path'
 
 /** A live terminal process face: write, resize, and kill. */
 export interface PtyProcess {
@@ -60,6 +63,15 @@ interface TerminalRecord {
 }
 
 const WINDOWS_SHELL_BASENAMES = new Set(['pwsh.exe', 'powershell.exe', 'cmd.exe'])
+
+/** First non-empty line from a command's stdout, or null. */
+function firstOutputLine(stdout: string): string | null {
+  for (const line of stdout.split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (trimmed.length > 0) return trimmed
+  }
+  return null
+}
 
 /**
  * Validate a resolved shell before it may reach any spawn seam: on Windows
@@ -132,9 +144,23 @@ export function resolveShell(): ShellResolution {
   if (process.platform === 'win32') {
     const configured = process.env.DSH_WORKBENCH_SHELL?.trim()
     if (configured !== undefined && configured !== '') return { file: configured, args: ['-NoLogo'] }
-    for (const candidate of ['pwsh.exe', 'powershell.exe']) {
-      const whereResult = spawnSync('where.exe', [candidate], { stdio: 'ignore' })
-      if (whereResult.status === 0) return { file: candidate, args: ['-NoLogo'] }
+    try {
+      for (const candidate of ['pwsh.exe', 'powershell.exe']) {
+        // `where.exe` is a SystemRoot-protected system binary; keep it as the
+        // lookup mechanism, but hand the SPAWN seam its absolute-path result
+        // rather than the bare candidate name (a bare name would re-enter the
+        // PATH dependency this lookup exists to pin down).
+        const whereResult = spawnSync('where.exe', [candidate], { encoding: 'utf8' })
+        if (whereResult.status === 0) {
+          const resolved = firstOutputLine(whereResult.stdout)
+          // Fail closed: a relative/bare result is a lookup miss, never a
+          // usable shell path.
+          if (resolved !== null && win32.isAbsolute(resolved)) return { file: resolved, args: ['-NoLogo'] }
+        }
+      }
+    } catch {
+      // A blocked or missing where.exe must not abort shell resolution; fall
+      // through to the ComSpec fallback below.
     }
     const comspec = process.env.ComSpec?.trim()
     return { file: comspec !== undefined && comspec !== '' ? comspec : 'cmd.exe', args: [] }
