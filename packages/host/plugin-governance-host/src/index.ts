@@ -93,13 +93,20 @@ interface ProvidedImplementation {
 
 /** Structural view of the Loader surface this service mirrors from. */
 interface MountedEntry {
-  readonly options: { group?: boolean | null; name: string }
+  readonly options: { group?: boolean | null; name: string; id: string }
   readonly disabled?: boolean | null
   readonly fiber?: Fiber
 }
 
 interface LoaderLike {
   entries?: () => Iterable<MountedEntry>
+}
+
+/** Minimal structural view of one project plugin provenance record. */
+interface ProjectProvenanceLike {
+  readonly manifestId: string
+  readonly projectRoot: string
+  readonly version: string
 }
 
 /** Preset names double as file stems; path separators and dots stay out. */
@@ -212,6 +219,8 @@ export class PluginGovernanceGateway extends TypertRemoteService {
   private readonly persistedDecisions = new Map<PluginGovernanceId, 'active' | 'disabled'>()
   /** Canonical ids already mirrored from the Loader, so re-syncs stay idempotent. */
   private readonly mirrored = new Set<PluginGovernanceId>()
+  /** Project plugin sources: canonical id → project root + runtime tier. */
+  private readonly projectSources = new Map<PluginGovernanceId, { projectRoot: string; runtimeTier: string }>()
   /** In-flight Loader sync; concurrent triggers reuse one pass. */
   private syncing: Promise<void> | null = null
 
@@ -296,6 +305,7 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     // own report builds them; look them up on that same key.
     const errors = this.registry.getHealthReport().plugins
       .find(row => row.id === manifest.id)?.errors ?? []
+    const project = this.projectSources.get(canonicalId(manifest.id))
     return succeeded(Object.freeze({
       summary: this.summaryOf(plugin),
       description: manifest.description ?? null,
@@ -308,6 +318,9 @@ export class PluginGovernanceGateway extends TypertRemoteService {
         filesystemAccess: manifest.sandbox.filesystem.access,
         networkAccess: manifest.sandbox.network.access,
         maySpawnProcesses: manifest.sandbox.process.spawn || manifest.sandbox.process.exec,
+        // Project plugins carry their actual runtime tier so the UI never
+        // mistakes the M2a in-process runtime for an OS boundary.
+        ...(project !== undefined ? { runtimeTier: project.runtimeTier } : {}),
       }),
       errors: Object.freeze(errors),
     }))
@@ -747,6 +760,50 @@ export class PluginGovernanceGateway extends TypertRemoteService {
             if (entry.options.group || entry.disabled) continue
             const fiber = entry.fiber
             if (fiber === undefined || fiber.state !== FIBER_ACTIVE) continue
+            const service = resolveMountedService(fiber)
+            // Entries that provide no object-valued service (plain function or
+            // config-only plugins) have no instance to govern; skip them.
+            if (service === undefined) continue
+            // Project plugin branch: the entry carries a provenance record from
+            // the project plugin layer, so it is wrapped as a PROJECT source —
+            // explicit id = manifest id, clamped manifest, no OFFICIAL badge,
+            // no autoApprove. The provenance table is written at mount time,
+            // which always precedes this first sync pass (no race window).
+            const provenance = this.projectProvenanceOf(entry.options.id)
+            if (provenance !== undefined) {
+              const manifestId = canonicalId(provenance.manifestId)
+              if (this.mirrored.has(manifestId)) continue
+              const guardedManifest = this.projectGuardedManifestOf(entry.options.id)
+              if (guardedManifest === undefined) {
+                // Provenance without a guarded manifest means the layer is in a
+                // state it should never reach; fail soft and never treat this
+                // entry as an official host plugin either (the C-01 invariant).
+                this.warn(`project loader entry ${entry.options.name} has no guarded manifest; skipping`)
+                continue
+              }
+              const result = await this.registry.register(wrapCordisPlugin(
+                service as CordisService,
+                mirrorPluginContext(String(manifestId)),
+                {
+                  id: String(manifestId),
+                  name: mountedDisplayName(manifestId),
+                  version: provenance.version,
+                  mirror: true,
+                  source: 'project',
+                  manifest: guardedManifest,
+                },
+              ))
+              this.mirrored.add(manifestId)
+              if (result.success) {
+                this.projectSources.set(manifestId, {
+                  projectRoot: provenance.projectRoot,
+                  runtimeTier: 'in-process',
+                })
+              } else {
+                this.warn(`failed to register project loader entry ${entry.options.name}: ${(result.errors ?? []).map(error => error.message).join('; ')}`)
+              }
+              continue
+            }
             const pluginId = canonicalId(entry.options.name)
             if (this.mirrored.has(pluginId)) continue
             if (this.registry.get(pluginId) !== null) {
@@ -755,10 +812,6 @@ export class PluginGovernanceGateway extends TypertRemoteService {
               this.mirrored.add(pluginId)
               continue
             }
-            const service = resolveMountedService(fiber)
-            // Entries that provide no object-valued service (plain function or
-            // config-only plugins) have no instance to govern; skip them.
-            if (service === undefined) continue
             const result = await this.registry.register(wrapCordisPlugin(
               service as CordisService,
               mirrorPluginContext(String(pluginId)),
@@ -802,6 +855,29 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     }
   }
 
+  /** Structural read view of the project plugin layer service (no package import). */
+  private projectLayer(): { provenanceOf(entryId: string): ProjectProvenanceLike | undefined; guardedManifestOf(entryId: string): GovernedManifest | undefined } | undefined {
+    try {
+      const candidate = this.ctx.get('projectPluginLayer') as
+        | { provenanceOf(entryId: string): ProjectProvenanceLike | undefined; guardedManifestOf(entryId: string): GovernedManifest | undefined }
+        | undefined
+      if (candidate === undefined) return undefined
+      return candidate
+    } catch {
+      return undefined
+    }
+  }
+
+  /** Provenance of one loader entry id when the project layer knows it. */
+  private projectProvenanceOf(entryId: string): ProjectProvenanceLike | undefined {
+    return this.projectLayer()?.provenanceOf(entryId)
+  }
+
+  /** The guarded (clamped) manifest the project layer mounted for one entry. */
+  private projectGuardedManifestOf(entryId: string): GovernedManifest | undefined {
+    return this.projectLayer()?.guardedManifestOf(entryId)
+  }
+
   /** Non-fatal sync diagnostics go through the host logger, never to callers. */
   private warn(message: string): void {
     this.ctx.logger.warn('plugin-governance: %s', message)
@@ -819,14 +895,19 @@ export class PluginGovernanceGateway extends TypertRemoteService {
   private summaryOf(plugin: GovernedPlugin): GovernedPluginSummary {
     const manifest = plugin.manifest
     const pluginId = canonicalId(manifest.id)
+    const project = this.projectSources.get(pluginId)
     return Object.freeze({
       pluginId,
       displayName: manifest.name,
       version: manifest.version,
       status: STATUS_NAMES[this.registry.getStatus(pluginId)],
       // Entries mirrored from the Loader are distinguishable from native
-      // registrations so the UI can badge their provenance.
-      source: this.mirrored.has(pluginId) ? 'loader-mirror' : 'native',
+      // registrations so the UI can badge their provenance; project plugins
+      // carry their root and source from the server-side provenance table.
+      source: project !== undefined
+        ? 'project'
+        : this.mirrored.has(pluginId) ? 'loader-mirror' : 'native',
+      ...(project !== undefined ? { projectRoot: project.projectRoot } : {}),
       approvalRequired: requiresAdmission(plugin),
       approved: this.approvals.has(pluginId),
       warnings: Object.freeze(this.registry.getPluginWarnings(pluginId) ?? []),

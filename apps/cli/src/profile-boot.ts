@@ -30,6 +30,7 @@ import {
   type Profile,
 } from '@deepseek-ai/dsh-app-boot'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
+import { mountProjectPlugins } from '@deepseek-ai/dsh-plugin-project-root'
 
 /** Shipped agent-preset root: beside this app's own config, in both source and built layouts. */
 const SHIPPED_PRESET_ROOT = fileURLToPath(new URL('../config/agent-presets/', import.meta.url))
@@ -368,6 +369,17 @@ export async function runProfile(options: RunProfileOptions): Promise<{ ctx: Con
     })
   }), booted => `${countMountedEntries(booted)} plugin entries mounted`)
   app.current = ctx
+  // Project plugin mounting (S-43 M2a): runs only after the boot audit settled,
+  // so a project plugin failure can never reach the whole-tree audit. The
+  // switch is read from the composed rows BEFORE any discovery happens; when it
+  // is off, the mount path performs zero filesystem reads (A-01/A-02). The
+  // layer contains every failure in its own report — this wiring is defense in
+  // depth, never a boot failure path.
+  try {
+    await mountProjectPlugins(ctx, composed.rows)
+  } catch (error) {
+    process.stderr.write(`dsh project-plugins: mount failed (non-fatal): ${error instanceof Error ? error.message : String(error)}\n`)
+  }
   // A surface can dispose the whole tree while boot or this post-boot watcher
   // setup is still in flight — a signal, or a fast one-shot's appExit. Loader
   // presence and fiber state own liveness; the initial check skips a tree

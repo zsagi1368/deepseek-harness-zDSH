@@ -1,0 +1,314 @@
+/**
+ * ProjectPluginLayer — the post-boot mount surface for project plugins (S-43
+ * M2a). Owns the provenance table, the tool-name attribution map, the RunGuard
+ * watcher registry, and the tools/execute wrapper wiring.
+ *
+ * Mounting is serial and post-boot: every candidate is created through
+ * `ctx.loader.create` (root group) with a `file://` module specifier, each
+ * create is try/catch isolated (a failure removes that entry only — the Loader
+ * group's create rolls the failed entry out of the store by itself), and the
+ * tool set is snapshotted before/after each create so newly registered tools
+ * are attributed to the plugin that introduced them.
+ *
+ * Project entries NEVER enter the include patch tree, so a mount failure can
+ * never reach the boot-time whole-tree audit (B-07).
+ * @module @deepseek-ai/dsh-plugin-project-root
+ */
+
+import { createHash } from 'node:crypto'
+import { lstatSync, readFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import type { Context } from '@deepseek-ai/cordis'
+import type { EntryOptions } from '@deepseek-ai/cordis-plugin-loader'
+import { RunGuard, type PluginManifest } from '@deepseek-ai/dsh-plugin-governance'
+import { discoverProjectPlugins, PROJECT_PLUGIN_MANIFEST_FILENAME } from './discover.ts'
+import { gate } from './gate.ts'
+import { resolveProjectPluginEnabled } from './resolve.ts'
+import {
+  loadProjectTrusts,
+  projectRootKey,
+  projectTrustsDataDir,
+  shouldMountProjectPlugin,
+} from './ledger.ts'
+import { projectToolWrapper } from './tool-guard.ts'
+import type {
+  ProjectPluginCandidate,
+  ProjectPluginProvenance,
+  GateReportEntry,
+} from './types.ts'
+
+/** Result of one mount pass. */
+export interface MountResult {
+  /** Loader entry ids that mounted successfully. */
+  mounted: string[]
+  /** Full gate+mount audit trail (gate rows plus mount-failed/mounted rows). */
+  report: GateReportEntry[]
+}
+
+/** The host-side project plugin layer service. */
+export interface ProjectPluginLayer {
+  /** Mount accepted candidates, one by one, isolated per entry. */
+  mount(accepted: ProjectPluginCandidate[]): Promise<MountResult>
+  /** Provenance of one mounted loader entry id, `undefined` when unknown. */
+  provenanceOf(entryId: string): ProjectPluginProvenance | undefined
+  /** The guarded manifest of one mounted loader entry id. */
+  guardedManifestOf(entryId: string): PluginManifest | undefined
+  /** Canonical manifest id owning one tool name, `undefined` when unattributed. */
+  toolOwnerOf(toolName: string): string | undefined
+  /** The accumulated gate+mount report. */
+  readonly report: readonly GateReportEntry[]
+  /** The RunGuard backing every project tool call. */
+  readonly runGuard: RunGuard
+  /** Remove the tools/execute wrapper and drop all watchers. */
+  dispose(): void
+}
+
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    projectPluginLayer: ProjectPluginLayer
+  }
+}
+
+/** Loader entry id prefix for project plugins (the double-id space marker). */
+const PROJECT_ENTRY_PREFIX = 'project-plugin-'
+
+/** A deterministic loader entry id for one root × plugin pair. */
+export function projectEntryId(projectRoot: string, manifestId: string): string {
+  const rootHash = createHash('sha256').update(resolve(projectRoot)).digest('hex').slice(0, 8)
+  const safeId = manifestId.replace(/[^A-Za-z0-9_.-]/g, '-')
+  return `${PROJECT_ENTRY_PREFIX}${rootHash}-${safeId}`
+}
+
+/** sha256 hex of the raw manifest bytes (must equal the discovery snapshot). */
+function hashOf(raw: string): string {
+  return createHash('sha256').update(raw, 'utf8').digest('hex')
+}
+
+/** B-10 TOCTOU re-check: the disk manifest must still hash to the guarded snapshot. */
+function verifyCandidateUnchanged(candidate: ProjectPluginCandidate): boolean {
+  try {
+    const entryStats = lstatSync(candidate.entryFile)
+    if (entryStats.isSymbolicLink()) return false
+    const raw = readFileSync(join(candidate.pluginDir, PROJECT_PLUGIN_MANIFEST_FILENAME), 'utf8')
+    return hashOf(raw) === candidate.manifestHash
+  } catch {
+    return false
+  }
+}
+
+/** Tool names currently visible on the global scope (empty when tools is absent). */
+function toolNames(ctx: Context): Set<string> {
+  try {
+    const tools = (ctx as Context & { tools?: { schemas?: (scope?: unknown) => Array<{ name: string }> } }).tools
+    if (typeof tools?.schemas !== 'function') return new Set()
+    return new Set(tools.schemas().map(schema => schema.name))
+  } catch {
+    return new Set()
+  }
+}
+
+/**
+ * Create the project plugin layer for a context.
+ * @param ctx - the settled boot context.
+ * @returns the layer service.
+ */
+export function createProjectPluginLayer(ctx: Context): ProjectPluginLayer {
+  const runGuard = new RunGuard()
+  const provenance = new Map<string, ProjectPluginProvenance>()
+  const manifests = new Map<string, PluginManifest>()
+  const toolOwners = new Map<string, string>()
+  const report: GateReportEntry[] = []
+  let disposeWrapper: (() => void) | undefined
+  let provideDisposer: (() => void) | undefined
+
+  const layer: ProjectPluginLayer = {
+    runGuard,
+    report,
+
+    toolOwnerOf(toolName: string): string | undefined {
+      return toolOwners.get(toolName)
+    },
+
+    provenanceOf(entryId: string): ProjectPluginProvenance | undefined {
+      return provenance.get(entryId)
+    },
+
+    guardedManifestOf(entryId: string): PluginManifest | undefined {
+      return manifests.get(entryId)
+    },
+
+    async mount(accepted: ProjectPluginCandidate[]): Promise<MountResult> {
+      const mounted: string[] = []
+      for (const candidate of accepted) {
+        // B-10: the disk content must still match the discovery snapshot.
+        if (!verifyCandidateUnchanged(candidate)) {
+          report.push({
+            root: candidate.projectRoot,
+            id: candidate.id,
+            version: candidate.version,
+            verdict: 'mount-failed',
+            check: 'toctou',
+            message: `manifest or entry changed since discovery at ${candidate.projectRoot}; refusing to mount`,
+          })
+          continue
+        }
+        const name = pathToFileURL(candidate.entryFile).href
+        const before = toolNames(ctx)
+        let entryId: string
+        try {
+          const options: EntryOptions = {
+            id: projectEntryId(candidate.projectRoot, candidate.id),
+            name,
+            config: {},
+          }
+          entryId = await ctx.loader.create(options)
+        } catch (cause) {
+          report.push({
+            root: candidate.projectRoot,
+            id: candidate.id,
+            version: candidate.version,
+            verdict: 'mount-failed',
+            check: 'mount',
+            message: `failed to mount at ${candidate.projectRoot}: ${cause instanceof Error ? cause.message : String(cause)}`,
+          })
+          continue
+        }
+        // Attribute newly visible tools to this plugin (serial mount ⇒ diff unambiguous).
+        const after = toolNames(ctx)
+        for (const toolName of after) {
+          if (!before.has(toolName)) toolOwners.set(toolName, candidate.id)
+        }
+        // Record provenance BEFORE the mirror can see the entry: mount runs at
+        // boot, before the first governance sync pass, so the entry always finds
+        // its provenance (the fail-closed direction is "no provenance ⇒ never
+        // treated as a project entry").
+        provenance.set(entryId, {
+          entryId,
+          manifestId: candidate.id,
+          version: candidate.version,
+          projectRoot: candidate.projectRoot,
+          pluginDir: candidate.pluginDir,
+          manifestHash: candidate.manifestHash,
+          clampedSandbox: candidate.clampedSandbox,
+          mountTime: Date.now(),
+          guardVerdict: report.some(row => row.id === candidate.id && row.verdict === 'warned')
+            ? 'warned'
+            : 'allowed',
+        })
+        manifests.set(entryId, candidate.manifest)
+        // Register a watcher for every mounted plugin (B-08).
+        try {
+          runGuard.watch(candidate.id, {
+            manifest: { ...candidate.manifest, sandbox: candidate.clampedSandbox } as PluginManifest,
+            install: () => {},
+          })
+        } catch (cause) {
+          report.push({
+            root: candidate.projectRoot,
+            id: candidate.id,
+            version: candidate.version,
+            verdict: 'mount-failed',
+            check: 'run-guard',
+            message: `failed to register RunGuard watcher: ${cause instanceof Error ? cause.message : String(cause)}`,
+          })
+        }
+        mounted.push(entryId)
+        report.push({
+          root: candidate.projectRoot,
+          id: candidate.id,
+          version: candidate.version,
+          verdict: 'mounted',
+          check: 'mount',
+          message: `mounted ${JSON.stringify(candidate.id)} v${candidate.version} at ${candidate.projectRoot}`,
+        })
+      }
+      return { mounted, report }
+    },
+
+    dispose(): void {
+      disposeWrapper?.()
+      disposeWrapper = undefined
+      provideDisposer?.()
+      provideDisposer = undefined
+      for (const id of runGuard.getActiveWatchers()) runGuard.unwatch(id)
+    },
+  }
+
+  // The tools/execute wrapper is registered once, at layer creation.
+  disposeWrapper = projectToolWrapper(ctx, {
+    toolOwnerOf: name => toolOwners.get(name),
+    runGuard,
+  })
+
+  provideDisposer = ctx.reflect.provide('projectPluginLayer', layer)
+  return layer
+}
+
+/** Options for {@link mountProjectPlugins}. */
+export interface MountProjectPluginsOptions {
+  /** Starting directory for discovery (defaults to process.cwd()). */
+  cwd?: string
+  /** Override the persistence data directory (tests). */
+  dataDir?: string
+  /** Warn sink for author-facing diagnostics (defaults to stderr). */
+  warn?: (message: string) => void
+}
+
+/**
+ * The boot wiring seam: gate + ledger filter + mount project plugins on a
+ * settled context. The switch is checked BEFORE any discovery happens — when
+ * it is off, this function performs zero filesystem reads (A-01/A-02).
+ * @param ctx - the settled boot context (boot() returned, before watchUserPatches).
+ * @param rows - the composed entry index (bundles + user layers + overlays only).
+ * @param options - cwd / dataDir / warn overrides.
+ * @returns the created layer (undefined when the switch is off) and the audit report.
+ */
+export async function mountProjectPlugins(
+  ctx: Context,
+  rows: ReadonlyMap<string, EntryOptions>,
+  options: MountProjectPluginsOptions = {},
+): Promise<{ layer: ProjectPluginLayer | undefined; report: GateReportEntry[]; mounted: string[] }> {
+  const warn = options.warn ?? ((message: string) => void process.stderr.write(`dsh project-plugins: ${message}\n`))
+  // A-01/A-02: switch off ⇒ short-circuit before discovery (zero reads).
+  if (!resolveProjectPluginEnabled(rows)) {
+    return { layer: undefined, report: [], mounted: [] }
+  }
+
+  const cwd = options.cwd ?? process.cwd()
+  const discovered = discoverProjectPlugins(cwd)
+  const { accepted, report } = await gate(discovered)
+  const layer = createProjectPluginLayer(ctx)
+  const dataDir = options.dataDir ?? projectTrustsDataDir()
+
+  // Ledger filtering (C-02): untrusted roots stay pending; disabled plugins
+  // never mount. Fail closed on any ledger read problem (untrusted).
+  const trusts = loadProjectTrusts(dataDir)
+  const toMount: ProjectPluginCandidate[] = []
+  for (const candidate of accepted) {
+    if (!shouldMountProjectPlugin(trusts, candidate.projectRoot, candidate.id)) {
+      const rootTrusted = trusts.roots[projectRootKey(candidate.projectRoot)] !== undefined
+      report.push({
+        root: candidate.projectRoot,
+        id: candidate.id,
+        version: candidate.version,
+        verdict: 'rejected',
+        check: rootTrusted ? 'ledger-disabled' : 'pending-trust',
+        message: rootTrusted
+          ? `plugin ${JSON.stringify(candidate.id)} is disabled in the project trust ledger; not mounting`
+          : `project root ${candidate.projectRoot} is not trusted yet; plugin ${JSON.stringify(candidate.id)} stays pending-trust`,
+      })
+      continue
+    }
+    toMount.push(candidate)
+  }
+
+  const { mounted } = await layer.mount(toMount)
+  // Author-facing diagnostics: rejections and mount failures go to stderr.
+  for (const row of report) {
+    if (row.verdict === 'rejected' || row.verdict === 'mount-failed') {
+      warn(`${row.check}: ${row.message}`)
+    }
+  }
+  return { layer, report, mounted }
+}

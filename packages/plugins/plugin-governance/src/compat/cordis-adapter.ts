@@ -154,6 +154,15 @@ export class CordisPluginWrapper implements Plugin {
        * 也不走运行时审批 —— 挂载本身即操作者在 cordis 配置中的准入决定。
        */
       mirror?: boolean | undefined
+      /**
+       * 项目插件来源（S-43 M2a）：manifest 由宿主侧钳制后直接生效，
+       * 一切自报信任字段（certification/permissionLevel/autoApprove）对
+       * project 来源一律忽略 —— 不注入 OFFICIAL、autoApprove 恒 false、
+       * permissionLevel 恒 CONFIRM_REQUIRED。
+       */
+      source?: 'project' | undefined
+      /** source==='project' 时宿主构造的钳制后 manifest（信任字段已剔除）。 */
+      manifest?: PluginManifest | undefined
       /** 官方 user-approval 字段：关联已流式展示的工具调用 */
       callId?: string | undefined
       /** 官方 user-approval 字段：中止即撤回审批问题 */
@@ -166,6 +175,19 @@ export class CordisPluginWrapper implements Plugin {
     this.approvalCallId = cordisConfig.callId
     this.approvalSignal = cordisConfig.signal
     this.mirror = cordisConfig.mirror === true
+
+    // 项目插件来源：直接采用宿主构造的钳制后清单；manifest 内任何
+    // self-certification/trust 类字段一律忽略（剔除 certification，强制
+    // permissionLevel=CONFIRM_REQUIRED、autoApprove=false）。
+    if (cordisConfig.source === 'project' && cordisConfig.manifest) {
+      const { certification: _strippedCertification, ...rest } = cordisConfig.manifest
+      this.manifest = {
+        ...rest,
+        permissionLevel: PluginPermissionLevel.CONFIRM_REQUIRED,
+        autoApprove: false,
+      }
+      return
+    }
 
     // 从 Cordis 配置生成 PluginManifest
     // ID 先做 npm scoped → namespace/name 规范化，保证注册表键与
@@ -410,6 +432,10 @@ export function wrapCordisPlugin(
     fullyAuthorized?: boolean | undefined
     /** 治理镜像模式（见 CordisPluginWrapper 配置说明） */
     mirror?: boolean | undefined
+    /** 项目插件来源（S-43 M2a）：宿主钳制后清单直接生效，trust 字段忽略。 */
+    source?: 'project' | undefined
+    /** source==='project' 时宿主构造的钳制后 manifest。 */
+    manifest?: PluginManifest | undefined
   },
 ): Plugin {
   const statics = readCordisStatics(service)
@@ -422,6 +448,8 @@ export function wrapCordisPlugin(
     version: options?.version,
     fullyAuthorized: options?.fullyAuthorized === true, // 只有显式 true 才授权
     mirror: options?.mirror === true,
+    source: options?.source,
+    manifest: options?.manifest,
   }, context)
 }
 
