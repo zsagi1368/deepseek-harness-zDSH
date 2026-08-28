@@ -41,7 +41,7 @@ describe('model-slots invariants', () => {
 
   it.each([
     [{ slot: '' }, /slot must be a non-empty string/],
-    [{ slot: 'vision' }, /unknown slot "vision"/],
+    [{ slot: 'nope' }, /unknown slot "nope"/],
     [{ provider: '' }, /provider must be a non-empty string/],
     [{ model: 5 }, /model must be a non-empty string/],
     [{ source: 'silent' }, /is not a known resolution tier/],

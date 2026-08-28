@@ -81,7 +81,7 @@ describe('real Loader composition', () => {
 
   it('rejects an unknown slot id during direct construction', () => {
     expect(() => new ModelSlotRegistry(new Context(), {
-      slots: { vision: { provider: 'a', model: 'b' } },
-    })).toThrow(/unknown slot "vision"/)
+      slots: { nope: { provider: 'a', model: 'b' } },
+    })).toThrow(/unknown slot "nope"/)
   })
 })

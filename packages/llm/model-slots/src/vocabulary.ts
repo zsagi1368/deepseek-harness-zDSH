@@ -26,10 +26,14 @@ export const MODEL_SLOT_TITLE = SlotId('title')
 /** Built-in slot: context-compaction summarization. */
 export const MODEL_SLOT_COMPACTION_SUMMARIZE = SlotId('compaction.summarize')
 
+/** Built-in slot: visual-assist digestion of image inputs for text-only routes. */
+export const MODEL_SLOT_VISION = SlotId('vision')
+
 /** Closed built-in slot vocabulary that configuration and audit records accept. */
 export const MODEL_SLOT_IDS: ReadonlySet<string> = new Set([
   MODEL_SLOT_TITLE,
   MODEL_SLOT_COMPACTION_SUMMARIZE,
+  MODEL_SLOT_VISION,
 ])
 
 /** Every provenance tier a resolved auxiliary route can carry. */

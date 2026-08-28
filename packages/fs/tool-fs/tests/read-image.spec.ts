@@ -14,6 +14,7 @@ import { CodeRuntime } from '@deepseek-ai/dsh-code-runtime'
 import type { CodeRunRequest, CodeRunResult } from '@deepseek-ai/dsh-code-runtime'
 import { CallId, LlmAdapter, LlmRuntime } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, LlmModelInfo, LlmResolvedModelInfo, Message, StreamChunk } from '@deepseek-ai/dsh-llm'
+import ModelSlotRegistry from '@deepseek-ai/dsh-model-slots'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { RUN_CODE_NAME } from '@deepseek-ai/dsh-tools'
 import type { Config as ToolConfig } from '@deepseek-ai/dsh-tools'
@@ -76,6 +77,31 @@ class FakeRuntime extends CodeRuntime {
   }
 }
 
+/**
+ * Streaming fake for the vision-slot model: records every request and emits one
+ * fixed plain-text description, so the S-45 M3 digestion path is observable
+ * without any real image transport.
+ */
+class VisionDigestAdapter extends LlmAdapter {
+  readonly seen: GenerateOptions[] = []
+
+  constructor(private readonly description: string) {
+    super()
+  }
+
+  override resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
+    return Promise.resolve({ provider, id: model, name: model, inputModalities: ['text', 'image'] })
+  }
+
+  override async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+    this.seen.push(options)
+    yield { type: 'block-start', index: 0, blockType: 'text' }
+    yield { type: 'text-delta', index: 0, text: this.description }
+    yield { type: 'block-end', index: 0, block: { type: 'text', text: this.description } }
+    yield { type: 'finish', reason: { kind: 'stop' } }
+  }
+}
+
 let dir: string
 let home: string
 
@@ -93,6 +119,12 @@ interface SetupOptions {
   resolvedModels?: LlmModelInfo[]
   attachments?: boolean
   llm?: boolean
+  /** ModelSlotRegistry config: explicit `slots` and/or the deployment `fallback`. */
+  modelSlots?: { slots?: Record<string, { provider: string; model: string }>; fallback?: { provider: string; model: string } }
+  /** Extra adapter for the vision-slot provider (`vision-assist`). */
+  visionAdapter?: LlmAdapter
+  /** When set, register `read_image` directly with this privacy policy instead of via ToolFs. */
+  privacy?: { localFirstVision: boolean }
   storeConfig?: { maxImageBytes?: number; maxImagePixels?: number; maxImageDimension?: number; maxMessageImageBytes?: number }
   toolMode?: ToolConfig['mode']
 }
@@ -116,8 +148,18 @@ async function setup(options: SetupOptions = {}) {
       { provider: 'visual', id: 'text-model', name: 'Text', inputModalities: ['text'] },
       { provider: 'visual', id: 'legacy-model', name: 'Legacy' },
     ], options.resolvedModels))
+    if (options.visionAdapter !== undefined) {
+      ctx.llm.registerAdapter(['vision-assist'], options.visionAdapter)
+    }
   }
-  await ctx.plugin(ToolFs)
+  if (options.modelSlots !== undefined) {
+    await ctx.plugin(ModelSlotRegistry, options.modelSlots)
+  }
+  if (options.privacy !== undefined) {
+    applyReadImageTool(ctx, { privacy: options.privacy })
+  } else {
+    await ctx.plugin(ToolFs)
+  }
   return ctx
 }
 
@@ -297,6 +339,129 @@ describe('strict image-modality gate', () => {
     const result = await readImage(ctx, { file_path: 'red.png' }, agentOn('vision-model'))
     expect(result.isError).toBe(true)
     expect(text(result)).toContain('route could not be resolved')
+  })
+})
+
+describe('vision slot digestion (S-45 M3)', () => {
+  it('digests through the vision slot and serves a provenance-bearing text block on a text-only route', async () => {
+    await writeFile(join(dir, 'red.png'), PNG_1X1)
+    const visionAdapter = new VisionDigestAdapter('A red square.')
+    const ctx = await setup({
+      models: [{ provider: 'visual', id: 'text-model', name: 'Text', inputModalities: ['text'] }],
+      modelSlots: { slots: { vision: { provider: 'vision-assist', model: 'vision-model' } } },
+      visionAdapter,
+      privacy: { localFirstVision: false },
+    })
+    const result = await readImage(ctx, { file_path: 'red.png' }, agentOn('text-model'))
+
+    expect(result.isError).toBe(false)
+    // The main model receives TEXT ONLY — no image block rides the result.
+    expect(result.content).toHaveLength(1)
+    expect(result.content[0]).toMatchObject({ type: 'text' })
+    const envelope = (result.content[0] as { type: string; text?: string }).text ?? ''
+    expect(envelope).toContain(`<path>${join(dir, 'red.png')}</path>`)
+    expect(envelope).toContain('<type>image-description</type>')
+    expect(envelope).toContain('<description>A red square.</description>')
+    expect(envelope).toContain('<provenance>')
+    expect(envelope).toContain('<slot>vision</slot>')
+    expect(envelope).toContain('<provider>vision-assist</provider>')
+    expect(envelope).toContain('<model>vision-model</model>')
+    expect(envelope).toContain('<source>slot</source>')
+
+    // The vision call went to the exact slot route with the image attached.
+    expect(visionAdapter.seen).toHaveLength(1)
+    const request = visionAdapter.seen[0]!
+    expect(request.provider).toBe('vision-assist')
+    expect(request.model).toBe('vision-model')
+    const imageBlocks = request.messages.flatMap(message => message.content)
+      .filter((block): block is Extract<Message['content'][number], { type: 'image' }> => block.type === 'image')
+    expect(imageBlocks).toHaveLength(1)
+    expect(imageBlocks[0]?.attachment.mediaType).toBe('image/png')
+  })
+
+  it('falls back to the deployment default tier when the vision slot is not stated', async () => {
+    await writeFile(join(dir, 'red.png'), PNG_1X1)
+    const visionAdapter = new VisionDigestAdapter('Default-tier description.')
+    const ctx = await setup({
+      models: [{ provider: 'visual', id: 'text-model', name: 'Text', inputModalities: ['text'] }],
+      modelSlots: { fallback: { provider: 'vision-assist', model: 'fallback-vision' } },
+      visionAdapter,
+      privacy: { localFirstVision: false },
+    })
+    const result = await readImage(ctx, { file_path: 'red.png' }, agentOn('text-model'))
+    expect(result.isError).toBe(false)
+    const envelope = (result.content[0] as { text?: string }).text ?? ''
+    expect(envelope).toContain('<model>fallback-vision</model>')
+    expect(envelope).toContain('<source>deployment-default</source>')
+    expect(visionAdapter.seen[0]?.model).toBe('fallback-vision')
+  })
+
+  it('keeps the unchanged refusal when no vision slot is configured', async () => {
+    await writeFile(join(dir, 'red.png'), PNG_1X1)
+    // Registry absent entirely (the pre-M3 layout).
+    const noRegistry = await setup({
+      models: [{ provider: 'visual', id: 'text-model', name: 'Text', inputModalities: ['text'] }],
+    })
+    const refused = await readImage(noRegistry, { file_path: 'red.png' }, agentOn('text-model'))
+    expect(refused.isError).toBe(true)
+    expect(text(refused)).toContain('does not declare image input')
+    expect(text(refused)).not.toContain('privacy.localFirstVision')
+
+    // Registry mounted but the vision slot unstated (and no deployment default).
+    const emptySlot = await setup({
+      models: [{ provider: 'visual', id: 'text-model', name: 'Text', inputModalities: ['text'] }],
+      modelSlots: {},
+    })
+    const alsoRefused = await readImage(emptySlot, { file_path: 'red.png' }, agentOn('text-model'))
+    expect(alsoRefused.isError).toBe(true)
+    expect(text(alsoRefused)).toContain('does not declare image input')
+  })
+
+  it('refuses outbound vision digestion under privacy.localFirstVision', async () => {
+    await writeFile(join(dir, 'red.png'), PNG_1X1)
+    const visionAdapter = new VisionDigestAdapter('must never be streamed')
+    const ctx = await setup({
+      models: [{ provider: 'visual', id: 'text-model', name: 'Text', inputModalities: ['text'] }],
+      modelSlots: { slots: { vision: { provider: 'vision-assist', model: 'vision-model' } } },
+      visionAdapter,
+      privacy: { localFirstVision: true },
+    })
+    const result = await readImage(ctx, { file_path: 'red.png' }, agentOn('text-model'))
+    expect(result.isError).toBe(true)
+    expect(text(result)).toContain('does not declare image input')
+    expect(text(result)).toContain('privacy.localFirstVision is active')
+    // The outbound call never happened: the vision adapter saw zero requests.
+    expect(visionAdapter.seen).toHaveLength(0)
+  })
+
+  it('defaults to the local-first posture when the tool is registered without options', async () => {
+    await writeFile(join(dir, 'red.png'), PNG_1X1)
+    const visionAdapter = new VisionDigestAdapter('must never be streamed')
+    const ctx = await setup({
+      models: [{ provider: 'visual', id: 'text-model', name: 'Text', inputModalities: ['text'] }],
+      modelSlots: { slots: { vision: { provider: 'vision-assist', model: 'vision-model' } } },
+      visionAdapter,
+      // ToolFs mounts read_image with the default privacy (localFirstVision true).
+    })
+    const result = await readImage(ctx, { file_path: 'red.png' }, agentOn('text-model'))
+    expect(result.isError).toBe(true)
+    expect(text(result)).toContain('privacy.localFirstVision is active')
+    expect(visionAdapter.seen).toHaveLength(0)
+  })
+
+  it('emits fs/observed once on the vision-assisted path', async () => {
+    await writeFile(join(dir, 'red.png'), PNG_1X1)
+    const ctx = await setup({
+      models: [{ provider: 'visual', id: 'text-model', name: 'Text', inputModalities: ['text'] }],
+      modelSlots: { slots: { vision: { provider: 'vision-assist', model: 'vision-model' } } },
+      visionAdapter: new VisionDigestAdapter('Observed.'),
+      privacy: { localFirstVision: false },
+    })
+    const observed: string[] = []
+    ctx.on('fs/observed', target => void observed.push(target.displayPath))
+    const result = await readImage(ctx, { file_path: 'red.png' }, agentOn('text-model'))
+    expect(result.isError).toBe(false)
+    expect(observed).toEqual([join(dir, 'red.png')])
   })
 })
 
