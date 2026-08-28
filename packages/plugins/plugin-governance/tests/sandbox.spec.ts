@@ -109,15 +109,33 @@ describe('ProcessSandbox.exec whitelist mode', () => {
     await expect(sandbox.exec('node -e process.exit(3)')).rejects.toThrow()
   })
 
-  it('bypasses the allow list in fullyAuthorized mode', async () => {
+  it('bypasses the allow list only when fullyAuthorized AND host grant are both set', async () => {
     const config = baseConfig({
       process: { spawn: true, exec: true, allowedCommands: [], fullyAuthorized: true },
     })
-    const sandbox = new ProcessSandbox('p-auth', config, 'entry.js')
+    const sandbox = new ProcessSandbox('p-auth', config, 'entry.js', true)
     const result = await sandbox.exec('node -e console.log(7*6)')
     expect(result.stdout).toContain('42')
     await expect(sandbox.exec('   ')).rejects.toThrow()
     await expect(sandbox.exec('node -e process.exit(2)')).rejects.toThrow()
+  })
+
+  it('fails closed when fullyAuthorized is self-declared without a host grant', async () => {
+    const config = baseConfig({
+      process: { spawn: true, exec: true, allowedCommands: [], fullyAuthorized: true },
+    })
+    // R-S43 前提 B：manifest 自声明 fullyAuthorized 不再自动授予权限；
+    // 未获宿主授予时 fail-closed 落回命令白名单检查（空白名单 -> 拒绝）。
+    const sandbox = new ProcessSandbox('p-auth-denied', config, 'entry.js')
+    await expect(sandbox.exec('node -e console.log(1)')).rejects.toThrow(/not allowed/)
+  })
+
+  it('a host grant alone does not bypass the allow list', async () => {
+    const config = baseConfig({
+      process: { spawn: true, exec: true, allowedCommands: [], fullyAuthorized: false },
+    })
+    const sandbox = new ProcessSandbox('p-grant-only', config, 'entry.js', true)
+    await expect(sandbox.exec('node -e console.log(1)')).rejects.toThrow(/not allowed/)
   })
 
   it('passes cwd and env overrides through to the child', async () => {
@@ -388,22 +406,38 @@ describe('InlineSandbox', () => {
     await expect(sandbox.exec('   ')).rejects.toThrow()
   })
 
-  it('supports fullyAuthorized mode and propagates failures', async () => {
+  it('supports fullyAuthorized mode only when host grant is also set', async () => {
     const config = baseConfig({
       process: { spawn: true, exec: true, allowedCommands: [], fullyAuthorized: true },
     })
-    const sandbox = new InlineSandbox('i-auth', config)
+    const sandbox = new InlineSandbox('i-auth', config, true)
     await expect(sandbox.exec('node -e console.log(5*5)')).resolves.toMatchObject({
       exitCode: 0,
     })
     await expect(sandbox.exec('node -e process.exit(1)')).rejects.toThrow()
   })
 
+  it('fails closed when fullyAuthorized is self-declared without a host grant', async () => {
+    const config = baseConfig({
+      process: { spawn: true, exec: true, allowedCommands: [], fullyAuthorized: true },
+    })
+    const sandbox = new InlineSandbox('i-auth-denied', config)
+    await expect(sandbox.exec('node -e console.log(1)')).rejects.toThrow(/not in the allowed list/)
+  })
+
+  it('a host grant alone does not bypass the inline allow list', async () => {
+    const config = baseConfig({
+      process: { spawn: true, exec: true, allowedCommands: [], fullyAuthorized: false },
+    })
+    const sandbox = new InlineSandbox('i-grant-only', config, true)
+    await expect(sandbox.exec('node -e console.log(1)')).rejects.toThrow(/not in the allowed list/)
+  })
+
   it('routes cwd/env overrides in fullyAuthorized mode and rejects blank commands', async () => {
     const config = baseConfig({
       process: { spawn: true, exec: true, allowedCommands: [], fullyAuthorized: true },
     })
-    const sandbox = new InlineSandbox('i-auth-env', config)
+    const sandbox = new InlineSandbox('i-auth-env', config, true)
     const result = await sandbox.exec('node -e console.log(process.env.PROBE_VAR)', {
       env: { PROBE_VAR: 'inline-present' },
       cwd: tmpdir(),
@@ -577,6 +611,29 @@ describe('createSandbox factory', () => {
     )
   })
 
+  it('passes hostGrantedFull through to process and inline sandboxes', async () => {
+    const procCfg = baseConfig({
+      type: 'process',
+      process: { spawn: true, exec: true, allowedCommands: [], fullyAuthorized: true },
+    })
+    // Host grant via the factory: the fullyAuthorized bypass actually works.
+    const procSandbox = createSandbox('f-host-grant', procCfg, 'entry.js', true)
+    const procResult = await procSandbox.exec('node -e console.log(40+2)')
+    expect(procResult.exitCode).toBe(0)
+    expect(procResult.stdout).toContain('42')
+
+    // No host grant: self-declared fullyAuthorized must NOT bypass the (empty)
+    // allow list through the factory — the default is fail-closed.
+    const inlineCfg = baseConfig({
+      type: 'inline',
+      process: { spawn: true, exec: true, allowedCommands: [], fullyAuthorized: true },
+    })
+    const inlineSandbox = createSandbox('f-host-grant-i', inlineCfg)
+    await expect(inlineSandbox.exec('node -e console.log(1)')).rejects.toThrow(
+      /not in the allowed list/,
+    )
+  })
+
   it('demands an entryPoint for process and worker kinds', () => {
     expect(() => createSandbox('f-p', baseConfig({ type: 'process' }))).toThrow(
       /entryPoint is required for process sandbox/,
@@ -587,9 +644,12 @@ describe('createSandbox factory', () => {
   })
 
   it('rejects unknown sandbox types', () => {
-    expect(() => createSandbox('f-u', baseConfig({ type: 'untrusted' }))).toThrow(
-      /Unknown sandbox type/,
-    )
+    // 'untrusted' 已从 SandboxType 移除（R-S43 消歧）；旧清单若仍携带该值，
+    // 工厂必须 fail-closed 抛错而非落入不明确态。经字符串转义注入以模拟
+    // 未经类型系统校验的磁盘 JSON。
+    const legacy = baseConfig({ type: 'process' })
+    ;(legacy as { type: string }).type = 'untrusted'
+    expect(() => createSandbox('f-u', legacy, 'entry.js')).toThrow(/Unknown sandbox type/)
   })
 })
 
@@ -618,7 +678,7 @@ describe('selectSandboxType risk mapping', () => {
     expect(
       selectSandboxType(
         baseConfig({
-          type: 'untrusted',
+          type: 'inline',
           process: { spawn: false, exec: false, allowedCommands: [] },
           filesystem: { access: 'readonly', allowedPaths: [], deniedPatterns: [] },
         }),

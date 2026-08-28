@@ -17,10 +17,17 @@ import { deriveSandboxEnvironment } from './env.js'
 export class InlineSandbox implements SandboxContext {
   private config: PluginSandboxConfig
   private pluginId: string
+  /**
+   * 宿主显式授予的完全执行权限。与 manifest 自声明的 `fullyAuthorized`
+   * 不同，该字段只能由宿主构造沙箱时传入，manifest 无法自声明——两者同时
+   * 为真才绕过命令白名单（fail-closed）。
+   */
+  private hostGrantedFull: boolean
 
-  constructor(pluginId: string, config: PluginSandboxConfig) {
+  constructor(pluginId: string, config: PluginSandboxConfig, hostGrantedFull = false) {
     this.pluginId = pluginId
     this.config = config
+    this.hostGrantedFull = hostGrantedFull
   }
 
   /**
@@ -34,8 +41,9 @@ export class InlineSandbox implements SandboxContext {
       ...(options?.env ?? {}),
     }
 
-    // 完全授权模式：与 core 一致，但仍需安全执行
-    if (this.config.process.fullyAuthorized) {
+    // 完全授权模式：manifest 自声明 + 宿主显式授予同时成立才绕过命令白名单
+    // （R-S43 前提 B：自声明不再自动授予，未授予时 fail-closed 落回白名单检查）。
+    if (this.config.process.fullyAuthorized === true && this.hostGrantedFull) {
       const { execFile } = await import('child_process')
       const timeout = options?.timeout || this.config.resources.timeoutMs
       const start = Date.now()

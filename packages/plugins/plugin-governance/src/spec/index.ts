@@ -44,7 +44,7 @@ export enum PluginCertification {
 }
 
 /** 沙箱类型 */
-export type SandboxType = 'process' | 'worker' | 'inline' | 'untrusted'
+export type SandboxType = 'process' | 'worker' | 'inline'
 
 /** 权限级别（更细粒度） */
 export enum PluginPermissionLevel {

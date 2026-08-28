@@ -14,19 +14,23 @@ import { InlineSandbox } from './inline-sandbox.js'
  * @param pluginId - 插件 ID。
  * @param config - 沙箱配置。
  * @param entryPoint - 入口文件路径（process/worker 沙箱必填）。
+ * @param hostGrantedFull - 宿主显式授予的完全执行权限（默认 false）。
+ *   仅 process/inline 档使用：与 config.process.fullyAuthorized 同时为真才
+ *   绕过命令白名单；manifest 自声明无法授予该权限（R-S43 前提 B fail-closed）。
  * @returns 对应类型的沙箱上下文实例。
  */
 export function createSandbox(
   pluginId: string,
   config: PluginSandboxConfig,
   entryPoint?: string,
+  hostGrantedFull = false,
 ): SandboxContext {
   switch (config.type) {
     case 'process':
       if (!entryPoint) {
         throw new Error('entryPoint is required for process sandbox')
       }
-      return new ProcessSandbox(pluginId, config, entryPoint)
+      return new ProcessSandbox(pluginId, config, entryPoint, hostGrantedFull)
 
     case 'worker':
       if (!entryPoint) {
@@ -35,10 +39,12 @@ export function createSandbox(
       return new WorkerSandbox(pluginId, config, entryPoint)
 
     case 'inline':
-      return new InlineSandbox(pluginId, config)
+      return new InlineSandbox(pluginId, config, hostGrantedFull)
 
     default:
-      throw new Error(`Unknown sandbox type: ${config.type}`)
+      // The union is exhaustive; the cast guards decoded-JSON junk that bypasses
+      // the type system, keeping the runtime fail-closed branch reachable.
+      throw new Error(`Unknown sandbox type: ${config.type as string}`)
   }
 }
 

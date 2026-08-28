@@ -74,11 +74,23 @@ export class ProcessSandbox implements SandboxContext {
   private pluginId: string
   private config: PluginSandboxConfig
   private entryPoint: string
+  /**
+   * 宿主显式授予的完全执行权限。与 manifest 自声明的 `fullyAuthorized`
+   * 不同，该字段只能由宿主构造沙箱时传入，manifest 无法自声明——两者同时
+   * 为真才绕过命令白名单（fail-closed）。
+   */
+  private hostGrantedFull: boolean
 
-  constructor(pluginId: string, config: PluginSandboxConfig, entryPoint: string) {
+  constructor(
+    pluginId: string,
+    config: PluginSandboxConfig,
+    entryPoint: string,
+    hostGrantedFull = false,
+  ) {
     this.pluginId = pluginId
     this.config = config
     this.entryPoint = entryPoint
+    this.hostGrantedFull = hostGrantedFull
   }
 
   /**
@@ -177,8 +189,9 @@ export class ProcessSandbox implements SandboxContext {
       ...(options?.env ?? {}),
     }
 
-    // 完全授权模式：与 core 一致，无命令限制
-    if (this.config.process.fullyAuthorized) {
+    // 完全授权模式：manifest 自声明 + 宿主显式授予同时成立才绕过命令白名单
+    // （R-S43 前提 B：自声明不再自动授予，未授予时 fail-closed 落回白名单检查）。
+    if (this.config.process.fullyAuthorized === true && this.hostGrantedFull) {
       const timeout = options?.timeout || this.config.resources.timeoutMs
       const start = Date.now()
 

@@ -8,6 +8,7 @@ import {
   PluginStatus,
   PluginLevel,
   PluginCertification,
+  SandboxType,
   normalizePluginId,
   validatePluginId,
 } from '../src/spec/index.ts'
@@ -105,6 +106,16 @@ describe('PluginSpec', () => {
       expect(validManifest.dsh).toBeDefined()
       expect(validManifest.capabilities).toBeDefined()
       expect(validManifest.sandbox).toBeDefined()
+    })
+  })
+
+  describe('SandboxType', () => {
+    it('excludes the unimplemented untrusted member (R-S43 消歧)', () => {
+      // 编译期守卫：若有人重新把 'untrusted' 加回联合类型，该条件类型会
+      // 判为 false，与右侧 true 的赋值产生类型错误，从而在编译期拦截
+      // 「文档与守卫口径不一」的回归。
+      const untrustedExcluded: 'untrusted' extends SandboxType ? false : true = true
+      expect(untrustedExcluded).toBe(true)
     })
   })
 

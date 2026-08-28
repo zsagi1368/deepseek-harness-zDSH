@@ -11,7 +11,7 @@ import { HealthGuard, type HealthCheck } from '../src/guards/health-guard.ts'
 import { DefaultPluginRegistry } from '../src/registry/registry.ts'
 import { BasePlugin } from '../src/base/base.ts'
 import { PluginStatus } from '../src/spec/index.ts'
-import type { CapabilityDeclaration, Plugin, PluginManifest } from '../src/spec/index.ts'
+import type { CapabilityDeclaration, Plugin, PluginManifest, PluginSandboxConfig } from '../src/spec/index.ts'
 import { mockContext, testManifest } from './fixtures.ts'
 
 class NoopPlugin extends BasePlugin {
@@ -74,7 +74,14 @@ describe('LoadGuard', () => {
     const resources = testManifest().sandbox.resources
 
     const noType = await guard.preLoad(
-      pluginOf({ sandbox: { ...testManifest().sandbox, type: 'untrusted' } }),
+      pluginOf({
+        // 'untrusted' 已从 SandboxType 移除；经字符串转义模拟磁盘 JSON 携带
+        // 该旧值，断言 LoadGuard 仍以 Invalid sandbox type 拒载（fail-closed）。
+        sandbox: {
+          ...testManifest().sandbox,
+          type: 'untrusted' as unknown as PluginSandboxConfig['type'],
+        },
+      }),
       '0.1.1',
     )
     expect(noType.allowed).toBe(false)
