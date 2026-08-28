@@ -4,6 +4,7 @@ import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import type { Session } from '@deepseek-ai/dsh-session'
 import ModelSlotRegistry, {
   MODEL_SLOT_COMPACTION_SUMMARIZE,
+  MODEL_SLOT_PLAN,
   MODEL_SLOT_TITLE,
   SlotId,
   resolveModelSlotsConfig,
@@ -37,6 +38,7 @@ describe('resolveModelSlotsConfig', () => {
       slots: {
         [MODEL_SLOT_TITLE]: { provider: 'aux-provider', model: 'aux-model' },
         [MODEL_SLOT_COMPACTION_SUMMARIZE]: { provider: 'summarize-provider', model: 'summary-model' },
+        [MODEL_SLOT_PLAN]: { provider: 'plan-provider', model: 'plan-model' },
       },
       fallback: { provider: 'default-provider', model: 'default-model' },
     })
@@ -45,6 +47,7 @@ describe('resolveModelSlotsConfig', () => {
       provider: 'summarize-provider',
       model: 'summary-model',
     })
+    expect(resolved.routes.get(MODEL_SLOT_PLAN)).toEqual({ provider: 'plan-provider', model: 'plan-model' })
     expect(resolved.fallback).toEqual({ provider: 'default-provider', model: 'default-model' })
     expect(Object.isFrozen(resolved.routes.get(MODEL_SLOT_TITLE))).toBe(true)
     expect(Object.isFrozen(resolved.fallback)).toBe(true)
@@ -69,7 +72,7 @@ describe('resolveModelSlotsConfig', () => {
 })
 
 describe('resolve precedence', () => {
-  it.each([MODEL_SLOT_TITLE, MODEL_SLOT_COMPACTION_SUMMARIZE] as const)(
+  it.each([MODEL_SLOT_TITLE, MODEL_SLOT_COMPACTION_SUMMARIZE, MODEL_SLOT_PLAN] as const)(
     'prefers the explicit slot statement over the deployment default and the main route for %s',
     (slot) => {
       const registry = makeRegistry({
@@ -85,7 +88,7 @@ describe('resolve precedence', () => {
     },
   )
 
-  it.each([MODEL_SLOT_TITLE, MODEL_SLOT_COMPACTION_SUMMARIZE] as const)(
+  it.each([MODEL_SLOT_TITLE, MODEL_SLOT_COMPACTION_SUMMARIZE, MODEL_SLOT_PLAN] as const)(
     'applies the deployment default ahead of the main route for %s',
     (slot) => {
       const registry = makeRegistry({ fallback: { provider: 'default-provider', model: 'default-model' } })
@@ -98,7 +101,7 @@ describe('resolve precedence', () => {
     },
   )
 
-  it.each([MODEL_SLOT_TITLE, MODEL_SLOT_COMPACTION_SUMMARIZE] as const)(
+  it.each([MODEL_SLOT_TITLE, MODEL_SLOT_COMPACTION_SUMMARIZE, MODEL_SLOT_PLAN] as const)(
     'falls back to the conversation main route when no deployment statement covers %s',
     (slot) => {
       const registry = makeRegistry({})

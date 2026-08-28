@@ -3768,6 +3768,9 @@ importers:
 
   packages/core/agent-loop:
     dependencies:
+      '@deepseek-ai/dsh-llm-pi-ai':
+        specifier: workspace:^
+        version: link:../../llm/llm-pi-ai
       '@deepseek-ai/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
@@ -6129,6 +6132,9 @@ importers:
       '@deepseek-ai/dsh-llm':
         specifier: workspace:^
         version: link:../../llm/llm
+      '@deepseek-ai/dsh-model-slots':
+        specifier: workspace:^
+        version: link:../../llm/model-slots
       '@deepseek-ai/dsh-session':
         specifier: workspace:^
         version: link:../../core/session

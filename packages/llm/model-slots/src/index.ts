@@ -13,9 +13,9 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type Schema from '@deepseek-ai/schemastery'
 import type { Session } from '@deepseek-ai/dsh-session'
-import { MODEL_SLOT_COMPACTION_SUMMARIZE, MODEL_SLOT_IDS, MODEL_SLOT_SOURCES, MODEL_SLOT_TITLE, MODEL_SLOT_VISION, SlotId } from './vocabulary.ts'
+import { MODEL_SLOT_COMPACTION_SUMMARIZE, MODEL_SLOT_IDS, MODEL_SLOT_PLAN, MODEL_SLOT_SOURCES, MODEL_SLOT_TITLE, MODEL_SLOT_VISION, SlotId } from './vocabulary.ts'
 
-export { MODEL_SLOT_COMPACTION_SUMMARIZE, MODEL_SLOT_IDS, MODEL_SLOT_SOURCES, MODEL_SLOT_TITLE, MODEL_SLOT_VISION, SlotId }
+export { MODEL_SLOT_COMPACTION_SUMMARIZE, MODEL_SLOT_IDS, MODEL_SLOT_PLAN, MODEL_SLOT_SOURCES, MODEL_SLOT_TITLE, MODEL_SLOT_VISION, SlotId }
 
 export type {
   BudgetRow,

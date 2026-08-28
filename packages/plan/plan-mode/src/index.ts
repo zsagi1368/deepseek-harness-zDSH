@@ -28,6 +28,9 @@ import { z as zod } from 'zod'
 import type { ZodType } from 'zod'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import type { LlmCallConfig } from '@deepseek-ai/dsh-llm'
+import { MODEL_SLOT_PLAN } from '@deepseek-ai/dsh-model-slots'
+import type { ModelRoute } from '@deepseek-ai/dsh-model-slots'
 import type { Session, SessionEvent, UserMessage } from '@deepseek-ai/dsh-session'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-system-prompt'
@@ -212,6 +215,13 @@ export class PlanModeController extends Service {
    */
   private readonly pendingIntents = new WeakMap<Session, { active: boolean; narrate: boolean }>()
 
+  /**
+   * Route the `plan` slot applied per session, so that once plan mode ends a
+   * request still seeded from the plan-shaped header can be restored to the
+   * agent's declared main model instead of silently staying on the plan model.
+   */
+  private readonly planRoutes = new WeakMap<Session, ModelRoute>()
+
   constructor(ctx: Context, config: PlanModeConfig = { section: '' }) {
     super(ctx, 'planMode')
     this.section = resolveConfig(config).section
@@ -239,6 +249,41 @@ export class PlanModeController extends Service {
         : { ...decision, messages: [...decision.messages, narration] }
     })
     ctx.effect(() => () => { disposed = true }, 'dsh-plan-mode: close service lifetime')
+
+    // Plan requests route through the deployment `plan` model slot while plan
+    // mode is active; execution requests keep the main model. The registry is
+    // optional — without one, or when no tier resolves, the proposed config
+    // passes through untouched. A resolved slot replaces provider/model and is
+    // tracked per session; when plan mode later ends, a request still seeded
+    // from the plan-shaped header is restored to the agent's declared main
+    // model instead of silently staying on the plan model.
+    ctx.on('agent/request', async ({ agent }, next): Promise<LlmCallConfig> => {
+      const config = await next()
+      if (!foldPlanMode(agent.session.events)) {
+        const applied = this.planRoutes.get(agent.session)
+        if (applied !== undefined
+          && config.provider === applied.provider
+          && config.model === applied.model) {
+          const provider = agent.options.provider
+          const model = agent.options.model
+          if (provider !== undefined && provider !== '' && model !== undefined && model !== '') {
+            this.planRoutes.delete(agent.session)
+            return { ...config, provider, model }
+          }
+        }
+        return config
+      }
+      const slots = ctx.get('modelSlots')
+      if (slots === undefined) return config
+      const resolution = slots.resolve(MODEL_SLOT_PLAN, {
+        mainRoute: { provider: config.provider, model: config.model },
+        session: agent.session,
+      })
+      if (resolution === null) return config
+      if (resolution.provider === config.provider && resolution.model === config.model) return config
+      this.planRoutes.set(agent.session, { provider: resolution.provider, model: resolution.model })
+      return { ...config, provider: resolution.provider, model: resolution.model }
+    })
 
     ctx.systemPrompt.section({
       name: 'plan:policy',

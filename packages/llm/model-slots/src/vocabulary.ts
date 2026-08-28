@@ -29,11 +29,15 @@ export const MODEL_SLOT_COMPACTION_SUMMARIZE = SlotId('compaction.summarize')
 /** Built-in slot: visual-assist digestion of image inputs for text-only routes. */
 export const MODEL_SLOT_VISION = SlotId('vision')
 
+/** Built-in slot: plan-mode plan drafting on a stronger model while execution keeps the main model. */
+export const MODEL_SLOT_PLAN = SlotId('plan')
+
 /** Closed built-in slot vocabulary that configuration and audit records accept. */
 export const MODEL_SLOT_IDS: ReadonlySet<string> = new Set([
   MODEL_SLOT_TITLE,
   MODEL_SLOT_COMPACTION_SUMMARIZE,
   MODEL_SLOT_VISION,
+  MODEL_SLOT_PLAN,
 ])
 
 /** Every provenance tier a resolved auxiliary route can carry. */

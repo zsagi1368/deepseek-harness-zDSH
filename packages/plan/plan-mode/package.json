@@ -45,6 +45,7 @@
     "@deepseek-ai/dsh-commands": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
     "@deepseek-ai/dsh-llm": "workspace:^",
+    "@deepseek-ai/dsh-model-slots": "workspace:^",
     "@deepseek-ai/dsh-session": "workspace:^",
     "@deepseek-ai/dsh-session-projection": "workspace:^",
     "@deepseek-ai/dsh-system-prompt": "workspace:^",
@@ -54,6 +55,9 @@
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-commands": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-model-slots": {
       "optional": true
     }
   },
@@ -67,6 +71,7 @@
     "@deepseek-ai/dsh-commands": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
     "@deepseek-ai/dsh-llm": "workspace:^",
+    "@deepseek-ai/dsh-model-slots": "workspace:^",
     "@deepseek-ai/dsh-session": "workspace:^",
     "@deepseek-ai/dsh-session-projection": "workspace:^",
     "@deepseek-ai/dsh-system-prompt": "workspace:^",

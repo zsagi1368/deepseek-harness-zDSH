@@ -6,6 +6,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
+import ModelSlotRegistry, { MODEL_SLOT_PLAN } from '@deepseek-ai/dsh-model-slots'
 import PlanModeController, { foldPlanMode } from '@deepseek-ai/dsh-plan-mode'
 import { MockAdapter, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 
@@ -176,5 +177,57 @@ describe('plan mode through the agent loop', () => {
     expect(notice?.type === 'user/message' && notice.data.content).toEqual([
       { type: 'text', text: 'The user switched this session to plan mode.' },
     ])
+  })
+})
+
+describe('plan mode routes plan requests through the plan slot', () => {
+  /** Same full-loop harness, plus a deployment `plan` slot pinned to a stronger model. */
+  async function slotHarness(adapter: MockAdapter): Promise<Context> {
+    const ctx = new Context()
+    await ctx.plugin(LlmRuntime)
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(AgentRegistry)
+    await ctx.plugin(AgentLoop, { agents: [] })
+    await ctx.plugin(ModelSlotRegistry, {
+      slots: { [MODEL_SLOT_PLAN]: { provider: 'mock', model: 'plan-model' } },
+    })
+    await ctx.plugin(PlanModeController, PLAN_CONFIG)
+    ctx.llm.registerAdapter(['mock'], adapter)
+    return ctx
+  }
+
+  it('plan-generation requests use the plan slot route and execution requests the main model', async () => {
+    const adapter = new MockAdapter([
+      textResponse('The plan: inspect then apply.'),
+      textResponse('Executing the approved plan.'),
+    ])
+    const ctx = await slotHarness(adapter)
+    const agent = ctx.agentLoop.create(SessionId('it-plan-slot'), { provider: 'mock', model: 'mock' })
+
+    // Plan mode on (idle → committed): the drafting request routes to the slot.
+    ctx.planMode.set(agent, true)
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'draft a plan' }], source: { kind: 'user' } }))
+    await waitForIdle(ctx, agent)
+    expect(adapter.requests[0]?.provider).toBe('mock')
+    expect(adapter.requests[0]?.model).toBe('plan-model')
+    expect(foldPlanMode(agent.session.events)).toBe(true)
+    // The durable audit record names the plan slot and the route actually used.
+    const dispatch = agent.session.events.find(event => event.type === 'slots/dispatch')
+    expect(dispatch?.data).toEqual({
+      slot: MODEL_SLOT_PLAN,
+      provider: 'mock',
+      model: 'plan-model',
+      source: 'slot',
+    })
+
+    // Plan mode off: the execution request returns to the main model.
+    ctx.planMode.set(agent, false)
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'execute now' }], source: { kind: 'user' } }))
+    await waitForIdle(ctx, agent)
+    expect(adapter.requests[1]?.provider).toBe('mock')
+    expect(adapter.requests[1]?.model).toBe('mock')
+    expect(foldPlanMode(agent.session.events)).toBe(false)
   })
 })
