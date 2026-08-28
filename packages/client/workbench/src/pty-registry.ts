@@ -17,7 +17,9 @@ import { accessSync, constants as fsConstants } from 'node:fs'
 // `win32` (not the host-bound `isAbsolute`): where.exe output is always a
 // Windows path, so the validity check must be win32 semantics on every host —
 // a POSIX `isAbsolute` would reject a valid `C:\...` path on Linux CI.
-import { basename, win32 } from 'node:path'
+// The shell basename whitelist likewise needs win32 splitting so a Windows
+// path is judged identically on every host.
+import { win32 } from 'node:path'
 
 /** A live terminal process face: write, resize, and kill. */
 export interface PtyProcess {
@@ -75,7 +77,9 @@ function firstOutputLine(stdout: string): string | null {
 
 /**
  * Validate a resolved shell before it may reach any spawn seam: on Windows
- * only the known shell basenames pass; elsewhere the value must be an
+ * only the known shell basenames pass — including absolute paths, whose final
+ * segment must still be a known shell (an absolute `C:\Tools\evil.exe` is not
+ * a shell just because it is absolute). Elsewhere the value must be an
  * absolute, existing, executable path. Returns null when unusable.
  * @param resolution - the resolved shell to validate.
  * @returns the validated resolution, or null when unusable.
@@ -84,7 +88,7 @@ export function validateShellResolution(resolution: ShellResolution): ShellResol
   const file = resolution.file.trim()
   if (file === '') return null
   if (process.platform === 'win32') {
-    if (!WINDOWS_SHELL_BASENAMES.has(basename(file).toLowerCase()) && !file.includes('\\')) return null
+    if (!WINDOWS_SHELL_BASENAMES.has(win32.basename(file).toLowerCase())) return null
     return { file, args: resolution.args }
   }
   if (!file.startsWith('/')) return null
@@ -149,8 +153,14 @@ export function resolveShell(): ShellResolution {
         // `where.exe` is a SystemRoot-protected system binary; keep it as the
         // lookup mechanism, but hand the SPAWN seam its absolute-path result
         // rather than the bare candidate name (a bare name would re-enter the
-        // PATH dependency this lookup exists to pin down).
-        const whereResult = spawnSync('where.exe', [candidate], { encoding: 'utf8' })
+        // PATH dependency this lookup exists to pin down). The probe cwd is
+        // pinned to the neutral system root because `where.exe` searches the
+        // current directory before PATH — the server's cwd must never decide
+        // which shell wins.
+        const whereResult = spawnSync('where.exe', [candidate], {
+          encoding: 'utf8',
+          cwd: process.env.SystemRoot ?? process.env.WINDIR ?? undefined,
+        })
         if (whereResult.status === 0) {
           const resolved = firstOutputLine(whereResult.stdout)
           // Fail closed: a relative/bare result is a lookup miss, never a
@@ -163,7 +173,12 @@ export function resolveShell(): ShellResolution {
       // through to the ComSpec fallback below.
     }
     const comspec = process.env.ComSpec?.trim()
-    return { file: comspec !== undefined && comspec !== '' ? comspec : 'cmd.exe', args: [] }
+    // ComSpec must be an absolute path: a bare/relative value would re-enter
+    // the PATH dependency (or spawn whatever shadows `cmd` in the cwd).
+    if (comspec !== undefined && comspec !== '' && win32.isAbsolute(comspec)) {
+      return { file: comspec, args: [] }
+    }
+    return { file: 'cmd.exe', args: [] }
   }
   return { file: process.env.SHELL ?? '/bin/bash', args: ['-l'] }
 }

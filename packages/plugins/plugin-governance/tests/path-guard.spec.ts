@@ -131,6 +131,43 @@ describe('checkPathAllowed raw-path traversal defense (POSIX fork escape)', () =
   })
 })
 
+describe('checkPathAllowed deny-pattern realpath (batch3 backlog)', () => {
+  it('denies a symlink alias whose real target matches a deny pattern', () => {
+    // The deny pattern targets a REAL location inside the allow list, so the
+    // allow check alone would pass. Only the realpath deny comparison can
+    // reject the alias that resolves into the denied subdirectory.
+    const blockedDir = join(allowed, 'blocked')
+    // The alias name must NOT share the deny pattern as a string prefix:
+    // `allowed\blocked-link\...` already contains `allowed\blocked`, which the
+    // logical-path containment check would catch before realpath is ever
+    // consulted. An unrelated alias name (`alias`) keeps this test on the
+    // realpath branch it exists to cover.
+    const link = join(allowed, 'alias')
+    try {
+      mkdirSync(blockedDir, { recursive: true })
+      writeFileSync(join(blockedDir, 'secret.txt'), 's')
+      symlinkSync(blockedDir, link, 'junction')
+    } catch {
+      return // Platform does not support symlink/junction creation; skip.
+    }
+    try {
+      const config: PluginSandboxConfig['filesystem'] = {
+        access: 'readwrite',
+        allowedPaths: [allowed],
+        deniedPatterns: [join(allowed, 'blocked')],
+      }
+      // The direct path is denied by the logical-path check.
+      expect(checkPathAllowed(config, join(blockedDir, 'secret.txt'))).toBe(false)
+      // The alias's logical path is NOT inside the denied subdirectory; only
+      // the realpath comparison catches it.
+      expect(checkPathAllowed(config, join(link, 'secret.txt'))).toBe(false)
+    } finally {
+      rmSync(link, { recursive: true, force: true })
+      rmSync(blockedDir, { recursive: true, force: true })
+    }
+  })
+})
+
 afterAll(() => {
   rmSync(root, { recursive: true, force: true })
 })

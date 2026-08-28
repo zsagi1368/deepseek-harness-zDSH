@@ -30,7 +30,13 @@ export type BinaryResolver = (name: string) => string | null
 function defaultBinaryResolver(name: string): string | null {
   try {
     if (process.platform === 'win32') {
-      const result = spawnSync('where.exe', [name], { encoding: 'utf8' })
+      const result = spawnSync('where.exe', [name], {
+        encoding: 'utf8',
+        // `where.exe` searches the current directory before PATH; pin the
+        // probe to the neutral system root so a stray binary in the runner's
+        // cwd can never shadow the PATH lookup.
+        cwd: process.env.SystemRoot ?? process.env.WINDIR ?? undefined,
+      })
       if (result.status === 0) {
         const resolved = firstLine(result.stdout)
         // `where.exe` echoes a bare name when the lookup misses; only an
@@ -58,10 +64,28 @@ function firstLine(stdout: string): string | null {
   return null
 }
 
-/** Per-name cache so the PATH lookup runs at most once per process lifetime. */
-const binaryCache = new Map<string, string | null>()
+/** One cached resolution: the value plus the wall-clock time it was stored. */
+interface BinaryCacheEntry {
+  value: string | null
+  storedAt: number
+}
+
+/**
+ * How long a resolved binary stays cached before the PATH lookup runs again.
+ * Bounded so a binary installed/replaced at the same PATH slot is picked up
+ * without paying for a probe on every call.
+ */
+const BINARY_CACHE_TTL_MS = 60_000
+
+/**
+ * Per-name cache so the PATH lookup runs at most once per TTL window. The
+ * cache also drops wholesale when PATH changes, because every previously
+ * resolved location may have moved.
+ */
+const binaryCache = new Map<string, BinaryCacheEntry>()
 
 let currentResolver: BinaryResolver = defaultBinaryResolver
+let lastPathValue: string | undefined = process.env.PATH
 
 /**
  * Resolve an executable name through the active resolver with caching.
@@ -69,10 +93,19 @@ let currentResolver: BinaryResolver = defaultBinaryResolver
  * @returns the resolved absolute path, or null when unresolvable.
  */
 export function resolveBinary(name: string): string | null {
+  const now = Date.now()
+  const pathNow = process.env.PATH
+  if (pathNow !== lastPathValue) {
+    // PATH changed: every previously resolved location may have moved.
+    binaryCache.clear()
+    lastPathValue = pathNow
+  }
   const cached = binaryCache.get(name)
-  if (cached !== undefined) return cached
+  if (cached !== undefined && now - cached.storedAt < BINARY_CACHE_TTL_MS) {
+    return cached.value
+  }
   const resolved = currentResolver(name)
-  binaryCache.set(name, resolved)
+  binaryCache.set(name, { value: resolved, storedAt: now })
   return resolved
 }
 
@@ -83,6 +116,7 @@ export function resolveBinary(name: string): string | null {
 export function setBinaryResolver(resolver: BinaryResolver): void {
   currentResolver = resolver
   binaryCache.clear()
+  lastPathValue = process.env.PATH
 }
 
 /**
@@ -91,6 +125,7 @@ export function setBinaryResolver(resolver: BinaryResolver): void {
 export function resetBinaryResolver(): void {
   currentResolver = defaultBinaryResolver
   binaryCache.clear()
+  lastPathValue = process.env.PATH
 }
 
 /** One git process outcome: exit code plus captured stdout/stderr (byte-capped). */

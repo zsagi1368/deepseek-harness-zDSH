@@ -93,12 +93,38 @@ function resolveReal(path: string): string | undefined {
 }
 
 /**
+ * Whether a path matches any configured deny pattern.
+ *
+ * Patterns are compared as resolved-string containment (historical semantics).
+ * The caller runs this against BOTH the logical path and the real on-disk
+ * location, so a symlink alias whose real target falls under a deny pattern
+ * cannot hide behind an innocent-looking logical path.
+ * @param deniedPatterns - the configured deny patterns.
+ * @param candidate - the path to test (logical or real).
+ * @returns true when the candidate contains a resolved deny pattern.
+ */
+function matchesDeniedPattern(deniedPatterns: readonly string[], candidate: string): boolean {
+  for (const pattern of deniedPatterns) {
+    try {
+      const resolvedPattern = resolve(pattern)
+      if (candidate.includes(resolvedPattern)) return true
+    } catch {
+      /* v8 ignore next 2 -- resolve() of a configured deny pattern cannot fail on real inputs. */
+      continue
+    }
+  }
+  return false
+}
+
+/**
  * Decide whether one absolute-or-relative plugin path may be touched.
  *
  * Security semantics:
  * - the candidate is normalized (`resolve`) so `..`/`.` components collapse;
  * - a literal `..`/`~` surviving in the result rejects defensively;
- * - configured deny patterns win over everything;
+ * - configured deny patterns win over everything and are checked against BOTH
+ *   the logical path and the real on-disk location, so a symlink/junction
+ *   alias whose target falls under a deny pattern is still denied;
  * - allow-list entries and the candidate are canonicalized to their REAL
  *   on-disk location (`realpathSync.native`), so symlink/junction escapes are
  *   caught: the real target must still live inside an allow-listed directory;
@@ -133,18 +159,8 @@ export function checkPathAllowed(config: FilesystemConfig, path: string): boolea
     return false
   }
 
-  // 检查拒绝模式
-  for (const pattern of config.deniedPatterns) {
-    try {
-      const resolvedPattern = resolve(pattern)
-      if (normalizedPath.includes(resolvedPattern)) {
-        return false
-      }
-    } catch {
-      /* v8 ignore next 2 -- resolve() of a configured deny pattern cannot fail on real inputs. */
-      continue
-    }
-  }
+  // 检查拒绝模式（对逻辑路径；命中即拒绝，deny 优先于 allow）
+  if (matchesDeniedPattern(config.deniedPatterns, normalizedPath)) return false
 
   // 检查白名单（fail closed：未配置白名单时一律拒绝）
   if (config.allowedPaths.length === 0) return false
@@ -152,6 +168,10 @@ export function checkPathAllowed(config: FilesystemConfig, path: string): boolea
   // 候选路径落到磁盘的真实位置（跟随 symlink/junction），解析失败即拒绝。
   const realCandidate = resolveReal(normalizedPath)
   if (realCandidate === undefined) return false
+
+  // 对真实位置再次检查拒绝模式：与 allow 使用同一坐标系，防止 symlink 别名
+  // 指向被拒路径时，仅凭逻辑路径比较绕过 deny 规则。
+  if (matchesDeniedPattern(config.deniedPatterns, realCandidate)) return false
 
   // 白名单条目同样解析到真实位置（realpath 失败回退 resolve），
   // 保证「候选真实位置」与「允许真实位置」在同一坐标系下比较。

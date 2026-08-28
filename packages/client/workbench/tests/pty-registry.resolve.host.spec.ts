@@ -11,7 +11,7 @@ vi.mock('node:child_process', () => ({
 }))
 
 import { spawnSync } from 'node:child_process'
-import { PtyRegistry, resolveShell } from '../src/pty-registry.ts'
+import { PtyRegistry, resolveShell, validateShellResolution } from '../src/pty-registry.ts'
 import type { PtyProcess } from '../src/pty-registry.ts'
 
 const mockSpawnSync = vi.mocked(spawnSync)
@@ -34,6 +34,9 @@ describe('resolveShell absolute-path resolution', () => {
     delete process.env.DSH_WORKBENCH_SHELL
     delete process.env.ComSpec
     delete process.env.SHELL
+    // Deterministic probe cwd for the where.exe assertions below.
+    process.env.SystemRoot = 'C:\\Windows'
+    delete process.env.WINDIR
   })
 
   it('hands the where.exe absolute path to the spawn seam on Windows', () => {
@@ -43,7 +46,35 @@ describe('resolveShell absolute-path resolution', () => {
         stdout: 'C:\\Program Files\\PowerShell\\7\\pwsh.exe\r\n',
       } as never)
       expect(resolveShell()).toEqual({ file: 'C:\\Program Files\\PowerShell\\7\\pwsh.exe', args: ['-NoLogo'] })
-      expect(mockSpawnSync).toHaveBeenCalledWith('where.exe', ['pwsh.exe'], { encoding: 'utf8' })
+      expect(mockSpawnSync).toHaveBeenCalledWith('where.exe', ['pwsh.exe'], { encoding: 'utf8', cwd: 'C:\\Windows' })
+    })
+  })
+
+  it('pins the where.exe probe cwd to the neutral system root', () => {
+    withPlatform('win32', () => {
+      mockSpawnSync.mockReturnValue({ status: 0, stdout: 'C:\\pwsh\\pwsh.exe\n' } as never)
+      resolveShell()
+      expect(mockSpawnSync).toHaveBeenCalledWith('where.exe', ['pwsh.exe'], { encoding: 'utf8', cwd: 'C:\\Windows' })
+    })
+  })
+
+  it('falls back to WINDIR for the probe cwd when SystemRoot is unset', () => {
+    withPlatform('win32', () => {
+      delete process.env.SystemRoot
+      process.env.WINDIR = 'C:\\Windows'
+      mockSpawnSync.mockReturnValue({ status: 0, stdout: 'C:\\pwsh\\pwsh.exe\n' } as never)
+      resolveShell()
+      expect(mockSpawnSync).toHaveBeenCalledWith('where.exe', ['pwsh.exe'], { encoding: 'utf8', cwd: 'C:\\Windows' })
+    })
+  })
+
+  it('leaves the probe cwd unset when neither SystemRoot nor WINDIR is present', () => {
+    withPlatform('win32', () => {
+      delete process.env.SystemRoot
+      delete process.env.WINDIR
+      mockSpawnSync.mockReturnValue({ status: 0, stdout: 'C:\\pwsh\\pwsh.exe\n' } as never)
+      resolveShell()
+      expect(mockSpawnSync).toHaveBeenCalledWith('where.exe', ['pwsh.exe'], { encoding: 'utf8', cwd: undefined })
     })
   })
 
@@ -83,6 +114,31 @@ describe('resolveShell absolute-path resolution', () => {
       mockSpawnSync.mockImplementation(() => { throw new Error('ENOENT') })
       process.env.ComSpec = 'C:\\Windows\\System32\\cmd.exe'
       expect(resolveShell()).toEqual({ file: 'C:\\Windows\\System32\\cmd.exe', args: [] })
+    })
+  })
+
+  it('falls back to cmd.exe when ComSpec is not an absolute path', () => {
+    withPlatform('win32', () => {
+      mockSpawnSync.mockReturnValue({ status: 1, stdout: '' } as never)
+      process.env.ComSpec = 'cmd.exe'
+      expect(resolveShell()).toEqual({ file: 'cmd.exe', args: [] })
+    })
+  })
+
+  it('falls back to cmd.exe when ComSpec is unset', () => {
+    withPlatform('win32', () => {
+      mockSpawnSync.mockReturnValue({ status: 1, stdout: '' } as never)
+      expect(resolveShell()).toEqual({ file: 'cmd.exe', args: [] })
+    })
+  })
+
+  it('rejects an absolute Windows path whose basename is not a known shell', () => {
+    withPlatform('win32', () => {
+      expect(validateShellResolution({ file: 'C:\\Tools\\evil.exe', args: [] })).toBeNull()
+      expect(validateShellResolution({ file: 'C:\\Program Files\\PowerShell\\7\\pwsh.exe', args: [] })).toEqual({
+        file: 'C:\\Program Files\\PowerShell\\7\\pwsh.exe',
+        args: [],
+      })
     })
   })
 
