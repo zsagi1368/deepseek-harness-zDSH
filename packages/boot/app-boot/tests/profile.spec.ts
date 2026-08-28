@@ -7,7 +7,7 @@
 import { lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 import {
   composeEntries,
   healProfilesModuleFallback,
@@ -268,5 +268,92 @@ describe('healProfilesModuleFallback', () => {
     healProfilesModuleFallback(anchor, home) // second healer sees the correct link
     const fallback = join(home, 'profiles', 'node_modules')
     expect(lstatSync(join(fallback, 'dsh-app')).isSymbolicLink()).toBe(true)
+  })
+})
+
+describe('healProfilesModuleFallback through a reparse point (D-006)', () => {
+  // Temp trees staged below (real dirs + the link dirs pointing at them); the
+  // test requires rmSync cleanup so the throwaway junction/symlink artifacts
+  // never linger past the suite.
+  const createdDirs: string[] = []
+
+  afterAll(() => {
+    for (const dir of createdDirs) {
+      try {
+        rmSync(dir, { recursive: true, force: true })
+      } catch {
+        // Best-effort teardown of a throwaway temp tree.
+      }
+    }
+  })
+
+  /** Link `realDir` to `linkPath` as a junction (Windows) or plain symlink. */
+  function linkDir(realDir: string, linkPath: string): void {
+    try {
+      symlinkSync(realDir, linkPath, 'junction')
+    } catch {
+      // CI on POSIX cannot create junctions; a plain symlink follows the same
+      // realpath semantics the junction case exercises.
+      symlinkSync(realDir, linkPath)
+    }
+  }
+
+  it('builds the fallback from the canonical paths when installAnchor and home are junctioned', () => {
+    const realRoot = tmp()
+    createdDirs.push(realRoot)
+    const realAppDir = join(realRoot, 'app')
+    mkdirSync(join(realAppDir, 'node_modules'), { recursive: true })
+    writeFileSync(join(realAppDir, 'package.json'), JSON.stringify({ name: 'dsh-app', dependencies: {} }))
+    const realHome = tmp()
+    createdDirs.push(realHome)
+    const linkRoot = tmp()
+    createdDirs.push(linkRoot)
+    const linkAppDir = join(linkRoot, 'app-link')
+    linkDir(realAppDir, linkAppDir)
+    const linkHome = join(linkRoot, 'home-link')
+    linkDir(realHome, linkHome)
+
+    // Both anchors enter through the link path: dirname(anchor) and the home
+    // would otherwise stay on the logical path while Node resolves through it.
+    healProfilesModuleFallback(join(linkAppDir, 'package.json'), linkHome)
+
+    // The fallback lives under the canonical home...
+    const canonicalFallback = join(realHome, 'profiles', 'node_modules')
+    expect(lstatSync(canonicalFallback).isDirectory()).toBe(true)
+    // ...and every package link points at the canonical (real) location, never
+    // the junction path (the D-006 mislink: link → junction → real, which the
+    // parent-walk through the fallback still resolves, but the recorded target
+    // is wrong and a later move of the junction strands it).
+    const target = readlinkSync(join(canonicalFallback, 'dsh-app'))
+    expect(target).toBe(realAppDir)
+    expect(target).not.toBe(linkAppDir)
+  })
+
+  it('keeps the closure complete through a junctioned installAnchor with real dependencies', () => {
+    const realRoot = tmp()
+    createdDirs.push(realRoot)
+    const realAppDir = join(realRoot, 'app')
+    mkdirSync(join(realAppDir, 'node_modules', 'bundle-a'), { recursive: true })
+    writeFileSync(join(realAppDir, 'package.json'), JSON.stringify({
+      name: 'dsh-app',
+      dependencies: { 'bundle-a': '0.0.0' },
+    }))
+    writeFileSync(join(realAppDir, 'node_modules', 'bundle-a', 'package.json'), JSON.stringify({
+      name: 'bundle-a',
+      version: '0.0.0',
+    }))
+    const linkRoot = tmp()
+    createdDirs.push(linkRoot)
+    const linkAppDir = join(linkRoot, 'app-link')
+    linkDir(realAppDir, linkAppDir)
+    const home = tmp()
+    createdDirs.push(home)
+
+    healProfilesModuleFallback(join(linkAppDir, 'package.json'), home)
+    const fallback = join(home, 'profiles', 'node_modules')
+    // BFS closure: the app and its dependency are both linked from the
+    // canonical app dir, not from the junction path.
+    expect(readlinkSync(join(fallback, 'dsh-app'))).toBe(realAppDir)
+    expect(readlinkSync(join(fallback, 'bundle-a'))).toBe(join(realAppDir, 'node_modules', 'bundle-a'))
   })
 })

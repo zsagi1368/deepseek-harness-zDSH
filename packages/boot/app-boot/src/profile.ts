@@ -24,7 +24,7 @@
 
 import { createRequire } from 'node:module'
 import {
-  existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, symlinkSync, unlinkSync, writeFileSync,
+  existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, realpathSync, symlinkSync, unlinkSync, writeFileSync,
 } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import type { EntryOptions } from '@deepseek-ai/cordis-plugin-loader'
@@ -202,6 +202,20 @@ function ensureSymlink(link: string, target: string): void {
 }
 
 /**
+ * Resolve a path to its canonical form (following junctions and symlinks),
+ * degrading to the original path when resolution fails.
+ * @param path - the path to canonicalize.
+ * @returns the canonical path, or `path` itself when it cannot be resolved.
+ */
+function canonicalPathOrOriginal(path: string): string {
+  try {
+    return realpathSync.native(path)
+  } catch {
+    return path
+  }
+}
+
+/**
  * Maintain the flat module fallback `$DSH_HOME/profiles/node_modules`: one
  * symlink per package in the dsh app's resolvable dependency CLOSURE (BFS
  * over `dependencies` from the app manifest), each resolved from its own
@@ -217,10 +231,20 @@ function ensureSymlink(link: string, target: string): void {
  * Idempotent: correct links are kept and moved installations are
  * re-pointed; a stale link to a vanished package stays until its name is
  * reused (dangling links are invisible to resolution).
+ *
+ * Both anchors are resolved to their canonical paths before use: a Windows
+ * junction (or any symlink) in front of `installAnchor` or `home` otherwise
+ * leaves the dirname/resolve/BFS steps on the logical path while Node's own
+ * resolution follows the reparse point to the real target, so every link and
+ * parent-walk would be built from the wrong half of the split. `realpathSync.native`
+ * lands on the real target on every platform; a path that cannot be resolved
+ * degrades to itself (the manifest read below reports the real failure).
  * @param installAnchor - absolute path of the dsh app's package.json.
  * @param home - the Harness home; defaults to {@link resolveDshHome}.
  */
 export function healProfilesModuleFallback(installAnchor: string, home: string = resolveDshHome()): void {
+  installAnchor = canonicalPathOrOriginal(installAnchor)
+  home = canonicalPathOrOriginal(home)
   const profilesDir = join(home, PROFILES_DIR)
   const modulesDir = join(profilesDir, 'node_modules')
   mkdirSync(modulesDir, { recursive: true })

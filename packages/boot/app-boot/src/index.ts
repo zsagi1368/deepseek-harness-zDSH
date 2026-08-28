@@ -95,6 +95,13 @@ const BOOTSTRAP_NAMES = new Set([
   'PATH', 'HOME', 'USERPROFILE', 'SHELL',
   'NODE_OPTIONS', 'NODE_PATH', 'NODE_EXTRA_CA_CERTS',
   'LD_PRELOAD', 'LD_LIBRARY_PATH', 'LD_AUDIT',
+  // Windows system path resolution: overriding these redirects DLL search and
+  // the command interpreter a child process inherits.
+  'SYSTEMROOT', 'WINDIR', 'COMSPEC',
+  // Windows scratch space and module search: TEMP/TMP redirect where every
+  // child writes temp files; PSModulePath decides which modules PowerShell
+  // loads (and which an attacker-controlled .env could smuggle in).
+  'TEMP', 'TMP', 'PSMODULEPATH',
   // Interpreter startup hooks.
   'BASH_ENV', 'ENV', 'SHELLOPTS', 'BASHOPTS',
   'PERL5OPT', 'PERL5LIB', 'PYTHONSTARTUP', 'PYTHONPATH', 'RUBYOPT', 'RUBYLIB',
