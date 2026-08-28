@@ -13,9 +13,13 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type Schema from '@deepseek-ai/schemastery'
 import type { Session } from '@deepseek-ai/dsh-session'
+import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import { MODEL_SLOT_COMPACTION_SUMMARIZE, MODEL_SLOT_IDS, MODEL_SLOT_PLAN, MODEL_SLOT_SOURCES, MODEL_SLOT_TITLE, MODEL_SLOT_VISION, SlotId } from './vocabulary.ts'
 
 export { MODEL_SLOT_COMPACTION_SUMMARIZE, MODEL_SLOT_IDS, MODEL_SLOT_PLAN, MODEL_SLOT_SOURCES, MODEL_SLOT_TITLE, MODEL_SLOT_VISION, SlotId }
+
+/** Settings namespace carrying the user-editable slot policy (composition below, user layer above). */
+export const MODEL_SLOTS_SETTINGS_NAMESPACE = settingsNamespace('llm-model-slots')
 
 export type {
   BudgetRow,
@@ -105,6 +109,8 @@ export interface ModelSlotRouteConfig {
   readonly provider: string
   /** Provider model id. */
   readonly model: string
+  /** Derived credential reference (`deriveKeyRef(provider)`), stored for audit; never a literal key. */
+  readonly apiKeyEnv?: string
 }
 
 /** Deployment-level slot policy supplied as plugin configuration or direct construction. */
@@ -138,6 +144,8 @@ function assertNonEmptyString(name: string, value: unknown): asserts value is st
  * when it states nothing: both fields are absent or empty, which is how
  * Schemastery materializes an omitted nested object over its empty-string
  * defaults. Any single stated field enforces the complete non-empty pair.
+ * Accepts the optional `apiKeyEnv` field (derived credential reference) for
+ * settings-mirror entries; the registry ignores it.
  */
 function resolveRouteEntry(name: string, value: unknown): ModelRoute | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -145,13 +153,16 @@ function resolveRouteEntry(name: string, value: unknown): ModelRoute | undefined
   }
   const record = value as Record<string, unknown>
   for (const key of Object.keys(record)) {
-    if (key !== 'provider' && key !== 'model') {
+    if (key !== 'provider' && key !== 'model' && key !== 'apiKeyEnv') {
       throw new Error(`model-slots: ${name} has unknown key "${key}"`)
     }
   }
   if (blankRouteField(record.provider) && blankRouteField(record.model)) return undefined
   assertNonEmptyString(`${name}.provider`, record.provider)
   assertNonEmptyString(`${name}.model`, record.model)
+  if (record.apiKeyEnv !== undefined && record.apiKeyEnv !== '') {
+    assertNonEmptyString(`${name}.apiKeyEnv`, record.apiKeyEnv)
+  }
   return Object.freeze({ provider: record.provider, model: record.model })
 }
 
@@ -199,6 +210,22 @@ function quoted(id: string): string {
   return JSON.stringify(id)
 }
 
+/** Settings namespace schema: composition base + user overrides with optional apiKeyEnv reference. */
+export const MODEL_SLOTS_SETTINGS_SCHEMA: Schema<ModelSlotsConfig> = z.object({
+  slots: z.dict(z.object({
+    provider: z.string().default(''),
+    model: z.string().default(''),
+    // A derived reference (`deriveKeyRef` spelling) only: an API-key literal
+    // like `sk-…` carries lowercase/dashes and is refused at the schema layer.
+    apiKeyEnv: z.string().pattern(/^[A-Z][A-Z0-9_]*$/),
+  })),
+  fallback: z.object({
+    provider: z.string().default(''),
+    model: z.string().default(''),
+    apiKeyEnv: z.string().pattern(/^[A-Z][A-Z0-9_]*$/),
+  }),
+})
+
 declare module '@deepseek-ai/cordis' {
   interface Context {
     modelSlots: ModelSlotRegistry
@@ -210,6 +237,8 @@ declare module '@deepseek-ai/cordis' {
  * Consumers consult it right before each auxiliary dispatch; every successful
  * resolution with a session sink appends the durable `slots/dispatch` audit
  * record naming the exact route and the tier that produced it.
+ * The registry also registers the `llm-model-slots` settings namespace so the
+ * settings-mirror tier (user layer) can override the composition base.
  */
 export class ModelSlotRegistry extends Service {
   static Config: Schema<ModelSlotsConfig> = z.object({
@@ -227,6 +256,8 @@ export class ModelSlotRegistry extends Service {
   /** Slots owned by deployment configuration; programmatic registration may not override them. */
   private readonly pinned = new Set<SlotId>()
   private fallbackRoute: ModelRoute | undefined
+  /** Settings-scope source: composition base by default, replaced by the resolved scope once attached. */
+  private source: () => ModelSlotsConfig
 
   /**
    * Create the registry over validated deployment policy.
@@ -236,6 +267,24 @@ export class ModelSlotRegistry extends Service {
   constructor(ctx: Context, config: ModelSlotsConfig = {}) {
     super(ctx, 'modelSlots')
     const resolved = resolveModelSlotsConfig(config)
+    for (const [slot, route] of resolved.routes.entries()) {
+      this.routes.set(slot, route)
+      this.pinned.add(slot)
+    }
+    this.fallbackRoute = resolved.fallback
+    this.source = () => config
+    installSettingsSection(ctx, MODEL_SLOTS_SETTINGS_NAMESPACE, MODEL_SLOTS_SETTINGS_SCHEMA, config, {
+      setSource: (current) => { this.source = current },
+      onChange: () => { this.rebuildFromSource() },
+    })
+  }
+
+  /** Re-read the effective config from the settings scope and rebuild routes. */
+  private rebuildFromSource(): void {
+    // Clear config-owned routes while preserving programmatic registrations.
+    for (const slot of this.pinned) this.routes.delete(slot)
+    this.pinned.clear()
+    const resolved = resolveModelSlotsConfig(this.source())
     for (const [slot, route] of resolved.routes.entries()) {
       this.routes.set(slot, route)
       this.pinned.add(slot)

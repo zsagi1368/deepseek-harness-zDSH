@@ -6,6 +6,7 @@ import ModelSlotRegistry, {
   MODEL_SLOT_COMPACTION_SUMMARIZE,
   MODEL_SLOT_PLAN,
   MODEL_SLOT_TITLE,
+  MODEL_SLOTS_SETTINGS_SCHEMA,
   SlotId,
   resolveModelSlotsConfig,
 } from '../src/index.ts'
@@ -68,6 +69,30 @@ describe('resolveModelSlotsConfig', () => {
     expect(() => resolveModelSlotsConfig({ fallback: { provider: 'a' } as never }))
       .toThrow(/fallback\.model must be a non-empty string/)
     expect(() => resolveModelSlotsConfig(null as never)).toThrow(/configuration must be an object/)
+  })
+
+  it('accepts the derived apiKeyEnv reference on settings-style entries', () => {
+    const resolved = resolveModelSlotsConfig({
+      slots: {
+        [MODEL_SLOT_TITLE]: { provider: 'anthropic', model: 'claude-3', apiKeyEnv: 'ANTHROPIC_API_KEY' },
+      },
+    })
+    expect(resolved.routes.get(MODEL_SLOT_TITLE)).toEqual({ provider: 'anthropic', model: 'claude-3' })
+  })
+
+  it('rejects an unknown key alongside apiKeyEnv', () => {
+    expect(() => resolveModelSlotsConfig({
+      slots: { [MODEL_SLOT_TITLE]: { provider: 'a', model: 'b', apiKeyEnv: 'A_API_KEY', secret: 'sk-literal' } as never },
+    })).toThrow(/slots\.title has unknown key "secret"/)
+  })
+})
+
+describe('MODEL_SLOTS_SETTINGS_SCHEMA', () => {
+  it('refuses a literal API key at the schema layer', () => {
+    expect(() => MODEL_SLOTS_SETTINGS_SCHEMA({ slots: { title: { provider: 'a', model: 'b', apiKeyEnv: 'sk-literal-123' } } }))
+      .toThrow()
+    expect(() => MODEL_SLOTS_SETTINGS_SCHEMA({ slots: { title: { provider: 'a', model: 'b', apiKeyEnv: 'ANTHROPIC_API_KEY' } } }))
+      .not.toThrow()
   })
 })
 

@@ -21,6 +21,29 @@ import type { SettingsSchemaOperations } from './schema-operations.ts'
  */
 const PROBE_ROUTE = '\u0000probe'
 
+/**
+ * The settings namespace carrying the editable slot policy. Kept as a string
+ * here rather than importing the host-side `@deepseek-ai/dsh-model-slots`
+ * (whose `MODEL_SLOTS_SETTINGS_NAMESPACE` registers the same value), because
+ * that package is not client-bundle-safe; the two literals must stay in sync.
+ */
+export const MODEL_SLOTS_SETTINGS_NAMESPACE = 'llm-model-slots'
+
+/** The built-in slots this page renders, in display order. */
+export const SLOT_ROWS = ['title', 'compaction.summarize', 'vision'] as const
+
+/** One slot's effective route as the page shows it, with its provenance tier. */
+export interface EffectiveSlotView {
+  /** Slot identity (`title`, `compaction.summarize`, `vision`). */
+  readonly slot: string
+  /** Resolved provider route, when a deployment statement provides one. */
+  readonly provider: string | undefined
+  /** Resolved model id, when a deployment statement provides one. */
+  readonly model: string | undefined
+  /** The tier that produced the route shown. */
+  readonly source: 'slot' | 'deployment-default' | 'main-route'
+}
+
 /** One provider row the page renders. */
 export interface ProviderRow {
   /** The directory entry (route id, display name, settings address, live state). */
@@ -70,6 +93,103 @@ export function messageOf(error: unknown): string {
  */
 export function deriveKeyRef(provider: string): string {
   return `${provider.toUpperCase().replace(/[^A-Z0-9]+/g, '_')}_API_KEY`
+}
+
+/** One slot-config value carried by the `llm-model-slots` settings namespace. */
+interface SlotConfigEntry {
+  provider?: unknown
+  model?: unknown
+  apiKeyEnv?: unknown
+}
+
+/** Read one route entry, tolerating every shape a layered settings value may hold. */
+function routeEntryOf(value: unknown): { provider: string | undefined; model: string | undefined } {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return { provider: undefined, model: undefined }
+  }
+  const entry = value as SlotConfigEntry
+  return {
+    provider: typeof entry.provider === 'string' && entry.provider.length > 0 ? entry.provider : undefined,
+    model: typeof entry.model === 'string' && entry.model.length > 0 ? entry.model : undefined,
+  }
+}
+
+/**
+ * Compute the effective route and provenance tier for every built-in slot
+ * from the `llm-model-slots` namespace value, following the fixed precedence
+ * the slot registry resolves: explicit slot statement, then the deployment
+ * default, then the conversation's own main-model route (which a settings
+ * page cannot name, so it renders as a tier without a fixed route).
+ * @param value - the namespace's resolved value, or `undefined` when absent.
+ * @returns one row per built-in slot in display order.
+ */
+export function effectiveSlotViews(value: unknown): EffectiveSlotView[] {
+  const root = (typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value
+    : {}) as { slots?: unknown; fallback?: unknown }
+  const slots = (typeof root.slots === 'object' && root.slots !== null && !Array.isArray(root.slots)
+    ? root.slots
+    : {}) as Record<string, unknown>
+  const fallback = routeEntryOf(root.fallback)
+  return SLOT_ROWS.map((slot) => {
+    const own = routeEntryOf(slots[slot])
+    if (own.provider !== undefined && own.model !== undefined) {
+      return { slot, provider: own.provider, model: own.model, source: 'slot' as const }
+    }
+    if (fallback.provider !== undefined && fallback.model !== undefined) {
+      return { slot, provider: fallback.provider, model: fallback.model, source: 'deployment-default' as const }
+    }
+    return { slot, provider: undefined, model: undefined, source: 'main-route' as const }
+  })
+}
+
+/** One model-capability probe the vision editor may use before writing. */
+export interface VisionModelProbe {
+  /**
+   * Resolve one exact provider/model route and read its input modalities.
+   * Absent when the client API exposes no such probe; the page then cannot
+   * verify capability and stores the statement as written.
+   * @param provider - provider route id.
+   * @param model - provider-owned model id.
+   * @param signal - optional abort signal.
+   * @returns the resolved model metadata, or a rejection the page reports.
+   */
+  resolveModelInfo?(
+    provider: string,
+    model: string,
+    signal?: AbortSignal,
+  ): Promise<{ inputModalities?: readonly string[] }>
+}
+
+/**
+ * Whether the proposed vision route can actually read images, checked with
+ * the same `inputModalities` fact the read-image gate enforces — moved to
+ * config-save time so a text-only model is refused before it is stored.
+ * A missing probe defers to the runtime gate (no static rejection); a probe
+ * that answers `undefined` modalities cannot confirm image input and is
+ * treated as unverified (refused), matching the read-image gate's negative
+ * reading of an explicit omission.
+ * @param provider - proposed provider route id.
+ * @param model - proposed model id.
+ * @param probe - the optional capability probe.
+ * @returns a copy key when the route must be refused, or `undefined` to save.
+ */
+export async function visionModelImageError(
+  provider: string,
+  model: string,
+  probe: VisionModelProbe,
+): Promise<keyof typeof en | undefined> {
+  if (probe.resolveModelInfo === undefined) return undefined
+  let modalities: readonly string[] | undefined
+  try {
+    const info = await probe.resolveModelInfo(provider, model)
+    modalities = info.inputModalities
+  } catch {
+    // A transport or adapter rejection means the page cannot verify the
+    // model; the write stays refused so a text-only model never slips in.
+    return 'visionModelUnverified'
+  }
+  return modalities === undefined || !modalities.includes('image') ? 'visionModelImageRequired' : undefined
 }
 
 /**

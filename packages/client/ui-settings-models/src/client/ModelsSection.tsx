@@ -18,7 +18,8 @@ import type { IApiClient } from '@deepseek-ai/dsh-api-remotes/client'
 import { Button, IconPlusOutline16, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace } from '@deepseek-ai/dsh-client-ui-slots'
 import { CustomProviderCard } from './CustomProviderCard.tsx'
-import { deriveKeyRef, messageOf, protocolChoices, providerUsable, reasoningEffortChoices } from './store.ts'
+import { SlotsBlock } from './SlotsBlock.tsx'
+import { deriveKeyRef, messageOf, MODEL_SLOTS_SETTINGS_NAMESPACE, protocolChoices, providerUsable, reasoningEffortChoices } from './store.ts'
 import type { ModelsSettingsStore, ProviderRow } from './store.ts'
 import type { SettingsSchemaOperations } from './schema-operations.ts'
 import { ProviderEditor, type ProviderEditorProps } from './ProviderEditor.tsx'
@@ -503,6 +504,17 @@ function Loaded({ injected }: { injected: ModelsSectionFace }): ReactNode {
               </div>
             )}
       </div>
+
+      <SlotsBlock
+        namespace={state.namespaces.get(MODEL_SLOTS_SETTINGS_NAMESPACE)}
+        providers={state.rows.map(row => ({ provider: row.entry.provider, displayName: row.entry.displayName }))}
+        api={api}
+        schema={schema}
+        t={t}
+        readOnly={!state.writable}
+        onSaved={() => { void controller.load() }}
+      />
+
       <Modal
         open={deleteTarget !== undefined}
         onClose={closeDelete}
