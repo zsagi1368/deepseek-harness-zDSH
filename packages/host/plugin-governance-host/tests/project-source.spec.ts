@@ -179,3 +179,79 @@ describe('project source distinction (C-01)', () => {
     }
   })
 })
+
+describe('subprocess project plugin roster (M2b)', () => {
+  it('registers subprocess-tier entries with no loader row as source=project', async () => {
+    const ctx = new Context()
+    contexts.push(ctx)
+
+    // A fake project plugin layer exposing ONE subprocess-tier entry (no
+    // loader row — its tools are host-side proxies). The host enumerates
+    // subprocess entries through `subprocessEntryIds()`.
+    const projectRoot = tempDir()
+    const entryId = 'project-plugin-abcdef12-fixtures-subproc'
+    const guardedManifest = {
+      id: 'fixtures/subproc-demo',
+      version: '1.0.0',
+      name: 'Subprocess Demo',
+      dsh: { compatible: '>=0.1.0-rc.8' },
+      capabilities: [{ type: 'tool', tool: { name: 'subproc_tool', description: 't', schema: { type: 'object' } } }],
+      sandbox: {
+        type: 'process',
+        resources: { memoryLimitMb: 128, cpuLimit: 50, timeoutMs: 30000, maxOutputBytes: 10000 },
+        filesystem: { access: 'readonly', allowedPaths: [], deniedPatterns: [] },
+        network: { access: 'none', allowedHosts: [], deniedHosts: [], allowLocal: false },
+        environment: { whitelist: [], blacklist: [], clear: false },
+        process: { spawn: false, exec: false, allowedCommands: [] },
+      },
+    } as const
+    const fakeLayer = {
+      provenanceOf: (id: string) => id === entryId
+        ? {
+          manifestId: 'fixtures/subproc-demo',
+          projectRoot,
+          version: '1.0.0',
+          runtimeTier: 'subprocess',
+        }
+        : undefined,
+      guardedManifestOf: (id: string) => id === entryId ? guardedManifest : undefined,
+      subprocessEntryIds: () => [entryId],
+    }
+    // Mirror the project layer's own provide mechanism (ctx.reflect.provide).
+    ctx.reflect.provide('projectPluginLayer', fakeLayer)
+
+    const storageRoot = tempDir()
+    await ctx.plugin(PluginGovernanceGateway, { storageRoot })
+    const gateway = ctx.get('pluginGovernance') as PluginGovernanceGateway
+
+    await vi.waitFor(() => {
+      const roster = gateway.list().plugins
+      expect(roster.find(p => p.pluginId === gid('fixtures/subproc-demo'))).toBeDefined()
+    })
+
+    const row = gateway.list().plugins.find(p => p.pluginId === gid('fixtures/subproc-demo'))
+    // C-01 projection applies to subprocess entries exactly like in-process
+    // loader entries: source='project', projectRoot, approval required.
+    expect(row).toMatchObject({
+      source: 'project',
+      projectRoot,
+      approvalRequired: true,
+      status: 'active',
+      version: '1.0.0',
+    })
+
+    // Detail projection reports the M2b runtime tier (process/worker OS
+    // boundary) so the UI never mistakes it for the in-process runtime.
+    const detail = gateway.get({ pluginId: gid('fixtures/subproc-demo') })
+    expect(detail.ok).toBe(true)
+    if (detail.ok) {
+      expect(detail.value.certification).toBeNull()
+      expect(detail.value.sandbox).toMatchObject({
+        type: 'process',
+        networkAccess: 'none',
+        maySpawnProcesses: false,
+        runtimeTier: 'subprocess',
+      })
+    }
+  })
+})

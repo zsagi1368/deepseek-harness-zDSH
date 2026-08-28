@@ -33,6 +33,7 @@ import {
 } from './ledger.ts'
 import { projectToolWrapper } from './tool-guard.ts'
 import { createSubprocessRuntime, type SubprocessRuntime } from './subprocess-runtime.ts'
+import { wireSessionScope } from './session-scope.ts'
 import type {
   ProjectPluginCandidate,
   ProjectPluginProvenance,
@@ -57,10 +58,18 @@ export interface ProjectPluginLayer {
   guardedManifestOf(entryId: string): PluginManifest | undefined
   /** Canonical manifest id owning one tool name, `undefined` when unattributed. */
   toolOwnerOf(toolName: string): string | undefined
+  /** Project root owning one manifest id, `undefined` when unknown (M3 scope check). */
+  projectRootOf(pluginId: string): string | undefined
   /** Whether one manifest id runs in a subprocess (M2b process/worker tier). */
   isSubprocess(pluginId: string): boolean
   /** The subprocess runtime of one manifest id, `undefined` when inline. */
   subprocessOf(pluginId: string): SubprocessRuntime | undefined
+  /**
+   * Loader entry ids of subprocess-tier project plugins (M2b). These entries
+   * have NO loader row — their tools are host-side proxies — so the governance
+   * mirror must enumerate them separately from `loader.entries()`.
+   */
+  subprocessEntryIds(): string[]
   /** The accumulated gate+mount report. */
   readonly report: readonly GateReportEntry[]
   /** The RunGuard backing every project tool call. */
@@ -169,10 +178,18 @@ export function createProjectPluginLayer(ctx: Context): ProjectPluginLayer {
   const provenance = new Map<string, ProjectPluginProvenance>()
   const manifests = new Map<string, PluginManifest>()
   const toolOwners = new Map<string, string>()
+  /** manifest id → owning project root (M3 session-scope and execute checks). */
+  const pluginRoots = new Map<string, string>()
   const subprocesses = new Map<string, SubprocessRuntime>()
   const report: GateReportEntry[] = []
   let disposeWrapper: (() => void) | undefined
   let provideDisposer: (() => Promise<void>) | undefined
+
+  // M3: bind every mounted project tool to its owning project root and
+  // restrict it away from agents whose session cwd misses the root. The
+  // wiring is inert without an agents service and never fails the boot.
+  const sessionScope = wireSessionScope(ctx)
+  const sessionScopeDisposer = (): void => { sessionScope.dispose() }
 
   const layer: ProjectPluginLayer = {
     runGuard,
@@ -182,12 +199,22 @@ export function createProjectPluginLayer(ctx: Context): ProjectPluginLayer {
       return toolOwners.get(toolName)
     },
 
+    projectRootOf(pluginId: string): string | undefined {
+      return pluginRoots.get(pluginId)
+    },
+
     isSubprocess(pluginId: string): boolean {
       return subprocesses.has(pluginId)
     },
 
     subprocessOf(pluginId: string): SubprocessRuntime | undefined {
       return subprocesses.get(pluginId)
+    },
+
+    subprocessEntryIds(): string[] {
+      return [...provenance.values()]
+        .filter(p => p.runtimeTier === 'subprocess')
+        .map(p => p.entryId)
     },
 
     provenanceOf(entryId: string): ProjectPluginProvenance | undefined {
@@ -239,8 +266,13 @@ export function createProjectPluginLayer(ctx: Context): ProjectPluginLayer {
             continue
           }
           subprocesses.set(candidate.id, runtime)
+          const guardedManifest = { ...candidate.manifest, sandbox }
+          manifests.set(entryId, guardedManifest)
+          pluginRoots.set(candidate.id, candidate.projectRoot)
           // Proxy tools: the manifest declares the IPC whitelist surface; each
-          // host-side proxy forwards calls to the subprocess runtime.
+          // host-side proxy forwards calls to the subprocess runtime. The
+          // session scope applies to proxies exactly like in-process tools.
+          const subprocessToolNames: string[] = []
           for (const cap of candidate.manifest.capabilities) {
             if (cap.type !== 'tool' || cap.tool === undefined) continue
             registerSubprocessProxyTool(
@@ -252,6 +284,10 @@ export function createProjectPluginLayer(ctx: Context): ProjectPluginLayer {
               runtime,
             )
             toolOwners.set(cap.tool.name, candidate.id)
+            subprocessToolNames.push(cap.tool.name)
+          }
+          if (subprocessToolNames.length > 0) {
+            sessionScope.applyRestrictions(subprocessToolNames, candidate.projectRoot)
           }
           // Register a watcher for every mounted plugin (B-08).
           try {
@@ -317,8 +353,16 @@ export function createProjectPluginLayer(ctx: Context): ProjectPluginLayer {
         }
         // Attribute newly visible tools to this plugin (serial mount ⇒ diff unambiguous).
         const after = toolNames(ctx)
+        const attributed: string[] = []
         for (const toolName of after) {
-          if (!before.has(toolName)) toolOwners.set(toolName, candidate.id)
+          if (!before.has(toolName)) {
+            toolOwners.set(toolName, candidate.id)
+            attributed.push(toolName)
+          }
+        }
+        pluginRoots.set(candidate.id, candidate.projectRoot)
+        if (attributed.length > 0) {
+          sessionScope.applyRestrictions(attributed, candidate.projectRoot)
         }
         // Record provenance BEFORE the mirror can see the entry: mount runs at
         // boot, before the first governance sync pass, so the entry always finds
@@ -371,6 +415,7 @@ export function createProjectPluginLayer(ctx: Context): ProjectPluginLayer {
     dispose(): void {
       disposeWrapper?.()
       disposeWrapper = undefined
+      sessionScopeDisposer()
       void provideDisposer?.()
       provideDisposer = undefined
       for (const runtime of subprocesses.values()) void runtime.stop()
@@ -382,6 +427,7 @@ export function createProjectPluginLayer(ctx: Context): ProjectPluginLayer {
   // The tools/execute wrapper is registered once, at layer creation.
   disposeWrapper = projectToolWrapper(ctx, {
     toolOwnerOf: name => toolOwners.get(name),
+    projectRootOf: pluginId => pluginRoots.get(pluginId),
     runGuard,
   })
 

@@ -106,6 +106,20 @@
   color: var(--dsw-alias-label-secondary);
 }
 
+/* Project-root provenance shown next to the source badge for source='project'
+   rows. The value is served by the governance roster (server-side), never
+   inferred by the client. */
+.projectRoot {
+  display: block;
+  margin-top: 2px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 15px;
+  color: var(--dsw-alias-label-tertiary);
+  white-space: normal;
+  word-break: break-all;
+}
+
 .healthStrip {
   display: flex;
   flex-wrap: wrap;

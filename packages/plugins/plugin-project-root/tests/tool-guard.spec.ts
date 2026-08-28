@@ -68,6 +68,7 @@ describe('projectToolWrapper (B-08)', () => {
     const toolOwners = new Map([['demo_tool', 'fixtures/demo']])
     const dispose = projectToolWrapper(ctx, {
       toolOwnerOf: name => toolOwners.get(name),
+      projectRootOf: () => undefined,
       runGuard,
     })
     try {
@@ -90,6 +91,7 @@ describe('projectToolWrapper (B-08)', () => {
     const toolOwners = new Map([['demo_tool', 'fixtures/demo']])
     const dispose = projectToolWrapper(ctx, {
       toolOwnerOf: name => toolOwners.get(name),
+      projectRootOf: () => undefined,
       runGuard,
     })
     try {
@@ -130,6 +132,7 @@ describe('projectToolWrapper (B-08)', () => {
     const toolOwners = new Map([['hang_tool', 'fixtures/demo']])
     const dispose = projectToolWrapper(ctx, {
       toolOwnerOf: name => toolOwners.get(name),
+      projectRootOf: () => undefined,
       runGuard,
     })
     try {
@@ -151,6 +154,7 @@ describe('projectToolWrapper (B-08)', () => {
     const runGuard = new RunGuard()
     const dispose = projectToolWrapper(ctx, {
       toolOwnerOf: () => undefined,
+      projectRootOf: () => undefined,
       runGuard,
     })
     try {

@@ -59,6 +59,7 @@ const STATUS_KEYS = {
 const SOURCE_KEYS = {
   'loader-mirror': 'sourceMirror',
   native: 'sourceNative',
+  project: 'sourceProject',
 } as const satisfies Record<GovernedPluginSummary['source'], PluginManagerLocaleKey>
 
 /** Whether a roster row currently offers the enable action (rather than disable). */
@@ -215,6 +216,11 @@ export function PluginManagerSettingsTab({
                       <td>
                         <span className={css.sourceBadge} data-source={row.source}>
                           {t(SOURCE_KEYS[row.source])}
+                          {row.projectRoot !== undefined ? (
+                            <span className={css.projectRoot} data-project-root title={row.projectRoot}>
+                              {row.projectRoot}
+                            </span>
+                          ) : null}
                         </span>
                       </td>
                       <td>

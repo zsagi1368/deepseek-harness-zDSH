@@ -773,37 +773,7 @@ export class PluginGovernanceGateway extends TypertRemoteService {
             // which always precedes this first sync pass (no race window).
             const provenance = this.projectProvenanceOf(entry.options.id)
             if (provenance !== undefined) {
-              const manifestId = canonicalId(provenance.manifestId)
-              if (this.mirrored.has(manifestId)) continue
-              const guardedManifest = this.projectGuardedManifestOf(entry.options.id)
-              if (guardedManifest === undefined) {
-                // Provenance without a guarded manifest means the layer is in a
-                // state it should never reach; fail soft and never treat this
-                // entry as an official host plugin either (the C-01 invariant).
-                this.warn(`project loader entry ${entry.options.name} has no guarded manifest; skipping`)
-                continue
-              }
-              const result = await this.registry.register(wrapCordisPlugin(
-                service as CordisService,
-                mirrorPluginContext(String(manifestId)),
-                {
-                  id: String(manifestId),
-                  name: mountedDisplayName(manifestId),
-                  version: provenance.version,
-                  mirror: true,
-                  source: 'project',
-                  manifest: guardedManifest,
-                },
-              ))
-              this.mirrored.add(manifestId)
-              if (result.success) {
-                this.projectSources.set(manifestId, {
-                  projectRoot: provenance.projectRoot,
-                  runtimeTier: provenance.runtimeTier ?? 'in-process',
-                })
-              } else {
-                this.warn(`failed to register project loader entry ${entry.options.name}: ${(result.errors ?? []).map(error => error.message).join('; ')}`)
-              }
+              await this.registerProjectEntry(entry.options.id, provenance, service)
               continue
             }
             const pluginId = canonicalId(entry.options.name)
@@ -834,6 +804,20 @@ export class PluginGovernanceGateway extends TypertRemoteService {
       // throwing must not abort the pass or its persisted-decision sweep.
       this.warn(`failed to enumerate loader entries: ${describe(cause)}`)
     }
+    // Subprocess project plugins (M2b): these entries have NO loader row —
+    // their tools are host-side proxies registered during mount — so they are
+    // enumerated separately from the project layer's subprocess entry id set.
+    try {
+      const subprocessIds = this.projectLayer()?.subprocessEntryIds?.() ?? []
+      for (const entryId of subprocessIds) {
+        const provenance = this.projectProvenanceOf(entryId)
+        if (provenance !== undefined) {
+          await this.registerProjectEntry(entryId, provenance)
+        }
+      }
+    } catch (cause) {
+      this.warn(`failed to enumerate subprocess project entries: ${describe(cause)}`)
+    }
     // Every pass ends by re-applying persisted decisions, so entries that just
     // registered through the Loader above come back with their operator
     // decisions instead of a fresh default status.
@@ -858,10 +842,18 @@ export class PluginGovernanceGateway extends TypertRemoteService {
   }
 
   /** Structural read view of the project plugin layer service (no package import). */
-  private projectLayer(): { provenanceOf(entryId: string): ProjectProvenanceLike | undefined; guardedManifestOf(entryId: string): GovernedManifest | undefined } | undefined {
+  private projectLayer(): {
+    provenanceOf(entryId: string): ProjectProvenanceLike | undefined
+    guardedManifestOf(entryId: string): GovernedManifest | undefined
+    subprocessEntryIds?(): string[]
+  } | undefined {
     try {
       const candidate = this.ctx.get('projectPluginLayer') as
-        | { provenanceOf(entryId: string): ProjectProvenanceLike | undefined; guardedManifestOf(entryId: string): GovernedManifest | undefined }
+        | {
+          provenanceOf(entryId: string): ProjectProvenanceLike | undefined
+          guardedManifestOf(entryId: string): GovernedManifest | undefined
+          subprocessEntryIds?(): string[]
+        }
         | undefined
       if (candidate === undefined) return undefined
       return candidate
@@ -878,6 +870,60 @@ export class PluginGovernanceGateway extends TypertRemoteService {
   /** The guarded (clamped) manifest the project layer mounted for one entry. */
   private projectGuardedManifestOf(entryId: string): GovernedManifest | undefined {
     return this.projectLayer()?.guardedManifestOf(entryId)
+  }
+
+  /**
+   * Register one project-layer entry (a loader entry or a subprocess-tier
+   * entry with no loader row) into the governed registry as source='project'.
+   * Shared by the loader mirror branch and the subprocess enumeration so both
+   * rows get the same C-01 projection: explicit id = manifest id, clamped
+   * manifest, no OFFICIAL badge, no autoApprove.
+   * @param entryId - the loader entry id (or synthetic project entry id).
+   * @param provenance - the layer's provenance record for this entry.
+   * @param service - the mounted Cordis service for a loader entry; subprocess
+   *   entries pass no service (their tools are host-side proxies) and receive
+   *   a stub whose health probe reports the mirror status.
+   */
+  private async registerProjectEntry(
+    entryId: string,
+    provenance: ProjectProvenanceLike,
+    service?: unknown,
+  ): Promise<void> {
+    const manifestId = canonicalId(provenance.manifestId)
+    if (this.mirrored.has(manifestId)) return
+    const guardedManifest = this.projectGuardedManifestOf(entryId)
+    if (guardedManifest === undefined) {
+      // Provenance without a guarded manifest means the layer is in a state it
+      // should never reach; fail soft and never treat this entry as an official
+      // host plugin either (the C-01 invariant).
+      this.warn(`project entry ${entryId} has no guarded manifest; skipping`)
+      return
+    }
+    const result = await this.registry.register(wrapCordisPlugin(
+      // Subprocess-tier project entries have no mounted Cordis service to
+      // mirror; the project source branch of the adapter never consults the
+      // service for the manifest, and the stub keeps health/status probes
+      // defined. Loader entries keep their real mounted service.
+      service === undefined ? { start: async () => {}, stop: async () => {} } : service as CordisService,
+      mirrorPluginContext(String(manifestId)),
+      {
+        id: String(manifestId),
+        name: mountedDisplayName(manifestId),
+        version: provenance.version,
+        mirror: true,
+        source: 'project',
+        manifest: guardedManifest,
+      },
+    ))
+    this.mirrored.add(manifestId)
+    if (result.success) {
+      this.projectSources.set(manifestId, {
+        projectRoot: provenance.projectRoot,
+        runtimeTier: provenance.runtimeTier ?? 'in-process',
+      })
+    } else {
+      this.warn(`failed to register project entry ${entryId}: ${(result.errors ?? []).map(error => error.message).join('; ')}`)
+    }
   }
 
   /** Non-fatal sync diagnostics go through the host logger, never to callers. */

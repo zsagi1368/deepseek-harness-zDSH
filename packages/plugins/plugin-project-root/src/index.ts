@@ -42,6 +42,8 @@ export { mountProjectPlugins, createProjectPluginLayer, type ProjectPluginLayer,
 
 export { projectToolWrapper } from './tool-guard.ts'
 
+export { cwdHitsProjectRoot, wireSessionScope, type SessionScopeWiring, type SessionAgentLike, type SessionAgentsServiceLike } from './session-scope.ts'
+
 export {
   createSubprocessRuntime,
   SubprocessTimeoutError,
