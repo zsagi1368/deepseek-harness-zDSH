@@ -1,10 +1,13 @@
 /**
  * Automation-only Agent Client Protocol server over JSON-RPC stdio.
  *
- * The bridge exposes fresh harness sessions to trusted programmatic clients. It
- * carries prompt text/images, committed assistant text/images, cancellation,
- * and one-shot permission decisions; presentation and human-interaction
- * features stay with the harness's UI modules.
+ * The bridge exposes fresh and resumed harness sessions to trusted
+ * programmatic clients. It carries prompt text/images, committed assistant
+ * text/images, cancellation, and one-shot permission decisions; presentation
+ * and human-interaction features stay with the harness's UI modules. When a
+ * durable persistence backend is composed, `session/resume` replays a stored
+ * session log onto a fresh agent so a client can continue a conversation
+ * across process restarts.
  *
  * @module @deepseek-ai/dsh-acp
  */
@@ -25,18 +28,22 @@ import {
   type CancelNotification,
   type InitializeRequest,
   type InitializeResponse,
+  type McpServer,
   type NewSessionRequest,
   type NewSessionResponse,
+  type PermissionOption,
   type PromptRequest,
   type PromptResponse,
+  type ResumeSessionRequest,
+  type ResumeSessionResponse,
   type SessionNotification,
   type StopReason,
   type Stream,
 } from '@agentclientprotocol/sdk'
-import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent'
 import { SessionId, type SessionEvent, type TurnEndReason } from '@deepseek-ai/dsh-session'
-// Side-effect type import: declaration-merges the approval waterfall answered below.
-import type {} from '@deepseek-ai/dsh-user-approval'
+// The value import also declaration-merges the approval waterfall answered below.
+import { APPROVAL_POLICIES } from '@deepseek-ai/dsh-user-approval'
 import { AcpContentError, admitAcpPrompt, assistantBlockToAcp, supportsAcpImagePrompts } from './content.ts'
 import { turnEndToStopReason } from './codec.ts'
 
@@ -65,6 +72,49 @@ function invalidParams(detail: string): RequestError {
 /** Preserve failed-turn detail; plain handler errors become a generic wire internal error. */
 function internalError(detail: string): RequestError {
   return RequestError.internalError(undefined, detail)
+}
+
+/**
+ * The one-shot ACP permission choices this bridge presents for one approval
+ * request. Derived from `@deepseek-ai/dsh-user-approval`'s policy tiers so the
+ * automation wire stays in sync with the harness's permission vocabulary: the
+ * `'ask'` tier lets the client allow once, and the `'never'` tier's
+ * deterministic rejection is offered as an explicit one-shot reject.
+ */
+const approvalOptions: PermissionOption[] = APPROVAL_POLICIES.map((policy) => {
+  if (policy === 'ask') {
+    return { optionId: 'allow-once', name: 'Allow once', kind: 'allow_once' }
+  }
+  // The approval-policy vocabulary is closed ('ask' | 'never'); a future tier
+  // must map to an explicit one-shot option here.
+  return { optionId: 'reject-once', name: 'Reject', kind: 'reject_once' }
+})
+
+/**
+ * Classify a failed `session/resume` into a structured wire error. An unknown
+ * id and a stored log that cannot be replayed are both invalid-parameter
+ * failures (the caller asked to resume a session this bridge cannot
+ * materialize); infrastructure failures stay internal.
+ * @param sessionId - the session identity the caller tried to resume.
+ * @param error - the failure surfaced by the persistence load or agent setup.
+ * @returns the wire error to reject the resume with.
+ */
+function resumeFailure(sessionId: SessionId, error: unknown): RequestError {
+  if (error instanceof Error) {
+    const message = error.message
+    if (message.includes('not found') && message.includes(`"${sessionId}"`)) {
+      return invalidParams(`unknown session: ${sessionId}`)
+    }
+    if (message.includes(`"${sessionId}"`) && message.includes('while it is live')) {
+      return invalidParams(`session ${sessionId} is already active in this connection`)
+    }
+    if (error.name === 'SessionPersistenceCorruptionError'
+      || error.name === 'SessionFormatUnsupportedError'
+      || /corrupt/i.test(message)) {
+      return invalidParams(`cannot resume session ${sessionId}: the stored log cannot be replayed (${message})`)
+    }
+  }
+  return internalError(`session resume failed: ${errorChain(error)}`)
 }
 
 /** Plugin config: the provider/model selection used for each ACP-created agent. */
@@ -274,10 +324,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
     return conn.requestPermission({
       sessionId: record.agent.session.id,
       toolCall: { toolCallId: request.callId },
-      options: [
-        { optionId: 'allow-once', name: 'Allow once', kind: 'allow_once' },
-        { optionId: 'reject-once', name: 'Reject', kind: 'reject_once' },
-      ],
+      options: approvalOptions,
     }).then(({ outcome }) => {
       if (outcome.outcome === 'cancelled') return 'cancelled'
       return outcome.optionId === 'allow-once' ? 'allowed-once' : 'rejected'
@@ -291,11 +338,18 @@ export function apply(ctx: Context, config: AcpConfig): void {
         // Single-version agent: the spec's "same version if supported, else
         // the latest supported" both resolve to this server's one version.
         imagePromptEnabled = await supportsAcpImagePrompts(ctx, config.provider, config.model)
+        // `session/resume` is advertised only while a durable persistence
+        // backend is composed: without one there is nothing to replay, and the
+        // capability probe must not promise a method that cannot materialize
+        // any stored session. Probed per-initialize so a mid-flight
+        // composition change is reflected on the next handshake.
+        const persistenceAvailable = ctx.get('sessionPersistence') !== undefined
         return {
           protocolVersion: PROTOCOL_VERSION,
           agentInfo: { name: 'deepseek-harness-acp', version: '0.0.1' },
           agentCapabilities: {
             promptCapabilities: { image: imagePromptEnabled, audio: false, embeddedContext: false },
+            ...persistenceAvailable ? { sessionCapabilities: { resume: {} } } : {},
           },
           authMethods: [],
         }
@@ -330,6 +384,37 @@ export function apply(ctx: Context, config: AcpConfig): void {
           inflight: undefined,
         })
         return { sessionId }
+      },
+
+      async resumeSession(params: ResumeSessionRequest): Promise<ResumeSessionResponse> {
+        assertOpen()
+        validateSessionParams(params)
+        const sessionId = SessionId(params.sessionId)
+        // The loop factory replays the stored session log onto a fresh agent
+        // (inheriting the persisted header's cwd and metadata), then publishes
+        // it. A load failure rejects here, so no bridge session record is
+        // half-created.
+        let handle: AgentHandle
+        try {
+          handle = await agents.resume({
+            resumeSessionId: sessionId,
+            agentOptions: agentOptions(config),
+          })
+        } catch (error: unknown) {
+          throw resumeFailure(sessionId, error)
+        }
+        /* v8 ignore next 4 -- a real stdio close can race an in-flight resume. */
+        if (closed) {
+          await handle.dispose()
+          throw internalError('connection closed during session/resume')
+        }
+        sessions.set(sessionId, {
+          agent: handle.agent,
+          dispose: () => handle.dispose(),
+          outputTail: Promise.resolve(),
+          inflight: undefined,
+        })
+        return {}
       },
 
       async prompt(params: PromptRequest): Promise<PromptResponse> {
@@ -536,10 +621,14 @@ function agentOptions(config: AcpConfig): { provider?: string; model?: string } 
 }
 
 /** Reject session features outside the automation contract. */
-function validateSessionParams(params: NewSessionRequest): void {
+function validateSessionParams(params: {
+  readonly cwd: string
+  readonly additionalDirectories?: readonly string[] | undefined
+  readonly mcpServers?: readonly McpServer[] | undefined
+}): void {
   if (!isAbsolute(params.cwd)) throw invalidParams(`cwd must be an absolute path: ${params.cwd}`)
   if (params.additionalDirectories !== undefined && params.additionalDirectories.length > 0) {
     throw invalidParams('additionalDirectories is not supported')
   }
-  if (params.mcpServers.length > 0) throw invalidParams('mcpServers is not supported')
+  if ((params.mcpServers?.length ?? 0) > 0) throw invalidParams('mcpServers is not supported')
 }

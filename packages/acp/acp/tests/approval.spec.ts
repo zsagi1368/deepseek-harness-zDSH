@@ -3,7 +3,7 @@ import { PROTOCOL_VERSION } from '@agentclientprotocol/sdk'
 import { CallId } from '@deepseek-ai/dsh-llm'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import ApprovalService, { type ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
+import ApprovalService, { APPROVAL_POLICIES, type ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
 import { makeBridgeHarness, type BridgeHarness } from './harness.ts'
 
 describe('ACP machine permission policy', () => {
@@ -24,19 +24,22 @@ describe('ACP machine permission policy', () => {
     return { agent, toolName: 'bash', callId: CallId('call-9'), ...overrides }
   }
 
-  it('maps the two advertised one-shot choices', async () => {
+  it('maps the two advertised one-shot choices derived from the policy tiers', async () => {
     harness = await makeBridgeHarness()
     harness.onPermission = () => ({ outcome: { outcome: 'selected', optionId: 'allow-once' } })
     const request = await ownedRequest()
     await expect(harness.ctx.approval.request(request)).resolves.toBe('allowed-once')
+    // The one-shot options correspond one-to-one with the user-approval
+    // policy tiers ('ask' → allow-once, 'never' → reject-once).
+    expect(APPROVAL_POLICIES).toEqual(['ask', 'never'])
     expect(harness.permissionRequests[0]).toMatchObject({
       sessionId: request.agent.session.id,
       toolCall: { toolCallId: 'call-9' },
-      options: [
-        { optionId: 'allow-once', kind: 'allow_once' },
-        { optionId: 'reject-once', kind: 'reject_once' },
-      ],
     })
+    expect(harness.permissionRequests[0]?.options).toEqual([
+      { optionId: 'allow-once', name: 'Allow once', kind: 'allow_once' },
+      { optionId: 'reject-once', name: 'Reject', kind: 'reject_once' },
+    ])
 
     harness.onPermission = () => ({ outcome: { outcome: 'selected', optionId: 'reject-once' } })
     await expect(harness.ctx.approval.request(request)).resolves.toBe('rejected')

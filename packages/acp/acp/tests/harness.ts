@@ -17,6 +17,7 @@ import type { ImageAttachmentLimits, ImageAttachmentRef, SaveImageAttachment, St
 import { type GenerateOptions, LlmAdapter, type LlmResolvedModelInfo, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
+import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import * as AcpPlugin from '../src/index.ts'
 import type { AcpConfig } from '../src/index.ts'
 
@@ -158,6 +159,7 @@ export interface BridgeHarness {
   client: ClientSideConnection
   adapter: MockAdapter
   attachments: MemoryAttachmentStore | undefined
+  persistence: JsonlSessionPersistence | undefined
   updates: CapturedUpdate[]
   sessionUpdates: { sessionId: string; update: CapturedUpdate }[]
   permissionRequests: RequestPermissionRequest[]
@@ -180,6 +182,8 @@ export async function makeBridgeHarness(options: {
   persona?: string
   imageCapable?: boolean
   attachments?: boolean
+  /** Mount the JSONL persistence backend over this root so `session/resume` can replay stored logs. */
+  persistenceRoot?: string
 } = {}): Promise<BridgeHarness> {
   const adapter = new MockAdapter(options.script ?? [], options.imageCapable === true)
   const ctx = new Context()
@@ -187,6 +191,11 @@ export async function makeBridgeHarness(options: {
   if (options.attachments !== false) await ctx.plugin(MemoryAttachmentStore)
   const loopFiber = await ctx.plugin(AgentLoop, { agents: [] })
   ctx.llm.registerAdapter(['mock'], adapter)
+  // Persistence mounts before the bridge so the bridge's resume capability
+  // probe observes a composed backend; the loop factory reads it lazily.
+  const persistence = options.persistenceRoot === undefined
+    ? undefined
+    : await ctx.plugin(JsonlSessionPersistence, { root: options.persistenceRoot })
 
   const agentToClient = new TransformStream<Uint8Array, Uint8Array>()
   const clientToAgent = new TransformStream<Uint8Array, Uint8Array>()
@@ -204,6 +213,7 @@ export async function makeBridgeHarness(options: {
     ctx,
     adapter,
     attachments: ctx.get('attachments') as MemoryAttachmentStore | undefined,
+    persistence: persistence as JsonlSessionPersistence | undefined,
     updates,
     sessionUpdates,
     permissionRequests,
