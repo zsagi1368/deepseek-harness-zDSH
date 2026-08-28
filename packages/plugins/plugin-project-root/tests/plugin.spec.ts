@@ -169,6 +169,82 @@ describe('ProjectPluginLayer.mount', () => {
     expect([...ctx.loader.entries()]).toHaveLength(0)
   })
 
+  it('enforces the call count limit on the production path (B-08)', async () => {
+    // The watcher's explicit default maxCallCount (100) is armed for the
+    // CLAMPED manifest (timeoutMs ≤ 60000 after the host clamp), so the count
+    // limit is reachable through the real mount → watch → wrapper pipeline.
+    const root = makeRoot()
+    const pluginDir = writePluginPackage(root, 'demo', manifestBlob())
+    const entryModule = Object.assign(
+      (
+        inner: {
+          tools: {
+            register: (tool: {
+              name: string
+              description: string
+              parameters: unknown
+              output: unknown
+              execute: () => Promise<string>
+            }) => void
+          }
+        },
+      ) => {
+        inner.tools.register({
+          name: 'project_counted_tool',
+          description: 'counted project tool',
+          parameters: { type: 'object', properties: {} },
+          output: { schema: { type: 'string' }, render: (_args: unknown, value: unknown) => [{ type: 'text', text: String(value) }] },
+          execute: async () => 'ran',
+        })
+      },
+      { inject: ['tools'] },
+    )
+    const ctx = await mountCtx(new Map([[pathToFileURL(join(pluginDir, 'index.js')).href, { default: entryModule }]]))
+    const SystemPrompt = (await import('@deepseek-ai/dsh-system-prompt')).default
+    const ToolRuntime = (await import('@deepseek-ai/dsh-tools')).default
+    await ctx.plugin(SystemPrompt, {})
+    await ctx.plugin(ToolRuntime)
+
+    const { accepted } = await gateFixture(root)
+    // The clamped sandbox keeps timeoutMs ≤ 60000 (the clamp caps it), which
+    // previously made maxCallCount unreachable; the M2b default arms it.
+    expect(accepted[0]?.clampedSandbox.resources.timeoutMs).toBeLessThanOrEqual(60000)
+    const layer = createProjectPluginLayer(ctx)
+    const { mounted } = await layer.mount(accepted)
+    expect(mounted).toHaveLength(1)
+    expect(layer.runGuard.getWatcher('fixtures/demo')?.getHealthStatus().callCount).toBe(0)
+
+    const result = await ctx.tools.execute({
+      signal: new AbortController().signal,
+      callId: 'c1' as import('@deepseek-ai/dsh-llm').CallId,
+      name: 'project_counted_tool',
+      arguments: {},
+    })
+    expect(result.isError).toBe(false)
+
+    // Exceed the 100-call budget: the 101st call returns a governance error.
+    for (let i = 0; i < 99; i += 1) {
+      const r = await ctx.tools.execute({
+        signal: new AbortController().signal,
+        callId: `c${i}` as import('@deepseek-ai/dsh-llm').CallId,
+        name: 'project_counted_tool',
+        arguments: {},
+      })
+      expect(r.isError, `call ${i + 1}`).toBe(false)
+    }
+    const refused = await ctx.tools.execute({
+      signal: new AbortController().signal,
+      callId: 'c101' as import('@deepseek-ai/dsh-llm').CallId,
+      name: 'project_counted_tool',
+      arguments: {},
+    })
+    expect(refused.isError).toBe(true)
+    if (refused.isError) {
+      expect(refused.error.info?.code).toBe('PLUGIN_GOVERNANCE')
+      expect(refused.error.message).toContain('Exceeded maximum call count')
+    }
+  })
+
   it('is idempotent about its service surface and disposes cleanly', async () => {
     const root = makeRoot()
     const pluginDir = writePluginPackage(root, 'demo', manifestBlob())

@@ -47,11 +47,15 @@ async function run(ctx: Context, name: string): Promise<ToolExecutionResult> {
   })
 }
 
-/** A manifest whose timeout is high enough that the watcher arms maxCallCount. */
+/**
+ * A manifest with the default sandbox: the watcher's explicit default
+ * maxCallCount (100, fixed since M2b) applies to EVERY manifest, so the call
+ * count limit is reachable on the production path (clamped timeoutMs ≤ 60000).
+ */
 function countedManifest(): PluginManifest {
   return testManifest({
     sandbox: testSandbox({
-      resources: { memoryLimitMb: 128, cpuLimit: 50, timeoutMs: 120000, maxOutputBytes: 10000 },
+      resources: { memoryLimitMb: 128, cpuLimit: 50, timeoutMs: 30000, maxOutputBytes: 10000 },
     }),
   })
 }
@@ -92,7 +96,7 @@ describe('projectToolWrapper (B-08)', () => {
       let bodyCalls = 0
       ctx.tools.register(tool('demo_tool', async () => { bodyCalls += 1; return 'ok' }))
       const watcher = runGuard.getWatcher('fixtures/demo')
-      // The watcher arms maxCallCount=100 for a >60s timeout manifest; call
+      // The watcher arms maxCallCount=100 (the M2b explicit default); call
       // 101 times: every call up to the limit dispatches, the 101st is refused.
       for (let i = 0; i < 100; i += 1) {
         const result = await run(ctx, 'demo_tool')

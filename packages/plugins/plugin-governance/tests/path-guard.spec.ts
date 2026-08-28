@@ -168,6 +168,32 @@ describe('checkPathAllowed deny-pattern realpath (batch3 backlog)', () => {
   })
 })
 
+describe('checkPathAllowed component-prefix regression (S-43 B-05)', () => {
+  it('does not let /work admit /workshop (whole-segment matching)', () => {
+    const base = join(root, 'work')
+    mkdirSync(base, { recursive: true })
+    mkdirSync(join(root, 'workshop'), { recursive: true })
+    expect(checkPathAllowed(fsConfig([base]), join(base, 'file.txt'))).toBe(true)
+    // A sibling whose name merely shares the prefix must stay denied.
+    expect(checkPathAllowed(fsConfig([base]), join(root, 'workshop', 'file.txt'))).toBe(false)
+  })
+
+  it('matches Windows-style backslash prefixes too', () => {
+    const base = join(root, 'win-dir')
+    mkdirSync(base, { recursive: true })
+    const config = fsConfig([base])
+    const winStyle = `${base}\\sub\\file.txt`.replace(/\//g, '\\')
+    expect(checkPathAllowed(config, winStyle)).toBe(true)
+  })
+
+  it('denies everything on an empty allow list (fail closed)', () => {
+    const base = join(root, 'denied')
+    mkdirSync(base, { recursive: true })
+    expect(checkPathAllowed(fsConfig([]), base)).toBe(false)
+    expect(checkPathAllowed(fsConfig([]), join(base, 'file.txt'))).toBe(false)
+  })
+})
+
 afterAll(() => {
   rmSync(root, { recursive: true, force: true })
 })

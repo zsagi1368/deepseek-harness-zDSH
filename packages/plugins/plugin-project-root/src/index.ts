@@ -11,7 +11,7 @@
  */
 
 export { clampProjectPluginSandbox } from './clamp.ts'
-export type { ClampRejection, ProjectPluginClamp } from './clamp.ts'
+export type { ClampRejection, ProjectPluginClamp, ProjectPluginRuntimeTier } from './clamp.ts'
 
 export { gate } from './gate.ts'
 
@@ -41,6 +41,14 @@ export {
 export { mountProjectPlugins, createProjectPluginLayer, type ProjectPluginLayer, type MountResult } from './plugin.ts'
 
 export { projectToolWrapper } from './tool-guard.ts'
+
+export {
+  createSubprocessRuntime,
+  SubprocessTimeoutError,
+  SubprocessToolError,
+  type SubprocessRuntime,
+  type SubprocessRuntimeOptions,
+} from './subprocess-runtime.ts'
 
 export type {
   DiscoveredProjectPlugin,

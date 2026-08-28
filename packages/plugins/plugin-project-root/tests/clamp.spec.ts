@@ -12,18 +12,24 @@ import { testSandbox } from './fixtures.ts'
 const pluginDir = process.platform === 'win32' ? 'C:\\repo\\.dsh\\plugins\\demo' : '/repo/.dsh/plugins/demo'
 
 describe('clampProjectPluginSandbox', () => {
-  it('keeps the M2a in-process runtime tier and warns on declared worker/process types', () => {
+  it('grants the declared subprocess tier in M2b and keeps inline as the inline fallback', () => {
+    // Declared inline stays inline with no warning and the in-process tier.
     const inline = clampProjectPluginSandbox(testSandbox({ type: 'inline' }), pluginDir)
     expect(inline.effective.type).toBe('inline')
+    expect(inline.runtimeTier).toBe('in-process')
     expect(inline.warnings.some(w => w.check === 'sandbox-type')).toBe(false)
 
+    // Declared worker is granted as the effective worker tier (M2b subprocess).
     const worker = clampProjectPluginSandbox(testSandbox({ type: 'worker' }), pluginDir)
-    expect(worker.effective.type).toBe('inline')
-    expect(worker.warnings.some(w => w.check === 'sandbox-type')).toBe(true)
+    expect(worker.effective.type).toBe('worker')
+    expect(worker.runtimeTier).toBe('subprocess')
+    expect(worker.warnings.some(w => w.check === 'sandbox-type')).toBe(false)
 
+    // Declared process is granted as the effective process tier (M2b subprocess).
     const processType = clampProjectPluginSandbox(testSandbox({ type: 'process' }), pluginDir)
-    expect(processType.effective.type).toBe('inline')
-    expect(processType.warnings.some(w => w.check === 'sandbox-type')).toBe(true)
+    expect(processType.effective.type).toBe('process')
+    expect(processType.runtimeTier).toBe('subprocess')
+    expect(processType.warnings.some(w => w.check === 'sandbox-type')).toBe(false)
   })
 
   it('rejects fullyAuthorized=true (B-01)', () => {

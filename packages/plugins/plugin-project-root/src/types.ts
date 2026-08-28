@@ -8,6 +8,7 @@
  */
 
 import type { PluginManifest, PluginSandboxConfig } from '@deepseek-ai/dsh-plugin-governance'
+import type { ProjectPluginRuntimeTier } from './clamp.ts'
 
 /** A project plugin entry as discovered from `<root>/.dsh/plugins/<id>/`. */
 export interface DiscoveredProjectPlugin {
@@ -69,6 +70,12 @@ export interface ProjectPluginProvenance {
   manifestHash: string
   /** Host-clamped effective sandbox. */
   clampedSandbox: PluginSandboxConfig
+  /**
+   * Actual runtime tier: 'in-process' for inline entries (M2a behavior), or
+   * 'subprocess' for process/worker entries (M2b — the entry runs in a child
+   * process or worker thread with an OS boundary).
+   */
+  runtimeTier: ProjectPluginRuntimeTier
   /** Epoch millis of the successful mount. */
   mountTime: number
   /** Gate verdict that admitted this entry. */

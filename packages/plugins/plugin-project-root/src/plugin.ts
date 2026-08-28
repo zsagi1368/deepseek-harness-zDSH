@@ -21,7 +21,7 @@ import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import type { EntryOptions } from '@deepseek-ai/cordis-plugin-loader'
-import { RunGuard, type PluginManifest } from '@deepseek-ai/dsh-plugin-governance'
+import { RunGuard, PluginError, type PluginManifest } from '@deepseek-ai/dsh-plugin-governance'
 import { discoverProjectPlugins, PROJECT_PLUGIN_MANIFEST_FILENAME } from './discover.ts'
 import { gate } from './gate.ts'
 import { resolveProjectPluginEnabled } from './resolve.ts'
@@ -32,6 +32,7 @@ import {
   shouldMountProjectPlugin,
 } from './ledger.ts'
 import { projectToolWrapper } from './tool-guard.ts'
+import { createSubprocessRuntime, type SubprocessRuntime } from './subprocess-runtime.ts'
 import type {
   ProjectPluginCandidate,
   ProjectPluginProvenance,
@@ -56,11 +57,15 @@ export interface ProjectPluginLayer {
   guardedManifestOf(entryId: string): PluginManifest | undefined
   /** Canonical manifest id owning one tool name, `undefined` when unattributed. */
   toolOwnerOf(toolName: string): string | undefined
+  /** Whether one manifest id runs in a subprocess (M2b process/worker tier). */
+  isSubprocess(pluginId: string): boolean
+  /** The subprocess runtime of one manifest id, `undefined` when inline. */
+  subprocessOf(pluginId: string): SubprocessRuntime | undefined
   /** The accumulated gate+mount report. */
   readonly report: readonly GateReportEntry[]
   /** The RunGuard backing every project tool call. */
   readonly runGuard: RunGuard
-  /** Remove the tools/execute wrapper and drop all watchers. */
+  /** Remove the tools/execute wrapper and drop all watchers and subprocesses. */
   dispose(): void
 }
 
@@ -108,6 +113,52 @@ function toolNames(ctx: Context): Set<string> {
   }
 }
 
+/** Tool names declared in a plugin manifest's tool capabilities (the IPC whitelist). */
+function manifestToolNames(manifest: PluginManifest): string[] {
+  const names: string[] = []
+  for (const cap of manifest.capabilities) {
+    if (cap.type === 'tool' && cap.tool !== undefined) names.push(cap.tool.name)
+  }
+  return names
+}
+
+/**
+ * Register a host-side proxy tool for a subprocess plugin. The manifest
+ * declares the tool capability (name, description, schema); the proxy tool
+ * forwards the call to the subprocess via its runtime.
+ */
+function registerSubprocessProxyTool(
+  ctx: Context,
+  pluginId: string,
+  name: string,
+  description: string | undefined,
+  schema: Record<string, unknown> | undefined,
+  runtime: SubprocessRuntime,
+): void {
+  // The tools runtime is always present at mount time (project plugins mount
+  // post-boot, after the tools service is installed); a missing registry is a
+  // wiring bug and must fail loudly, not silently skip the proxy surface.
+  const tools = (ctx as Context & { tools: { register: (def: Record<string, unknown>) => () => void } }).tools
+  tools.register({
+    name,
+    description: description ?? `project plugin tool ${name}`,
+    parameters: schema ?? { type: 'object' },
+    output: {
+      schema: {},
+      render: (_args: unknown, value: unknown) => [
+        { type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value) },
+      ],
+    },
+    execute: async (args: unknown) => {
+      const result = await runtime.executeTool(name, args)
+      if (result.isError) {
+        throw new PluginError(pluginId, result.error.message)
+      }
+      return result.value
+    },
+  })
+}
+
 /**
  * Create the project plugin layer for a context.
  * @param ctx - the settled boot context.
@@ -118,6 +169,7 @@ export function createProjectPluginLayer(ctx: Context): ProjectPluginLayer {
   const provenance = new Map<string, ProjectPluginProvenance>()
   const manifests = new Map<string, PluginManifest>()
   const toolOwners = new Map<string, string>()
+  const subprocesses = new Map<string, SubprocessRuntime>()
   const report: GateReportEntry[] = []
   let disposeWrapper: (() => void) | undefined
   let provideDisposer: (() => Promise<void>) | undefined
@@ -128,6 +180,14 @@ export function createProjectPluginLayer(ctx: Context): ProjectPluginLayer {
 
     toolOwnerOf(toolName: string): string | undefined {
       return toolOwners.get(toolName)
+    },
+
+    isSubprocess(pluginId: string): boolean {
+      return subprocesses.has(pluginId)
+    },
+
+    subprocessOf(pluginId: string): SubprocessRuntime | undefined {
+      return subprocesses.get(pluginId)
     },
 
     provenanceOf(entryId: string): ProjectPluginProvenance | undefined {
@@ -150,6 +210,87 @@ export function createProjectPluginLayer(ctx: Context): ProjectPluginLayer {
             verdict: 'mount-failed',
             check: 'toctou',
             message: `manifest or entry changed since discovery at ${candidate.projectRoot}; refusing to mount`,
+          })
+          continue
+        }
+        const sandbox = candidate.clampedSandbox
+        // M2b: a process/worker clamped sandbox runs the plugin in a subprocess.
+        if (sandbox.type === 'process' || sandbox.type === 'worker') {
+          const entryId = projectEntryId(candidate.projectRoot, candidate.id)
+          const toolNames_ = manifestToolNames(candidate.manifest)
+          const runtime = createSubprocessRuntime({
+            pluginId: candidate.id,
+            type: sandbox.type,
+            entryFile: candidate.entryFile,
+            config: sandbox,
+            toolWhitelist: toolNames_,
+          })
+          try {
+            await runtime.start()
+          } catch (cause) {
+            report.push({
+              root: candidate.projectRoot,
+              id: candidate.id,
+              version: candidate.version,
+              verdict: 'mount-failed',
+              check: 'subprocess-start',
+              message: `failed to start subprocess at ${candidate.projectRoot}: ${cause instanceof Error ? cause.message : String(cause)}`,
+            })
+            continue
+          }
+          subprocesses.set(candidate.id, runtime)
+          // Proxy tools: the manifest declares the IPC whitelist surface; each
+          // host-side proxy forwards calls to the subprocess runtime.
+          for (const cap of candidate.manifest.capabilities) {
+            if (cap.type !== 'tool' || cap.tool === undefined) continue
+            registerSubprocessProxyTool(
+              ctx,
+              candidate.id,
+              cap.tool.name,
+              cap.tool.description,
+              cap.tool.schema,
+              runtime,
+            )
+            toolOwners.set(cap.tool.name, candidate.id)
+          }
+          // Register a watcher for every mounted plugin (B-08).
+          try {
+            runGuard.watch(candidate.id, {
+              manifest: { ...candidate.manifest, sandbox },
+              install: () => {},
+            })
+          } catch (cause) {
+            report.push({
+              root: candidate.projectRoot,
+              id: candidate.id,
+              version: candidate.version,
+              verdict: 'mount-failed',
+              check: 'run-guard',
+              message: `failed to register RunGuard watcher: ${cause instanceof Error ? cause.message : String(cause)}`,
+            })
+          }
+          provenance.set(entryId, {
+            entryId,
+            manifestId: candidate.id,
+            version: candidate.version,
+            projectRoot: candidate.projectRoot,
+            pluginDir: candidate.pluginDir,
+            manifestHash: candidate.manifestHash,
+            clampedSandbox: sandbox,
+            runtimeTier: 'subprocess',
+            mountTime: Date.now(),
+            guardVerdict: report.some(row => row.id === candidate.id && row.verdict === 'warned')
+              ? 'warned'
+              : 'allowed',
+          })
+          mounted.push(entryId)
+          report.push({
+            root: candidate.projectRoot,
+            id: candidate.id,
+            version: candidate.version,
+            verdict: 'mounted',
+            check: 'mount',
+            message: `mounted ${JSON.stringify(candidate.id)} v${candidate.version} (${sandbox.type}) at ${candidate.projectRoot}`,
           })
           continue
         }
@@ -191,6 +332,7 @@ export function createProjectPluginLayer(ctx: Context): ProjectPluginLayer {
           pluginDir: candidate.pluginDir,
           manifestHash: candidate.manifestHash,
           clampedSandbox: candidate.clampedSandbox,
+          runtimeTier: 'in-process',
           mountTime: Date.now(),
           guardVerdict: report.some(row => row.id === candidate.id && row.verdict === 'warned')
             ? 'warned'
@@ -231,6 +373,8 @@ export function createProjectPluginLayer(ctx: Context): ProjectPluginLayer {
       disposeWrapper = undefined
       void provideDisposer?.()
       provideDisposer = undefined
+      for (const runtime of subprocesses.values()) void runtime.stop()
+      subprocesses.clear()
       for (const id of runGuard.getActiveWatchers()) runGuard.unwatch(id)
     },
   }

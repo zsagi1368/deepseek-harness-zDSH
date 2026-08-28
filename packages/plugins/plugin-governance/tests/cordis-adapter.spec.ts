@@ -13,7 +13,7 @@ import {
   wrapCordisPlugin,
   type CordisService,
 } from '../src/compat/cordis-adapter.ts'
-import { PluginStatus } from '../src/spec/index.ts'
+import { PluginCertification, PluginPermissionLevel, PluginStatus, type PluginManifest } from '../src/spec/index.ts'
 import { mockContext } from './fixtures.ts'
 import { DefaultPluginRegistry } from '../src/registry/registry.ts'
 import type { PluginContext } from '../src/spec/index.ts'
@@ -410,6 +410,92 @@ describe('official dsh-user-approval vocabulary bridge', () => {
       expect.objectContaining({ callId: 'call_123', signal: controller.signal }),
     )
     expect(service.started).toBe(true)
+  })
+})
+
+describe('project source (S-43 M2a, C-01)', () => {
+  /** A host-clamped project manifest with a self-reporting certification field. */
+  function projectManifest(): PluginManifest {
+    return {
+      id: 'fixtures/project-demo',
+      version: '2.0.0',
+      name: 'Project Demo',
+      dsh: { compatible: '>=0.1.0-rc.8' },
+      capabilities: [{ type: 'tool', tool: { name: 'p_tool', description: 't', schema: { type: 'object' } } }],
+      sandbox: {
+        type: 'inline',
+        resources: { memoryLimitMb: 128, cpuLimit: 50, timeoutMs: 30000, maxOutputBytes: 10000 },
+        filesystem: { access: 'readonly', allowedPaths: [], deniedPatterns: [] },
+        network: { access: 'none', allowedHosts: [], deniedHosts: [], allowLocal: false },
+        environment: { whitelist: [], blacklist: [], clear: false },
+        process: { spawn: false, exec: false, allowedCommands: [] },
+      },
+      // A project manifest must never be able to self-report trust: the
+      // wrapper must strip this even if the host accidentally passed it.
+      certification: {
+        level: PluginCertification.OFFICIAL,
+        certifiedAt: 1,
+      },
+      autoApprove: true,
+      permissionLevel: PluginPermissionLevel.WORKSPACE,
+    }
+  }
+
+  it('uses the host clamped manifest and strips every trust field for project sources', () => {
+    const wrapper = new CordisPluginWrapper(
+      new OfficialService(),
+      { id: 'fixtures/project-demo', name: 'Project Demo', source: 'project', manifest: projectManifest(), mirror: true },
+      mockContext(),
+    )
+    // The guarded manifest is adopted verbatim…
+    expect(wrapper.manifest.id).toBe('fixtures/project-demo')
+    expect(wrapper.manifest.version).toBe('2.0.0')
+    expect(wrapper.manifest.capabilities[0]?.tool?.name).toBe('p_tool')
+    // …except the trust fields: certification dropped, autoApprove forced
+    // false, permissionLevel forced CONFIRM_REQUIRED (C-01).
+    expect(wrapper.manifest.certification).toBeUndefined()
+    expect(wrapper.manifest.autoApprove).toBe(false)
+    expect(wrapper.manifest.permissionLevel).toBe(PluginPermissionLevel.CONFIRM_REQUIRED)
+    // The sandbox is the host-clamped effective one.
+    expect(wrapper.manifest.sandbox.network.access).toBe('none')
+  })
+
+  it('project sources never receive the OFFICIAL certification injected for mirrors', () => {
+    const official = new CordisPluginWrapper(
+      new OfficialService(),
+      { id: 'o/mirror', name: 'Mirror', mirror: true },
+      mockContext(),
+    )
+    expect(official.manifest.certification?.level).toBe(PluginCertification.OFFICIAL)
+    expect(official.manifest.autoApprove).toBe(true)
+
+    const project = new CordisPluginWrapper(
+      new OfficialService(),
+      { id: 'fixtures/p', name: 'P', source: 'project', manifest: projectManifest() },
+      mockContext(),
+    )
+    expect(project.manifest.certification).toBeUndefined()
+    // autoApprove stays false even though the host wrapper was created with
+    // mirror semantics — the mount decision never auto-approves project code.
+    expect(project.manifest.autoApprove).toBe(false)
+  })
+
+  it('wrapCordisPlugin forwards the project source options', () => {
+    const wrapped = wrapCordisPlugin(new OfficialService(), mockContext(), {
+      id: 'fixtures/project-demo',
+      name: 'Wrapped',
+      version: '1.1.0',
+      source: 'project',
+      manifest: projectManifest(),
+      mirror: true,
+    })
+    // For project sources, the manifest is authoritative: id and version come
+    // from the host-clamped manifest, not the wrapper options.
+    expect(wrapped.manifest.id).toBe('fixtures/project-demo')
+    expect(wrapped.manifest.version).toBe('2.0.0')
+    expect(wrapped.manifest.certification).toBeUndefined()
+    expect(wrapped.manifest.autoApprove).toBe(false)
+    expect(wrapped.manifest.permissionLevel).toBe(PluginPermissionLevel.CONFIRM_REQUIRED)
   })
 })
 

@@ -1,14 +1,17 @@
 /**
- * Host clamp for project plugin sandbox declarations (S-43 M2a, R-S43 A).
+ * Host clamp for project plugin sandbox declarations (S-43 M2a + M2b, R-S43 A).
  *
  * The plugin's manifest sandbox section is an APPLICATION; the host clamp
  * produces the EFFECTIVE sandbox, rejecting or narrowing declared values that
  * exceed the project-plugin boundary. The clamp runs BEFORE LoadGuard.preLoad
  * in the gate pipeline, so the guard sees the clamped config.
  *
- * M2a runtime tier: the effective sandbox.type stays 'inline' (the real
- * in-process runtime). A `runtimeTier: 'in-process'` display field tells the
- * roster/UI that no OS boundary exists yet. M2b elevates to 'process'.
+ * M2b runtime tier: a plugin that DECLARES a subprocess tier (`process` or
+ * `worker`) is granted that tier — the effective `type` takes it over and
+ * `runtimeTier` is `'subprocess'`, the roster/UI display field. A plugin that
+ * declares `inline` (or nothing) keeps the M2a in-process runtime unchanged
+ * (`runtimeTier: 'in-process'`), preserving M2a behavior for plugins that do
+ * not opt into an OS boundary.
  * @module @deepseek-ai/dsh-plugin-project-root
  */
 
@@ -23,18 +26,30 @@ export interface ClampRejection {
   message: string
 }
 
+/** Actual OS-boundary tier a project plugin runs under (roster display field). */
+export type ProjectPluginRuntimeTier = 'in-process' | 'subprocess'
+
 /** Clamp output: the effective sandbox plus diagnostics. */
 export interface ProjectPluginClamp {
   /** Host-clamped effective sandbox (the granted config, not the declared one). */
   effective: PluginSandboxConfig
+  /**
+   * Actual runtime tier the effective sandbox maps to: `'in-process'` for
+   * inline entries (no OS boundary, M2a behavior), `'subprocess'` for process
+   * and worker entries (the entry runs in a child process / worker thread).
+   */
+  runtimeTier: ProjectPluginRuntimeTier
   /** Error-level rejections — the caller must reject the candidate. */
   rejections: ClampRejection[]
   /** Warning-level narrowing notes — the candidate is accepted but narrowed. */
   warnings: ClampRejection[]
 }
 
-/** M2a runtime tier constant — in-process until M2b lands. */
+/** M2a runtime tier constant — in-process, kept for the inline fallback path. */
 export const M2A_RUNTIME_TIER = 'in-process' as const
+
+/** M2b runtime tier constant — subprocess (process/worker OS boundary). */
+export const M2B_RUNTIME_TIER = 'subprocess' as const
 
 /** The host-level cap every project plugin is clamped to. */
 export const PROJECT_PLUGIN_HOST_CAPS = {
@@ -72,17 +87,16 @@ export function clampProjectPluginSandbox(
   const rejections: ClampRejection[] = []
   const warnings: ClampRejection[] = []
 
-  // --- type: M2a keeps 'inline' (the real runtime tier) ---
-  // The declared type may be 'process' or 'worker'; in M2a the entry is always
-  // loaded in-process, so the effective type is 'inline'. A warning signals
-  // the discrepancy. M2b will elevate to the declared-or-`process` tier.
+  // --- type: M2b grants the declared subprocess tier; inline stays inline ---
+  // The declared type may be 'process' or 'worker' — those are granted as the
+  // effective type and the entry runs in a subprocess (M2b). Declared 'inline'
+  // (or nothing) keeps the M2a in-process runtime: no OS boundary, no warning,
+  // full M2a compatibility for plugins that do not opt in.
   const declaredType = declared.type
-  if (declaredType !== undefined && declaredType !== 'inline') {
-    warnings.push({
-      check: 'sandbox-type',
-      message: `declared sandbox type '${declaredType}' — M2a runs all project plugins in-process (type 'inline'); M2b will enforce the declared tier`,
-    })
-  }
+  const effectiveType: 'process' | 'worker' | 'inline' =
+    declaredType === 'worker' || declaredType === 'process' ? declaredType : 'inline'
+  const runtimeTier: ProjectPluginRuntimeTier =
+    effectiveType === 'inline' ? M2A_RUNTIME_TIER : M2B_RUNTIME_TIER
 
   // --- resources: memory, timeout ---
   const declaredResources = declared.resources
@@ -201,7 +215,7 @@ export function clampProjectPluginSandbox(
 
   // Build the effective sandbox.
   const effective: PluginSandboxConfig = {
-    type: 'inline',
+    type: effectiveType,
     resources: {
       memoryLimitMb,
       cpuLimit: declaredResources?.cpuLimit ?? DENY_ALL_SANDBOX.resources.cpuLimit,
@@ -231,5 +245,5 @@ export function clampProjectPluginSandbox(
     },
   }
 
-  return { effective, rejections, warnings }
+  return { effective, runtimeTier, rejections, warnings }
 }

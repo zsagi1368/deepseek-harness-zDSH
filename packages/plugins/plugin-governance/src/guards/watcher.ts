@@ -15,6 +15,16 @@ export interface WatcherOptions {
 }
 
 /**
+ * 默认调用次数上限（B-08）。
+ *
+ * 历史上该值只在 `timeoutMs > 60000` 时生效，而宿主钳制把 project 插件的
+ * timeoutMs 收窄到 ≤ 60000（DESIGN §2.2），导致生产路径上 maxCallCount
+ * 恒为 undefined、计数上限永不可达。M2b 起改为显式默认上限，任何被监控
+ * 插件都在生产路径上受计数约束。
+ */
+export const DEFAULT_MAX_CALL_COUNT = 100
+
+/**
  * PluginWatcher - 插件监控器
  *
  * 记录单个插件的执行计数与错误，对每次 execute 施加超时与调用上限。
@@ -34,7 +44,7 @@ export class PluginWatcher {
     this.options = {
       timeoutMs: plugin.manifest.sandbox.resources.timeoutMs,
       memoryLimitMb: plugin.manifest.sandbox.resources.memoryLimitMb,
-      maxCallCount: plugin.manifest.sandbox.resources.timeoutMs > 60000 ? 100 : undefined,
+      maxCallCount: DEFAULT_MAX_CALL_COUNT,
     }
   }
 

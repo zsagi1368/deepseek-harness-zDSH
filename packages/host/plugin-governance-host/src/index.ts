@@ -107,6 +107,8 @@ interface ProjectProvenanceLike {
   readonly manifestId: string
   readonly projectRoot: string
   readonly version: string
+  /** Runtime tier projected by the project layer: 'in-process' or 'subprocess'. */
+  readonly runtimeTier?: string
 }
 
 /** Preset names double as file stems; path separators and dots stay out. */
@@ -797,7 +799,7 @@ export class PluginGovernanceGateway extends TypertRemoteService {
               if (result.success) {
                 this.projectSources.set(manifestId, {
                   projectRoot: provenance.projectRoot,
-                  runtimeTier: 'in-process',
+                  runtimeTier: provenance.runtimeTier ?? 'in-process',
                 })
               } else {
                 this.warn(`failed to register project loader entry ${entry.options.name}: ${(result.errors ?? []).map(error => error.message).join('; ')}`)
