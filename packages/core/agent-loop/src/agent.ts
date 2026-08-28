@@ -409,10 +409,12 @@ export class ReactLoopAgent implements Agent {
         { surfaceOp: 'append', sourceEventSeqs: chunkSeqs },
       )
       if (finish.kind === 'max-tokens') {
-        // A cut-off that reached a tool call must fail loudly. The assembler
-        // drops the call from durable content because its arguments may be
-        // incomplete JSON, so executing it is unsafe — and silently ending the
-        // turn would leave the model's intent with no observable outcome.
+        // A cut-off that reached an unsafe tool call must fail loudly. The
+        // assembler drops the call from durable content and reports it only
+        // when it never received a block-end close or its arguments are not
+        // valid JSON — either way executing it is impossible. A closed tool
+        // call with parseable arguments is a complete call and ends the turn
+        // cleanly even though it is still dropped from durable content.
         const truncated = assembler.truncatedToolCalls()
         if (truncated.length > 0) {
           throw new LlmError(

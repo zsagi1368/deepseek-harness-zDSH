@@ -149,19 +149,39 @@ export class BlockAssembler {
   }
 
   /**
-   * Tool-call blocks a max-tokens finish removed from {@link blocks}, in stream
-   * order; empty for every other finish kind. The drop itself stays (replay
-   * metadata must describe stored content), but callers no longer have to infer
-   * the loss: an agent loop can turn "intent without execution" into an
-   * explicit failure instead of silently ending the turn.
-   * @returns the dropped tool-call blocks in stream order, or an empty array
+   * The tool-call blocks a max-tokens finish could not safely execute, in
+   * stream order; empty for every other finish kind. A call is unsafe when it
+   * never received a `block-end` close or its arguments do not parse as JSON —
+   * either way it cannot be executed. Closed blocks with parseable arguments
+   * are complete calls, so they are excluded even though max-token truncation
+   * still drops them from {@link blocks}: an agent loop ends such a turn
+   * cleanly instead of reporting a truncation error.
+   * @returns the unsafe tool-call blocks in stream order, or an empty array
    *   when the finish kind is not `max-tokens`.
    */
   truncatedToolCalls(): ContentBlock[] {
     if (this.finish.kind !== 'max-tokens') return []
-    return this.order
-      .map(index => this.assemble(this.mustGet(index), index))
-      .filter((block): block is ContentBlock & { type: 'tool-call' } => block.type === 'tool-call')
+    const unsafe: ContentBlock[] = []
+    for (const index of this.order) {
+      const partial = this.mustGet(index)
+      const block = partial.block
+      if (block === undefined) {
+        // Never closed by block-end: the arguments stream was cut off mid-way.
+        if (partial.blockType === 'tool-call') {
+          unsafe.push(this.assemble(partial, index))
+        }
+        continue
+      }
+      if (block.type !== 'tool-call') {
+        continue
+      }
+      try {
+        JSON.parse(block.arguments)
+      } catch {
+        unsafe.push(block) // closed, but the arguments are not valid JSON
+      }
+    }
+    return unsafe
   }
 
   /**

@@ -222,6 +222,22 @@ describe('BlockAssembler truncatedToolCalls (DSHV2-101)', () => {
     ])
   })
 
+  it('excludes a closed tool call whose arguments parse as JSON', () => {
+    // A block-end-closed call with parseable arguments is complete and safe to
+    // execute, so it is not reported even though max-token truncation still
+    // drops it from blocks().
+    const assembler = new BlockAssembler()
+    assembler.push({
+      type: 'block-end',
+      index: 0,
+      block: { type: 'tool-call', id: CallId('c1'), name: 'echo', arguments: '{"text":"x"}' },
+    })
+    assembler.push({ type: 'finish', reason: { kind: 'max-tokens' } })
+
+    expect(assembler.blocks()).toEqual([])
+    expect(assembler.truncatedToolCalls()).toEqual([])
+  })
+
   it('reports nothing for a text-only max-tokens response', () => {
     const assembler = new BlockAssembler()
     assembler.push({ type: 'block-end', index: 0, block: { type: 'text', text: 'partial' } })
