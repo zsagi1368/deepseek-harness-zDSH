@@ -74,7 +74,8 @@ describe('PluginManagerSettingsTab source badge', () => {
   })
 
   it('renders no project root for loader-mirror rows', async () => {
-    renderTab([projectRow({ source: 'loader-mirror', approvalRequired: false })])
+    const { projectRoot: _, ...row } = projectRow({ source: 'loader-mirror', approvalRequired: false })
+    renderTab([row])
     await waitFor(() => {
       expect(screen.getByText('Project Demo')).toBeDefined()
     })
