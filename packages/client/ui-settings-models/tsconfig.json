@@ -12,6 +12,9 @@
       "path": "../../../vendor/cordis"
     },
     {
+      "path": "../../compat/dsh-compat"
+    },
+    {
       "path": "../ui-slots"
     },
     {
