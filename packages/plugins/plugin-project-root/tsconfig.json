@@ -22,6 +22,9 @@
     },
     {
       "path": "../plugin-governance"
+    },
+    {
+      "path": "../../compat/dsh-compat"
     }
   ]
 }

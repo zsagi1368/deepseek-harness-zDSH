@@ -292,6 +292,7 @@
         "./packages/test-support/*/src",
         "./packages/host/*/src",
         "./packages/plugins/*/src",
+        "./packages/compat/*/src",
         "./packages/client/*/src",
         "./packages/memory/*/src"
       ]

@@ -3307,6 +3307,9 @@ importers:
 
   packages/client/workbench:
     dependencies:
+      '@deepseek-ai/dsh-compat':
+        specifier: workspace:^
+        version: link:../../compat/dsh-compat
       '@xterm/xterm':
         specifier: ^5.5.0
         version: 5.5.0
@@ -6158,6 +6161,9 @@ importers:
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-compat':
+        specifier: workspace:^
+        version: link:../../compat/dsh-compat
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
@@ -6167,6 +6173,9 @@ importers:
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-compat':
+        specifier: workspace:^
+        version: link:../../compat/dsh-compat
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
