@@ -39,3 +39,7 @@ apps/web/dist/
 worktrees/
 .agents/worktrees/
 .typert-*/
+# tsdown emit for packages with ./src/* exports (build artifacts)
+packages/compat/dsh-compat/src/*.js
+packages/compat/dsh-compat/src/*.d.ts
+packages/compat/dsh-compat/src/*.map
