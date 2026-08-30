@@ -3522,6 +3522,8 @@ importers:
         specifier: workspace:^
         version: link:../../llm/token-meter
 
+  packages/compat/dsh-compat: {}
+
   packages/context/agent-instructions:
     dependencies:
       '@deepseek-ai/schemastery':
@@ -3768,9 +3770,6 @@ importers:
 
   packages/core/agent-loop:
     dependencies:
-      '@deepseek-ai/dsh-llm-pi-ai':
-        specifier: workspace:^
-        version: link:../../llm/llm-pi-ai
       '@deepseek-ai/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
