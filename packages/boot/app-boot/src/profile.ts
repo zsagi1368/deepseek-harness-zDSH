@@ -266,6 +266,20 @@ function ensureSymlink(link: string, target: string): void {
   }
 }
 
+/**
+ * Resolve a path to its canonical form (following junctions and symlinks),
+ * degrading to the original path when resolution fails.
+ * @param path - the path to canonicalize.
+ * @returns the canonical path, or `path` itself when it cannot be resolved.
+ */
+function canonicalPathOrOriginal(path: string): string {
+  try {
+    return realpathSync.native(path)
+  } catch {
+    return path
+  }
+}
+
 /** Resolve a link target without following the final path component. */
 function canonicalLinkPath(path: string): string | undefined {
   try {
@@ -578,10 +592,18 @@ export interface ProfileModuleFallbackOptions {
  */
 export async function healProfilesModuleFallback(options: ProfileModuleFallbackOptions): Promise<void> {
   const { installAnchor, profile, home = resolveDshHome() } = options
-  const profilesDir = join(home, PROFILES_DIR)
+  // Canonicalize anchors through junctions/symlinks before use (D-006): a
+  // Windows junction (or any symlink) in front of installAnchor or home
+  // otherwise leaves the BFS/canonicalLinkPath steps on the logical path
+  // while Node's own resolution follows the reparse point to the real target.
+  // Degrades to the original path when resolution fails (the manifest read
+  // below reports the real failure).
+  const canonicalAnchor = canonicalPathOrOriginal(installAnchor)
+  const canonicalHome = canonicalPathOrOriginal(home)
+  const profilesDir = join(canonicalHome, PROFILES_DIR)
   const modulesDir = join(profilesDir, 'node_modules')
   mkdirSync(modulesDir, { recursive: true })
-  const { entries, packageNames } = resolveModuleFallbackEntries(installAnchor)
+  const { entries, packageNames } = resolveModuleFallbackEntries(canonicalAnchor)
   if (!moduleFallbackCurrent(modulesDir, entries)) {
     await withFileLock(modulesDir, () => {
       if (!moduleFallbackCurrent(modulesDir, entries)) healProfilesModuleFallbackLocked(entries, modulesDir)
@@ -612,7 +634,7 @@ function dependencyClosure(
   const links = new Map<string, string>()
   const visited = new Set(reserved)
   for (const anchor of anchors) {
-    const canonicalAnchor = realpathSync.native(anchor)
+    const canonicalAnchor = canonicalPathOrOriginal(anchor)
     const manifest = readModuleFallbackManifest(canonicalAnchor)
     /* v8 ignore next -- an installable package manifest always declares its name */
     if (manifest.name === undefined) continue
