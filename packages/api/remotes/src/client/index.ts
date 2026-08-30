@@ -8,6 +8,7 @@ import goalsRemote from '@deepseek-ai/dsh-goal/remote'
 import llmRemote from '@deepseek-ai/dsh-llm/remote'
 import dynamicRemote from '@deepseek-ai/dsh-cordis-host-runner/remote'
 import pluginInventoryRemote from '@deepseek-ai/dsh-host-plugin-inventory/remote'
+import pluginGovernanceRemote from '@deepseek-ai/dsh-plugin-governance-host/remote'
 import messageFeedbackRemote from '@deepseek-ai/dsh-message-feedback/remote'
 import sessionReferencesRemote from '@deepseek-ai/dsh-session-reference/remote'
 import subagentsRemote from '@deepseek-ai/dsh-subagent/remote'
@@ -17,12 +18,19 @@ import type { ClientRemote } from '@deepseek-ai/dsh-api-gateway/client'
 
 export type { ClientRemote } from '@deepseek-ai/dsh-api-gateway/client'
 export type { PluginInventorySnapshot } from '@deepseek-ai/dsh-host-plugin-inventory/types'
+export type {
+  GovernanceHealthReport,
+  GovernanceRosterSnapshot,
+  GovernedPluginSummary,
+  PresetApplicationReport,
+} from '@deepseek-ai/dsh-plugin-governance-host/types'
 export type {} from '@deepseek-ai/dsh-agent-presets/remote'
 export type {} from '@deepseek-ai/dsh-commands/remote'
 export type {} from '@deepseek-ai/dsh-api-settings-controller/remote'
 export type {} from '@deepseek-ai/dsh-goal/remote'
 export type {} from '@deepseek-ai/dsh-llm/remote'
 export type {} from '@deepseek-ai/dsh-host-plugin-inventory/remote'
+export type {} from '@deepseek-ai/dsh-plugin-governance-host/remote'
 export type {} from '@deepseek-ai/dsh-message-feedback/remote'
 export type {} from '@deepseek-ai/dsh-session-reference/remote'
 export type {} from '@deepseek-ai/dsh-subagent/remote'
@@ -156,7 +164,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   try {
     for (const contribution of [
       agentPresetsRemote, commandsRemote, settingsControllerRemote, goalsRemote, llmRemote, dynamicRemote,
-      pluginInventoryRemote, messageFeedbackRemote, sessionReferencesRemote,
+      pluginInventoryRemote, pluginGovernanceRemote, messageFeedbackRemote, sessionReferencesRemote,
       subagentsRemote, sessionRemote, workspaceRemote,
     ]) {
       disposers.push(await ctx.remote.$mount(contribution))
