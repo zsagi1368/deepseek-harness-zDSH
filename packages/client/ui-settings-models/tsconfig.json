@@ -12,6 +12,12 @@
       "path": "../../../vendor/cordis"
     },
     {
+      "path": "../../compat/dsh-compat"
+    },
+    {
+      "path": "../../llm/model-slots"
+    },
+    {
       "path": "../ui-slots"
     },
     {

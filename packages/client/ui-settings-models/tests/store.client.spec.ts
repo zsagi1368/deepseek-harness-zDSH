@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { RpcResponse } from '@deepseek-ai/dsh-api-remotes/client'
 import { SettingsDescribeMirror } from '@deepseek-ai/dsh-client-ui-settings/src/client/settings-mirror.ts'
 import { settingsSchema } from './settings-schema.client.ts'
-import { messageOf, ModelsSettingsStore } from '../src/client/store.ts'
+import { messageOf, ModelsSettingsStore, effectiveSlotViews, visionModelImageError } from '../src/client/store.ts'
 
 let nextRpc = 0
 function ok<T>(value: T): RpcResponse<T> {
@@ -354,5 +354,126 @@ describe('messageOf', () => {
     expect(messageOf(new Error('connection lost'))).toBe('connection lost')
     expect(messageOf('the host refused')).toBe('the host refused')
     expect(messageOf(undefined)).toBe('undefined')
+  })
+})
+
+describe('slot helpers', () => {
+  describe('effectiveSlotViews', () => {
+    const builtins = ['title', 'compaction.summarize', 'vision']
+
+    it('returns all built-in slots with main-route tier when the namespace has no value', () => {
+      const views = effectiveSlotViews(undefined)
+      expect(views).toHaveLength(3)
+      for (const view of views) {
+        expect(view.provider).toBeUndefined()
+        expect(view.model).toBeUndefined()
+        expect(view.source).toBe('main-route')
+      }
+      expect(views.map(v => v.slot)).toEqual(builtins)
+    })
+
+    it('returns all built-in slots with main-route tier when the namespace value is empty', () => {
+      const views = effectiveSlotViews({})
+      expect(views).toHaveLength(3)
+      for (const view of views) {
+        expect(view.source).toBe('main-route')
+      }
+    })
+
+    it('reads explicit slot statements as source: slot', () => {
+      const views = effectiveSlotViews({
+        slots: {
+          title: { provider: 'p1', model: 'm1', apiKeyEnv: 'P1_API_KEY' },
+          vision: { provider: 'p2', model: 'm2', apiKeyEnv: 'P2_API_KEY' },
+        },
+      })
+      expect(views.find(v => v.slot === 'title')).toMatchObject({
+        provider: 'p1', model: 'm1', source: 'slot',
+      })
+      expect(views.find(v => v.slot === 'vision')).toMatchObject({
+        provider: 'p2', model: 'm2', source: 'slot',
+      })
+      // compaction.summarize has no entry and no fallback → main-route
+      expect(views.find(v => v.slot === 'compaction.summarize')?.source).toBe('main-route')
+    })
+
+    it('applies the deployment-default tier when no explicit slot entry exists', () => {
+      const views = effectiveSlotViews({
+        fallback: { provider: 'def', model: 'def-model' },
+      })
+      for (const view of views) {
+        expect(view).toMatchObject({ provider: 'def', model: 'def-model', source: 'deployment-default' })
+      }
+    })
+
+    it('prefers the explicit slot statement over the deployment default', () => {
+      const views = effectiveSlotViews({
+        slots: { title: { provider: 's', model: 's-model' } },
+        fallback: { provider: 'def', model: 'def-model' },
+      })
+      expect(views.find(v => v.slot === 'title')).toMatchObject({ provider: 's', model: 's-model', source: 'slot' })
+      expect(views.find(v => v.slot === 'compaction.summarize')).toMatchObject({ provider: 'def', model: 'def-model', source: 'deployment-default' })
+      expect(views.find(v => v.slot === 'vision')).toMatchObject({ provider: 'def', model: 'def-model', source: 'deployment-default' })
+    })
+
+    it('tolerates non-object or null namespace value', () => {
+      expect(effectiveSlotViews(null)).toHaveLength(3)
+      expect(effectiveSlotViews('scalar')).toHaveLength(3)
+      expect(effectiveSlotViews([])).toHaveLength(3)
+    })
+
+    it('ignores entries with empty provider or model', () => {
+      const views = effectiveSlotViews({
+        slots: {
+          title: { provider: '', model: 'm' },
+          'compaction.summarize': { provider: 'p', model: '' },
+          vision: { provider: 'p', model: 'm' },
+        },
+      })
+      expect(views.find(v => v.slot === 'title')?.source).toBe('main-route')
+      expect(views.find(v => v.slot === 'compaction.summarize')?.source).toBe('main-route')
+      expect(views.find(v => v.slot === 'vision')?.source).toBe('slot')
+    })
+  })
+
+  describe('visionModelImageError', () => {
+    it('returns undefined when no probe is available (graceful degradation)', async () => {
+      expect(await visionModelImageError('p', 'm', {})).toBeUndefined()
+    })
+
+    it('returns undefined when the model declares image input', async () => {
+      const probe = {
+        resolveModelInfo: async () => ({ inputModalities: ['text', 'image'] as readonly string[] }),
+      }
+      expect(await visionModelImageError('openai', 'gpt-4o', probe)).toBeUndefined()
+    })
+
+    it('returns visionModelImageRequired when the model does not declare image input', async () => {
+      const probe = {
+        resolveModelInfo: async () => ({ inputModalities: ['text'] as readonly string[] }),
+      }
+      expect(await visionModelImageError('o', 'gpt-4o', probe)).toBe('visionModelImageRequired')
+    })
+
+    it('returns visionModelImageRequired when inputModalities is undefined', async () => {
+      const probe = {
+        resolveModelInfo: async () => ({}),
+      }
+      expect(await visionModelImageError('o', 'm', probe)).toBe('visionModelImageRequired')
+    })
+
+    it('returns visionModelImageRequired when inputModalities is an empty array', async () => {
+      const probe = {
+        resolveModelInfo: async () => ({ inputModalities: [] as readonly string[] }),
+      }
+      expect(await visionModelImageError('o', 'm', probe)).toBe('visionModelImageRequired')
+    })
+
+    it('returns visionModelUnverified when the probe rejects', async () => {
+      const probe = {
+        resolveModelInfo: async () => { throw new Error('adapter down') },
+      }
+      expect(await visionModelImageError('o', 'm', probe)).toBe('visionModelUnverified')
+    })
   })
 })

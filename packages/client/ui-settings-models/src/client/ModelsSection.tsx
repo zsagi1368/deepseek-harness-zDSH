@@ -19,7 +19,8 @@ import type { InjectFace, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-sl
 // Type-only: pulls this package's SlotMap merge (the two Models child slots).
 import type {} from './slot-contract.ts'
 import { CustomProviderCard } from './CustomProviderCard.tsx'
-import { deriveKeyRef, messageOf, protocolChoices, providerUsable } from './store.ts'
+import { SlotsBlock } from './SlotsBlock.tsx'
+import { deriveKeyRef, messageOf, MODEL_SLOTS_SETTINGS_NAMESPACE, protocolChoices, providerUsable } from './store.ts'
 import type { ModelsSettingsStore, ModelsWire, ProviderRow } from './store.ts'
 import type { SettingsSchemaOperations } from './schema-operations.ts'
 import { ProviderEditor, type ProviderEditorProps } from './ProviderEditor.tsx'
@@ -544,6 +545,15 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
             )}
       </div>
       {renderSlot('settings.models.footer', {})}
+      <SlotsBlock
+        namespace={state.namespaces.get(MODEL_SLOTS_SETTINGS_NAMESPACE)}
+        providers={state.rows.map(row => ({ provider: row.entry.provider, displayName: row.entry.displayName }))}
+        api={api}
+        schema={schema}
+        t={t}
+        readOnly={!state.writable}
+        onSaved={() => { void controller.load() }}
+      />
       <Modal
         open={deleteTarget !== undefined}
         onClose={closeDelete}
