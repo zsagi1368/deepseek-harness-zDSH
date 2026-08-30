@@ -20,6 +20,7 @@ import type { GenerateOptions, LlmCallConfig, Message, PreparedLlmCall } from '@
 import {
   BlockAssembler,
   LlmError,
+  TRUNCATED_TOOL_CALL_CODE,
   createAssistantMessage,
   deepFreeze,
   errorChain,
@@ -423,7 +424,24 @@ export class ReactLoopAgent implements Agent {
         },
         { surfaceOp: 'append', sourceEventSeqs: chunkSeqs },
       )
-      if (finish.kind === 'max-tokens') return { kind: 'max-tokens' }
+      if (finish.kind === 'max-tokens') {
+        // A cut-off that reached an unsafe tool call must fail loudly. The
+        // assembler drops the call from durable content and reports it only
+        // when it never received a block-end close or its arguments are not
+        // valid JSON — either way executing it is impossible. A closed tool
+        // call with parseable arguments is a complete call and ends the turn
+        // cleanly even though it is still dropped from durable content.
+        const truncated = assembler.truncatedToolCalls()
+        if (truncated.length > 0) {
+          throw new LlmError(
+            'the response hit the output-token ceiling while producing '
+            + `${truncated.length} tool call${truncated.length === 1 ? '' : 's'};`
+            + ' raise maxTokens or continue manually',
+            TRUNCATED_TOOL_CALL_CODE,
+          )
+        }
+        return { kind: 'max-tokens' }
+      }
 
       const toolCalls = message.content.filter(block => block.type === 'tool-call')
       if (toolCalls.length === 0) return { kind: 'completed' }

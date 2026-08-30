@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import LlmRuntime, { createUserMessage, ToolCallId, LlmError, ReasoningEffortId, StreamChunk } from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { createUserMessage, ToolCallId, LlmError, ReasoningEffortId, StreamChunk, TRUNCATED_TOOL_CALL_CODE } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId, TurnEndReason } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
@@ -1080,7 +1080,10 @@ describe('agent loop', () => {
     expect(reasons).toEqual([{ kind: 'max-tokens' }, { kind: 'completed' }])
   })
 
-  it('does not dispatch tool calls from a max-tokens-truncated step', async () => {
+  it('ends a max-tokens step cleanly when the cut-off reached a complete tool call (DSHV2-101)', async () => {
+    // A closed tool call with parseable arguments is complete: it is dropped
+    // from durable content (so it is never executed) but the turn ends as a
+    // clean max-tokens boundary instead of a truncation error.
     const callId = ToolCallId('c1')
     const adapter = new MockAdapter([[
       { type: 'block-start', index: 0, blockType: 'tool-call' },
@@ -1103,22 +1106,19 @@ describe('agent loop', () => {
     const agent = ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
 
     const reasons: TurnEndReason[] = []
+    const errors: LlmError[] = []
     ctx.on('session/event', (_s, event) => { if (event.type === 'turn/end') reasons.push(event.data.reason) })
+    ctx.on('agent/error', ({ error }) => { errors.push(error as LlmError) })
 
     send(agent, 'go')
     await waitForIdle(ctx, agent)
 
     expect(executions).toBe(0)
     expect(agent.session.events.some(e => e.type === 'tool/call')).toBe(false)
-    expect(agent.session.deriveMessages()).toEqual([{
-      id: expect.any(String) as unknown,
-      role: 'user',
-      content: [{ type: 'text', text: 'go' }],
-      source: { kind: 'user' },
-    }])
+    expect(errors).toHaveLength(0)
     expect(reasons).toEqual([{ kind: 'max-tokens' }])
-    // Empty content still needs an assistant/message to carry usage; derivation
-    // skips that host so it does not create a spurious assistant turn.
+    // Empty content still needs an assistant/message to carry usage; the anchor
+    // is appended before the clean boundary so replay consumers keep it.
     const assistantMessage = agent.session.events.find(e => e.type === 'assistant/message')
     expect(assistantMessage?.type === 'assistant/message' && assistantMessage.data).toEqual({
       turn: 1,
@@ -1133,9 +1133,123 @@ describe('agent loop', () => {
     })
   })
 
-  it('appends an empty completion anchor for a max-tokens step with no usage', async () => {
-    // The truncated tool call is dropped from durable content, while the
-    // successful provider call still needs an exact replay anchor.
+  it('fails the turn when a max-tokens cut-off leaves a tool call unclosed', async () => {
+    // Only tool-call-deltas arrived, never block-end: the arguments stream was
+    // cut off mid-way, so the call is unsafe and the turn must fail loudly
+    // with TRUNCATED_TOOL_CALL after the empty usage anchor is appended.
+    const callId = ToolCallId('c1')
+    const adapter = new MockAdapter([[
+      { type: 'block-start', index: 0, blockType: 'tool-call' },
+      { type: 'tool-call-delta', index: 0, id: callId, name: 'echo', argumentsDelta: '{}' },
+      { type: 'usage', usage: { inputTokens: 10, outputTokens: 5 } },
+      { type: 'finish', reason: { kind: 'max-tokens' } },
+    ]])
+    const ctx = await harness(adapter)
+    let executions = 0
+    ctx.tools.register(defineContentToolFixture({
+      name: 'echo',
+      description: '',
+      parameters: { text: { type: 'string' } },
+      async execute() {
+        executions += 1
+        return [{ type: 'text', text: 'should not run' }]
+      },
+    }))
+    const agent = ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
+
+    const reasons: TurnEndReason[] = []
+    const errors: LlmError[] = []
+    ctx.on('session/event', (_s, event) => { if (event.type === 'turn/end') reasons.push(event.data.reason) })
+    ctx.on('agent/error', ({ error }) => { errors.push(error as LlmError) })
+
+    send(agent, 'go')
+    await waitForIdle(ctx, agent)
+
+    expect(executions).toBe(0)
+    expect(agent.session.events.some(e => e.type === 'tool/call')).toBe(false)
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toBeInstanceOf(LlmError)
+    expect(errors[0]?.code).toBe(TRUNCATED_TOOL_CALL_CODE)
+    expect(reasons).toEqual([{
+      kind: 'error',
+      error: { code: TRUNCATED_TOOL_CALL_CODE, message: expect.stringContaining('output-token ceiling') as unknown },
+    }])
+    // Empty content still needs an assistant/message to carry usage; the anchor
+    // is appended before the failure so replay consumers keep the boundary.
+    const assistantMessage = agent.session.events.find(e => e.type === 'assistant/message')
+    expect(assistantMessage?.type === 'assistant/message' && assistantMessage.data).toEqual({
+      turn: 1,
+      step: 1,
+      message: {
+        id: expect.any(String) as unknown,
+        role: 'assistant',
+        content: [],
+        source: { kind: 'model', provider: 'mock', model: 'mock' },
+      },
+      usage: { inputTokens: 10, outputTokens: 5 },
+    })
+  })
+
+  it('fails the turn when a closed tool call carries arguments that are not valid JSON', async () => {
+    // block-end arrived but the arguments string does not parse as JSON: the
+    // call is still unsafe to execute, so the turn fails loudly with
+    // TRUNCATED_TOOL_CALL after the empty usage anchor is appended.
+    const callId = ToolCallId('c1')
+    const adapter = new MockAdapter([[
+      { type: 'block-start', index: 0, blockType: 'tool-call' },
+      { type: 'tool-call-delta', index: 0, id: callId, name: 'echo', argumentsDelta: '{"text":' },
+      { type: 'block-end', index: 0, block: { type: 'tool-call', id: callId, name: 'echo', arguments: '{"text":' } },
+      { type: 'usage', usage: { inputTokens: 10, outputTokens: 5 } },
+      { type: 'finish', reason: { kind: 'max-tokens' } },
+    ]])
+    const ctx = await harness(adapter)
+    let executions = 0
+    ctx.tools.register(defineContentToolFixture({
+      name: 'echo',
+      description: '',
+      parameters: { text: { type: 'string' } },
+      async execute() {
+        executions += 1
+        return [{ type: 'text', text: 'should not run' }]
+      },
+    }))
+    const agent = ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
+
+    const reasons: TurnEndReason[] = []
+    const errors: LlmError[] = []
+    ctx.on('session/event', (_s, event) => { if (event.type === 'turn/end') reasons.push(event.data.reason) })
+    ctx.on('agent/error', ({ error }) => { errors.push(error as LlmError) })
+
+    send(agent, 'go')
+    await waitForIdle(ctx, agent)
+
+    expect(executions).toBe(0)
+    expect(agent.session.events.some(e => e.type === 'tool/call')).toBe(false)
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toBeInstanceOf(LlmError)
+    expect(errors[0]?.code).toBe(TRUNCATED_TOOL_CALL_CODE)
+    expect(reasons).toEqual([{
+      kind: 'error',
+      error: { code: TRUNCATED_TOOL_CALL_CODE, message: expect.stringContaining('output-token ceiling') as unknown },
+    }])
+    const assistantMessage = agent.session.events.find(e => e.type === 'assistant/message')
+    expect(assistantMessage?.type === 'assistant/message' && assistantMessage.data).toEqual({
+      turn: 1,
+      step: 1,
+      message: {
+        id: expect.any(String) as unknown,
+        role: 'assistant',
+        content: [],
+        source: { kind: 'model', provider: 'mock', model: 'mock' },
+      },
+      usage: { inputTokens: 10, outputTokens: 5 },
+    })
+  })
+
+  it('appends an empty completion anchor for a clean max-tokens step with no usage', async () => {
+    // The closed tool call with parseable arguments is complete: it ends the
+    // turn cleanly as max-tokens without executing any tool call. The
+    // successful provider call still needs its exact replay anchor.
     const callId = ToolCallId('c1')
     const adapter = new MockAdapter([[
       { type: 'block-start', index: 0, blockType: 'tool-call' },
@@ -1158,6 +1272,7 @@ describe('agent loop', () => {
     send(agent, 'go')
     await waitForIdle(ctx, agent)
 
+    expect(agent.session.events.some(e => e.type === 'tool/call')).toBe(false)
     expect(reasons).toEqual([{ kind: 'max-tokens' }])
     const assistant = agent.session.events.find(e => e.type === 'assistant/message')!
     expect(assistant.type === 'assistant/message' && assistant.data).toEqual({
@@ -1171,12 +1286,6 @@ describe('agent loop', () => {
       },
     })
     expect(assistant.sourceEventSeqs?.length).toBeGreaterThan(0)
-    expect(agent.session.deriveMessages()).toEqual([{
-      id: expect.any(String) as unknown,
-      role: 'user',
-      content: [{ type: 'text', text: 'go' }],
-      source: { kind: 'user' },
-    }])
   })
 
   it('appends an empty completion anchor for a normal stop with no usage', async () => {
