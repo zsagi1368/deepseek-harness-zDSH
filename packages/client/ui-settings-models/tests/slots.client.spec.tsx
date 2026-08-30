@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import Schema from '@deepseek-ai/schemastery'
 import type { SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
+import type { JsonValue } from '@deepseek-ai/dsh-session/types'
 import { SlotsBlock } from '../src/client/SlotsBlock.tsx'
 import { deriveKeyRef, MODEL_SLOTS_SETTINGS_NAMESPACE } from '../src/client/store.ts'
 import { en } from '../src/client/locales.ts'
@@ -27,10 +28,10 @@ const SlotsSchema = Schema.object({
   }),
 })
 
-function namespace(value: unknown, revision = 0): SettingsNamespaceView {
+function namespace(value: JsonValue, revision = 0): SettingsNamespaceView {
   return {
     ns: MODEL_SLOTS_SETTINGS_NAMESPACE,
-    schema: JSON.parse(JSON.stringify(SlotsSchema.toJSON())) as unknown,
+    schema: JSON.parse(JSON.stringify(SlotsSchema.toJSON())) as JsonValue,
     value,
     applies: 'live',
     secrets: [],
