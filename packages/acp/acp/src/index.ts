@@ -36,6 +36,7 @@ import {
   type NewSessionResponse,
   type PromptRequest,
   type PromptResponse,
+  type PermissionOption,
   type RequestPermissionRequest,
   type ResumeSessionRequest,
   type ResumeSessionResponse,
@@ -47,8 +48,8 @@ import {
 import type { ModelSelection } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
-// Side-effect type import: declaration-merges the approval waterfall answered below.
-import type {} from '@deepseek-ai/dsh-user-approval'
+// The value import also declaration-merges the approval waterfall answered below.
+import { APPROVAL_POLICIES } from '@deepseek-ai/dsh-user-approval'
 import { supportsAcpImagePrompts } from './content.ts'
 import { AcpMcpConfigError } from './mcp.ts'
 import { AcpModelConfigError } from './model-control.ts'
@@ -69,6 +70,22 @@ function invalidParams(detail: string): RequestError {
 function internalError(detail: string): RequestError {
   return RequestError.internalError(undefined, detail)
 }
+
+/**
+ * The one-shot ACP permission choices this bridge presents for one approval
+ * request. Derived from `@deepseek-ai/dsh-user-approval`'s policy tiers so the
+ * automation wire stays in sync with the harness's permission vocabulary: the
+ * `'ask'` tier lets the client allow once, and the `'never'` tier's
+ * deterministic rejection is offered as an explicit one-shot reject.
+ */
+const approvalOptions: PermissionOption[] = APPROVAL_POLICIES.map((policy) => {
+  if (policy === 'ask') {
+    return { optionId: 'allow-once', name: 'Allow once', kind: 'allow_once' }
+  }
+  // The approval-policy vocabulary is closed ('ask' | 'never'); a future tier
+  // must map to an explicit one-shot option here.
+  return { optionId: 'reject-once', name: 'Reject', kind: 'reject_once' }
+})
 
 /** Plugin config: the provider/model selection used for each ACP-created agent. */
 export interface AcpConfig {
@@ -159,10 +176,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
       const params: RequestPermissionRequest = {
         sessionId: record.agent.session.id,
         toolCall: { toolCallId: callId },
-        options: [
-          { optionId: 'allow-once', name: 'Allow once', kind: 'allow_once' },
-          { optionId: 'reject-once', name: 'Reject', kind: 'reject_once' },
-        ],
+        options: approvalOptions,
       }
       return conn.request(methods.client.session.requestPermission, params)
     }).then(({ outcome }) => {
