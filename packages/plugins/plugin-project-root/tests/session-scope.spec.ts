@@ -340,7 +340,7 @@ describe('projectToolWrapper session-scope defense (C-03)', () => {
       })
       const result = await ctx.tools.execute({
         signal: new AbortController().signal,
-        callId: 'c1' as CallId,
+        callId: 'c1' as ToolCallId,
         name: 'host_tool',
         arguments: {},
       })

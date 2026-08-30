@@ -245,6 +245,7 @@
     { "path": "./packages/fs/tool-fs" },
     { "path": "./packages/fs/tool-fs-search" },
     { "path": "./packages/fs/tool-str-replace-editor" },
+    { "path": "./packages/client/workbench/tsconfig.host.json" },
     { "path": "./packages/compaction/compaction" },
     { "path": "./packages/compaction/compaction-basic" },
     { "path": "./packages/compaction/command-compact" },
@@ -304,6 +305,8 @@
     { "path": "./packages/webhook/webhook-github" },
     { "path": "./packages/todo/tool-todo" },
     { "path": "./packages/plan/plan-mode" },
+    { "path": "./packages/plugins/plugin-governance" },
+    { "path": "./packages/plugins/plugin-project-root" },
     { "path": "./packages/preset/agent-presets" },
     { "path": "./packages/preset/persona" },
     { "path": "./packages/guard/repeat-tool-reminder" },
@@ -312,6 +315,8 @@
     { "path": "./packages/hooks/hook-protocol" },
     { "path": "./packages/hooks/hooks-claude-code" },
     { "path": "./packages/hooks/hooks-codex" },
+    { "path": "./packages/host/plugin-governance-host" },
+    { "path": "./packages/llm/model-slots" },
     { "path": "./packages/mcp/mcp-client" },
     { "path": "./packages/host/directory-picker" },
     { "path": "./packages/host/directory-picker-auto" },
@@ -326,6 +331,7 @@
     { "path": "./packages/lsp/lsp" },
     { "path": "./packages/lsp/lsp-stdio" },
     { "path": "./packages/lsp/tool-lsp" },
+    { "path": "./packages/compat/dsh-compat" },
     { "path": "./apps/cli" }
   ]
 }
