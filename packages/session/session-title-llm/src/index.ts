@@ -9,6 +9,7 @@ import z from '@deepseek-ai/schemastery'
 import { createUserMessage, BlockAssembler, deepFreeze } from '@deepseek-ai/dsh-llm'
 import type { FinishReason, GenerateOptions, Message } from '@deepseek-ai/dsh-llm'
 import { deadline, MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
+import { MODEL_SLOT_TITLE } from '@deepseek-ai/dsh-model-slots'
 import {
   normalizeSessionTitle,
   SessionTitleProviderId,
@@ -168,13 +169,28 @@ export function registerSessionTitleLlmProvider(
   })
 }
 
-/** Resolve the explicit pair or the exact route captured from `request/header`. */
+/**
+ * Resolve the auxiliary title route through the fixed precedence: the paired
+ * explicit configuration first (the legacy path, unchanged), then the title
+ * slot's registry resolution — which itself prefers the slot statement, the
+ * deployment default, and finally the exact route captured from
+ * `request/header` — and the captured route alone when no registry mounts.
+ */
 function resolveRoute(
+  ctx: Context,
   config: ResolvedSessionTitleLlmConfig,
   request: SessionTitleProviderRequest,
 ): SessionTitleModelProvenance {
   if (config.provider !== undefined && config.model !== undefined) {
     return { provider: config.provider, model: config.model }
+  }
+  const slots = ctx.get('modelSlots')
+  const resolution = slots?.resolve(MODEL_SLOT_TITLE, {
+    ...(request.route === undefined ? {} : { mainRoute: request.route }),
+    session: request.session,
+  })
+  if (resolution !== null && resolution !== undefined) {
+    return { provider: resolution.provider, model: resolution.model }
   }
   if (request.route === undefined) {
     throw new Error('session-title-llm: no logged request route is available; configure provider and model together')
@@ -242,7 +258,7 @@ export async function generateSessionTitleWithLlm(
   if (inputBytes > config.maxInputBytes) {
     throw new Error(`session-title-llm: input is ${inputBytes} bytes, exceeding maxInputBytes ${config.maxInputBytes}`)
   }
-  const route = resolveRoute(config, request)
+  const route = resolveRoute(ctx, config, request)
   const messages: Message[] = [createUserMessage({
     content: [{ type: 'text', text: framedInput }],
     source: { kind: 'plugin', plugin: 'dsh-session-title-llm' },
