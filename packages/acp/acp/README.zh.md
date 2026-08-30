@@ -75,6 +75,15 @@ ACP 要求每个提示词响应都携带 `stopReason`，但桥接层不声称它
 
 仅通过所属工具的结果追加。
 
+## 版本适配（compat 守卫）
+
+桥接层通过 `@deepseek-ai/dsh-compat` 的 `guardFeature` 对自己的注册做闸门控制（`src/compat.ts` 中的 `guardACP`），在注册前探测它所依赖的对等符号：
+
+- `acp:official-session` —— `@agentclientprotocol/sdk` 必须导出可调用的 `agent`（官方恢复）；不存在时接受 zDSH 的 `AgentSideConnection` 作为后备，两者皆无则探测失败。
+- `acp:approval-overlay` —— `@deepseek-ai/dsh-user-approval` 必须导出 `APPROVAL_POLICIES` 对象，权限覆盖层才可用。
+
+任一探测失败时，守卫记录一条警告并禁用本功能——判定报告 `resumeStrategy: 'disabled'` 与 `permissionOverlay: false`，而不是抛错。它永不抛错、永不破坏宿主树：部分加载或上游漂移的宿主只是不带本功能完成启动。
+
 ## 已知限制与暂缓事项
 
 - **仅新会话**：不支持加载、列出、恢复、删除和 fork。

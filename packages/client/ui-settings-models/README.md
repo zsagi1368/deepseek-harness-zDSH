@@ -28,6 +28,14 @@ None, as the section renders a browser configuration UI; nothing here reaches a 
 
 None; this package neither assembles nor sends a provider request.
 
+## Version adaptation (compat guard)
+
+The slot UI gates its own registration through `@deepseek-ai/dsh-compat`'s `guardFeature` (`guardSlotUI` in `src/compat.ts`), probing the provider-registry store surface before registering:
+
+- `store:official-vs-zdsh` — when `@deepseek-ai/dsh-client-store` exports `defineStore` (the official store package), the zDSH slot UI must be disabled to avoid dual-write conflicts; its absence means the zDSH store is in use and registration may proceed.
+
+When the probe finds the official store, the guard logs a warning and returns `false`, so the zDSH slot UI skips registration instead of throwing. It never throws and never breaks the host tree: a host carrying the official store simply boots without the zDSH slots.
+
 ## Known Limitations and Deferred Work
 
 - **Only the API key and curated fold fields are editable on the card** — the hand-written editor traded schema-generic field coverage for the mockup layout ([Agent Note](../../../.agents/notes/implemented/architecture/2026-07-30-web-config-plane.md)). Both families expose `baseURL` and model `id`/`name`/`contextWindow`/`maxTokens`; a hand-declared pi-ai route also exposes `displayName` and `api`. Retry policy, timeouts, DeepSeek model descriptions, and other advanced fields remain in `settings.yaml`; existing model fields the editor does not show are preserved. A profile schema without the conventional fields renders the hint alone, and the two curated layouts key on the `llm-deepseek`/`llm-pi-ai` namespaces by name.

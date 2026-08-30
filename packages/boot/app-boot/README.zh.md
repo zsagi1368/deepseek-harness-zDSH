@@ -52,6 +52,12 @@ profile 是位于 `$DSH_HOME/profiles/<name>` 下的目录（harness home 由 [`
 
 `boot()` 不会直接使缓存失效；消费方调用 `addHarnessSourceSection` 时，会在系统提示词靠前位置、逐请求内容之前添加一行短文本，因此不会使跨轮次缓存失效。请求前缀的其他任何变化均由相应的具名消费方负责。
 
+## 版本适配（compat 守卫）
+
+与已安装 `@deepseek-ai/dsh-app-boot` 的兼容性通过行为而非符号探测（`src/env-compat.ts` 中的 `probeEnvBlacklist` / `guardEnvBlacklist`）：官方包不公开 `BOOTSTRAP_NAMES`，因此探测会构造一个声明了 `SYSTEMROOT` 的临时项目层，交给已安装的 `loadLayeredEnv` 处理。抛出异常说明已安装构建已经过滤 bootstrap-only 名称（`patched`）；静默接受则说明尚未过滤（`unpatched`）。探测期间会隔离并在结束后恢复 `process.env` 与 DSH-home 层，随后移除临时 fixture；它永不抛错。
+
+`guardEnvBlacklist` 仅在已安装构建为 patched 时返回 `enabled`。否则 env-blacklist 增强功能会带一条警告被跳过，宿主树不受影响、照常启动。
+
 ## 已知限制与暂缓事项
 
 - **裸包 specifier 依赖 Loader 内部机制**：生产 bin 需要 Loader 的可选原生辅助组件；没有该辅助组件的进程内调用方必须使用可解析的相对／file specifier，或提供自己的模块解析钩子。

@@ -52,6 +52,12 @@ Indirectly, through the plugin tree it loads, which determines the prompts, sche
 
 No direct invalidation from `boot()`; a consumer that calls `addHarnessSourceSection` places one short line near the system prompt's head, before per-request content, so it does not invalidate the cache across turns, and any other request-prefix change is owned by the named consumer.
 
+## Version adaptation (compat guard)
+
+Compatibility with the installed `@deepseek-ai/dsh-app-boot` is detected by behavior rather than by symbol (`probeEnvBlacklist` / `guardEnvBlacklist` in `src/env-compat.ts`): the official package keeps `BOOTSTRAP_NAMES` private, so a temporary project layer declaring `SYSTEMROOT` is fed through the installed `loadLayeredEnv`. A throw means the installed build already filters bootstrap-only names (`patched`); a silent accept means it does not (`unpatched`). The probe isolates and restores `process.env` and the DSH-home layer for its duration and removes the temporary fixture afterwards; it never throws.
+
+`guardEnvBlacklist` returns `enabled` only when the installed build is patched. Otherwise the env-blacklist enhancement is skipped with a warning, and the host tree keeps booting untouched.
+
 ## Known Limitations and Deferred Work
 
 - **Bare package specifiers depend on Loader internals** — production bins need Loader's optional native helper; an in-process caller without it must use resolvable relative/file specifiers or provide its own module-resolution hook.

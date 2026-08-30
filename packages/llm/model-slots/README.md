@@ -39,6 +39,15 @@ Indirectly, through the consumers that resolve their auxiliary dispatch route he
 
 The resolution itself sends no request and changes no context. The selected route decides which provider cache an auxiliary call lands in: a stable per-slot statement keeps successive auxiliary requests on one warm route, while an absent statement follows the conversation's main-model route and shares its cache behavior. A configuration change re-points later auxiliary calls and invalidates whatever prefix reuse the previous route held; the `slots/dispatch` record is log-only and never enters model context.
 
+## Version adaptation (compat guard)
+
+The feature gates its own registration through `@deepseek-ai/dsh-compat`'s `guardFeature` (`guardModelSlots` in `src/compat.ts`), probing the peer symbols it depends on before registering:
+
+- `cordis:Service` — `@deepseek-ai/cordis` must export a callable `Service`.
+- `settings:installSettingsSection` — `@deepseek-ai/dsh-settings` must export a callable `installSettingsSection`.
+
+When any probe fails, the guard logs a warning and returns `false`, so the feature skips registration instead of throwing. It never throws and never breaks the host tree: a partially-loaded or upstream-drifted host simply boots without the feature.
+
 ## Known Limitations and Deferred Work
 
 - **Slot ids are a closed built-in set** — deployments cannot name custom slots yet because the vocabulary grows only with reviewed consumers; adding `vision` or `plan` slots is deferred until their routing integration lands.

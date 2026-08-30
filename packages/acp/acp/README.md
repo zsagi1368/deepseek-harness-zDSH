@@ -73,6 +73,15 @@ Only the owning tool result contributes tokens.
 
 Append-only through the owning tool result.
 
+## Version adaptation (compat guard)
+
+The bridge gates its own registration through `@deepseek-ai/dsh-compat`'s `guardFeature` (`guardACP` in `src/compat.ts`), probing the peer symbols it depends on before registering:
+
+- `acp:official-session` — `@agentclientprotocol/sdk` must export a callable `agent` (official resume); when absent, a zDSH `AgentSideConnection` is accepted as fallback, and neither symbol fails the probe.
+- `acp:approval-overlay` — `@deepseek-ai/dsh-user-approval` must export an `APPROVAL_POLICIES` object for the permission overlay.
+
+When any probe fails, the guard logs a warning and disables the feature — the verdict reports `resumeStrategy: 'disabled'` and `permissionOverlay: false` instead of throwing. It never throws and never breaks the host tree: a partially-loaded or upstream-drifted host simply boots without the feature.
+
 ## Known Limitations and Deferred Work
 
 - **Fresh sessions only** — load, list, resume, delete, and fork are unsupported.

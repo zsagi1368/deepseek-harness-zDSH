@@ -28,6 +28,14 @@ pi-ai profile 的 `models` 列表就在卡片上编辑：一行一个模型，�
 
 无；该包既不组装也不发送提供方请求。
 
+## 版本适配（compat 守卫）
+
+槽位 UI 通过 `@deepseek-ai/dsh-compat` 的 `guardFeature` 对自己的注册做闸门控制（`src/compat.ts` 中的 `guardSlotUI`），在注册前探测 provider-registry store 的表面：
+
+- `store:official-vs-zdsh` —— 当 `@deepseek-ai/dsh-client-store` 导出 `defineStore`（官方 store 包）时，zDSH 槽位 UI 必须禁用，以避免双写冲突；该符号缺失则说明 zDSH store 在使用中，注册可以继续。
+
+当探测发现官方 store 时，守卫记录一条警告并返回 `false`，zDSH 槽位 UI 随之跳过注册而不是抛错。它永不抛错、永不破坏宿主树：携带官方 store 的宿主只是不带 zDSH 槽位完成启动。
+
 ## 已知限制与暂缓事项
 
 - **卡片上可编辑的只有 API 密钥与精选折叠区字段**：手写编辑器用 schema 通用的字段覆盖面换来了设计稿上的布局（[Agent Note](../../../.agents/notes/implemented/architecture/2026-07-30-web-config-plane.zh.md)）。两个家族都公开 `baseURL` 与模型的 `id`/`name`/`contextWindow`/`maxTokens`；手工声明的 pi-ai 路由还公开 `displayName` 与 `api`。重试策略、超时、DeepSeek 模型说明及其他进阶字段仍留在 `settings.yaml` 中；编辑器未展示的现有模型字段会予以保留。不带这些约定字段的 profile schema 只渲染该提示，两套精选布局则以 `llm-deepseek`/`llm-pi-ai` 这两个 namespace 的名字为键。

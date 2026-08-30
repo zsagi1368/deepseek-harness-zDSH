@@ -53,6 +53,14 @@ ctx.workbench.reveal(path) -> host reveal/open
 
 无：布局与标签状态保存在客户端会话内。
 
+## Version adaptation (compat guard)
+
+The workbench gates its own registration through `@deepseek-ai/dsh-compat`'s `guardFeature` (`guardWorkbench` in `src/compat.ts`), probing the peer symbol it depends on before registering:
+
+- `cordis:Service` — `@deepseek-ai/cordis` must export a callable `Service`.
+
+When the probe fails, the guard logs a warning and returns `false`, so the workbench skips registration instead of throwing. It never throws and never breaks the host tree: a partially-loaded or upstream-drifted host simply boots without the workbench.
+
 ## Known Limitations and Deferred Work
 
 - 以独立 dock 形态 vendor，尚未与 Fork 主树做侧聊/会话作用域深度集成。

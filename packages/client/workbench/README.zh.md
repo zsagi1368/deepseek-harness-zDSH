@@ -53,6 +53,14 @@ ctx.workbench.reveal(path) -> host reveal/open
 
 无：布局与标签状态保存在客户端会话内。
 
+## 版本适配（compat 守卫）
+
+工作台通过 `@deepseek-ai/dsh-compat` 的 `guardFeature` 对自己的注册做闸门控制（`src/compat.ts` 中的 `guardWorkbench`），在注册前探测它所依赖的对等符号：
+
+- `cordis:Service` —— `@deepseek-ai/cordis` 必须导出可调用的 `Service`。
+
+探测失败时，守卫记录一条警告并返回 `false`，工作台随之跳过注册而不是抛错。它永不抛错、永不破坏宿主树：部分加载或上游漂移的宿主只是不带工作台完成启动。
+
 ## Known Limitations and Deferred Work
 
 - 以独立 dock 形态 vendor，尚未与 Fork 主树做侧聊/会话作用域深度集成。

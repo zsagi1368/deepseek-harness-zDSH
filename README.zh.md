@@ -6,9 +6,9 @@
 
 [![Stage](https://img.shields.io/badge/Stage-Production-blue)](https://github.com/zsagi1368/deepseek-harness-zDSH)
 
-[![Tests](https://img.shields.io/badge/Tests-1029_passing-brightgreen.svg)](https://github.com/zsagi1368/deepseek-harness-zDSH/actions)
+[![Tests](https://img.shields.io/badge/Tests-passing-brightgreen.svg)](https://github.com/zsagi1368/deepseek-harness-zDSH/actions)
 
-**zDSH**（`deepseek-harness-zDSH`）是一个生产级 agent harness 发行版，具有第一方插件治理体系、多提供商视觉处理管线、跨会话记忆和移动端就绪的 Web 界面。开箱即用；所有增强功能均为第一方核心插件，设计为可承受上游升级。
+**zDSH**（`deepseek-harness-zDSH`）是一个生产级 agent harness 发行版，具有第一方插件治理体系、多提供商视觉处理管线、跨会话记忆和移动端就绪的 Web 界面。开箱即用；所有增强功能均为第一方核心插件，设计为可承受上游升级——另外，版本感知适配层（`@deepseek-ai/dsh-compat`）守卫每个功能的注册，对照官方核心 API 形状自动检测，升级自动适配，检测到冲突自动禁用对应功能，绝不会拖垮核心。
 
 ## 为什么做 zDSH
 
@@ -24,12 +24,21 @@ zDSH 系统性地解决这些问题：
 | 插件健康不可见直到出问题 | 实时治理标签页：名册、准入徽章、启停操作、预设 |
 | 企业网络下 web-fetch 不可用 | HTTP 代理支持（undici ProxyAgent + 环境变量回退） |
 | headless 运行是一次性的 | 结构化 session-id 输出 + `--resume <id>` 用于 CI |
+| 官方升级悄悄破坏 fork 功能 | 版本感知适配层：自动适配、冲突自动禁用，绝不拖垮核心 |
 
 ## 包含内容
+
+### 版本感知适配层
+
+`@deepseek-ai/dsh-compat` 守卫每个 zDSH 功能的注册，对照官方核心的真实 API 形状：动态符号探测（`probeSymbol`/`memberOf`/`versionOf`）+ 功能守卫（`guardFeature`）并附进程级审计名册。七大主打功能——插件治理、项目插件根、模型槽位体系、ACP、引导加固、工作台二进制收口、UI 槽位——全部带 compat 守卫：官方核心升级时自动适配，检测到冲突自动不启用，绝不拖垮核心。
 
 ### 插件治理体系
 
 三层沙箱（进程 / Worker / 内联）· 加载-运行-健康守卫（熔断语义）· fail-closed 准入 + 持久化审批账本 · Loader 镜像注册表填充 · 经准入管线的本地路径与 npm 注册表 install/uninstall。
+
+### 项目插件根
+
+`.dsh/plugins/` 项目级插件根：项目根发现 · 钳制强制 · 挂载隔离 · provenance 追踪 · 信任 ledger · 子进程运行时 · 会话作用域激活。项目插件与第一方插件一样接受治理、隔离与版本管理。
 
 ### Omnivision 视觉管线
 
@@ -39,6 +48,10 @@ zDSH 系统性地解决这些问题：
 
 从会话事件启发式抽取决策 / 事实 / 偏好 · 日分片 JSON 存储于 `.dsh-zdsh/memory/` · 新会话启动按关键词重叠度注入 Top-K · 零 LLM 调用零嵌入向量。
 
+### 模型槽位体系
+
+辅助模型调用的统一注册表（`ctx.modelSlots`）：四个内置槽位（`title` / `compaction.summarize` / `vision` / `plan`）共享一个封闭词汇表。部署配置为每个槽位钉住精确的 provider/model，带 fallback 默认值，并以会话主模型路由作为最终档位。每次成功解析都会追加持久化的 `slots/dispatch` 审计记录。UI 设置命名空间（`llm-model-slots`）允许用户在不改动部署文件的前提下编辑槽位策略。
+
 ### Host 治理网关
 
 Typert 直接 Remote 经 API 网关暴露：名册 / 详情 / 启停 / 健康 / 批准 / 预设保存加载删除 · 服务端 fail-closed 准入强制 + 补偿式持久化。
@@ -46,6 +59,10 @@ Typert 直接 Remote 经 API 网关暴露：名册 / 详情 / 启停 / 健康 / 
 ### Web 管理界面
 
 治理标签页与官方 inventory 标签页共存于设置页：名册表格（状态 / 版本 / 审批徽章）· 启停操作 · 健康概览条 · 预设管理 · 移动端响应式布局。
+
+### ACP 自动化入口
+
+`dsh acp`——基于 JSON-RPC stdio 的稳定自动化专用 Agent Client Protocol 服务端 · 会话恢复（session resume）· 全档位权限选项（一次性允许/拒绝），面向 headless 与 CI 工作流。
 
 ### 额外改进
 
@@ -56,6 +73,10 @@ Typert 直接 Remote 经 API 网关暴露：名册 / 详情 / 启停 / 健康 / 
 | 界面 | 会话置顶 · 在资源管理器中显示 · 移动端响应式布局（768px 断点） |
 | 文件 | EISDIR 原子写修复 + 清晰错误信息 |
 | LLM | CJK 感知 token 计价（修复中文低估 3–4×） |
+| LLM | D-005：max-tokens 截断触及工具调用时显式失败 |
+| 引导 | D-006：Windows 引导 realpath + 系统路径 env 黑名单 |
+| 工作台 | 裸名进程 spawn fail-closed（不做降级 spawn） |
+| 治理 | 沙箱 realpath 硬化（符号链接/联接逃逸防护） |
 | 治理 | LoadGuard semver 比较（消除字典序误判） |
 | 安全 | 沙箱子进程环境变量白名单派生 |
 | 路径 | Windows 跨盘符逃逸守卫 + ::ffff: IPv6 解包 SSRF 校验 |
@@ -127,17 +148,22 @@ rm -rf ~/.dsh-zdsh        # or your custom DSH_BRANCH_HOME path
 
 ```
 packages/
-├── plugins/plugin-governance/       # Governance core (spec, registry, guards, sandbox)
-├── host/plugin-governance-host/     # Host-plane gateway service (10 Remotes)
-├── client/ui-plugin-manager/        # Web Settings governance tab
-├── client/workbench/                # IDE dock (terminal, git, file browser)
-├── extensions/omnivision/           # Vision pipeline (providers, bridge, security)
-├── extensions/webstack/             # Integrated search & fetch kernel
-├── extensions/file-hub/             # File management
-├── extensions/autopilot/            # Automation orchestration
-├── extensions/plugin-center/       # Plugin center UI
-├── memory/zdsh-memory/              # Cross-session memory plugin
-└── ...                              # All platform packages unchanged from upstream
+├── compat/dsh-compat/              # 版本感知适配框架（探测 + 守卫 + 名册）
+├── plugins/plugin-governance/       # 治理核心（spec、注册表、守卫、沙箱）
+├── plugins/plugin-project-root/     # 项目插件根（.dsh/plugins）层
+├── llm/model-slots/                 # 统一模型槽位注册表（title / compaction.summarize / vision / plan）
+├── acp/acp/                         # JSON-RPC stdio 自动化专用 ACP 服务端
+├── host/plugin-governance-host/     # Host 平面网关服务（10 个 Remote）
+├── client/ui-plugin-manager/        # Web 设置治理标签页
+├── client/ui-settings-models/       # 模型槽位 UI 配置
+├── client/workbench/                # IDE 停靠栏（终端、git、文件浏览器）
+├── extensions/omnivision/           # 视觉管线（提供商、桥接、安全）
+├── extensions/webstack/             # 集成搜索与抓取内核
+├── extensions/file-hub/             # 文件管理
+├── extensions/autopilot/            # 自动化编排
+├── extensions/plugin-center/        # 插件中心 UI
+├── memory/zdsh-memory/              # 跨会话记忆插件
+└── ...                              # 其余平台包与上游一致，未改动
 ```
 
 ## Remote access

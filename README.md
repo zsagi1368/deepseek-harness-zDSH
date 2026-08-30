@@ -6,9 +6,9 @@ English | [中文](README.zh.md)
 
 [![Stage](https://img.shields.io/badge/Stage-Production-blue)](https://github.com/zsagi1368/deepseek-harness-zDSH)
 
-[![Tests](https://img.shields.io/badge/Tests-1029_passing-brightgreen.svg)](https://github.com/zsagi1368/deepseek-harness-zDSH/actions)
+[![Tests](https://img.shields.io/badge/Tests-passing-brightgreen.svg)](https://github.com/zsagi1368/deepseek-harness-zDSH/actions)
 
-**zDSH** (`deepseek-harness-zDSH`) is a production-grade agent harness distribution with first-class plugin governance, multi-provider vision processing, cross-session memory, and a mobile-ready web interface. Works out of the box; every enhancement is a first-party core plugin designed to survive upstream upgrades.
+**zDSH** (`deepseek-harness-zDSH`) is a production-grade agent harness distribution with first-class plugin governance, multi-provider vision processing, cross-session memory, and a mobile-ready web interface. Works out of the box; every enhancement is a first-party core plugin designed to survive upstream upgrades — and a version-adaptive compat layer (`@deepseek-ai/dsh-compat`) gates each feature's registration against the official core API shape, so upgrades adapt automatically, detected conflicts auto-disable the affected feature, and the core is never dragged down.
 
 ## Why zDSH
 
@@ -24,11 +24,18 @@ zDSH addresses these systematically:
 | Plugin health invisible until something breaks | Real-time governance tab: roster, admission badges, enable/disable, presets |
 | web-fetch unusable behind corporate proxies | HTTP proxy support via undici ProxyAgent with env-var fallback |
 | Headless runs are one-shot only | Structured session-id output + `--resume <id>` for CI pipelines |
+| Official upgrade silently breaks fork features | Version-adaptive compat layer: features auto-adapt, auto-disable on conflict, never drag the core down |
 
 ## What's included
 
+### Version-adaptive compat layer
+`@deepseek-ai/dsh-compat` gates every zDSH feature registration against the official core's real API shape: dynamic symbol probing (`probeSymbol`/`memberOf`/`versionOf`) plus a feature guard (`guardFeature`) with a process-level audit roster. All seven headline features — plugin governance, project plugin root, model slots, ACP, boot hardening, workbench binary, UI slots — ship compat guards: they adapt automatically when the official core upgrades, auto-disable when a conflict is detected, and never take the core down.
+
 ### Plugin governance system
 Three-tier sandboxing (process / worker / inline) · load-run-health guards with circuit-breaker semantics · fail-closed admission backed by durable approvals ledger · Loader-mirror registry population · local-path install/uninstall through admission pipeline.
+
+### Project plugin root
+`.dsh/plugins/` per-project plugin root: project-root discovery · clamp enforcement · mount isolation · provenance tracking · trust ledger · child-process runtime · session-scoped activation. Project plugins are governed, isolated, and versioned exactly like first-party ones.
 
 ### Omnivision vision pipeline
 Multi-provider chain (OpenAI / Anthropic / Gemini / OVH / Zhipu) · automatic failover · SSRF guards (DNS resolution + private-range + IPv4-mapped-IPv6 checks) · realpath-based path policy with symlink traversal protection · KV-safe shadow history.
@@ -36,11 +43,17 @@ Multi-provider chain (OpenAI / Anthropic / Gemini / OVH / Zhipu) · automatic fa
 ### Cross-session memory
 Heuristic extraction of decisions, facts, and preferences · day-sharded JSON storage under `.dsh-zdsh/memory/` · Top-K relevance-scored injection at session start · zero LLM calls, zero embedding vectors.
 
+### Model slot system
+Unified registry (`ctx.modelSlots`) for auxiliary model calls: four built-in slots (`title` / `compaction.summarize` / `vision` / `plan`) share one closed vocabulary. Deployment config pins exact provider/model per slot, with a fallback default and the conversation's main-model route as the final tier. Every successful resolution appends a durable `slots/dispatch` audit record. A UI settings namespace (`llm-model-slots`) lets users edit slot policy without touching deployment files.
+
 ### Host governance gateway
 Ten Typert direct Remotes through the API gateway: roster, get, enable/disable, health, approve, preset save/load/delete · server-side fail-closed admission enforcement · compensating persistence.
 
 ### Web management interface
 Governance tab in Web Settings alongside the official inventory tab: roster table with status/version/approval badges · enable/disable actions · health strip · preset management · mobile-responsive layout.
+
+### ACP automation entry
+`dsh acp` — a stable automation-only Agent Client Protocol server over JSON-RPC stdio · session resume · full-range permission options (one-shot allow/reject) for headless and CI workflows.
 
 ### Additional improvements
 
@@ -51,6 +64,10 @@ Governance tab in Web Settings alongside the official inventory tab: roster tabl
 | UI | Session pinning · reveal-in-file-manager · mobile-responsive layout (768px breakpoint) |
 | Files | EISDIR atomic-write fix with clear error messages |
 | LLM | CJK-aware token pricing (fixes 3–4× underestimation for Chinese text) |
+| LLM | D-005: fail explicitly when a max-tokens cut-off reaches a tool call |
+| Boot | D-006: Windows boot realpath + system-path env blacklist |
+| Workbench | bare-name process spawn fail-closed (no degraded spawn) |
+| Governance | sandbox realpath hardening (symlink/junction escape prevention) |
 | Governance | LoadGuard semver comparison fix (lexicographic misjudgement eliminated) |
 | Security | Sandbox child-process environment whitelist derivation |
 | Paths | Windows cross-drive escape guard + ::ffff: IPv6 unwrapping in SSRF checks |
@@ -122,9 +139,14 @@ See the [remote access guide](docs/dsh/remote-access.md) and the [CHANGELOG](doc
 
 ```
 packages/
+├── compat/dsh-compat/              # Version-adaptive shim framework (probe + guard + roster)
 ├── plugins/plugin-governance/       # Governance core (spec, registry, guards, sandbox)
+├── plugins/plugin-project-root/     # Project plugin root (.dsh/plugins) layer
+├── llm/model-slots/                 # Unified model slot registry (title / compaction.summarize / vision / plan)
+├── acp/acp/                         # Automation-only ACP server over JSON-RPC stdio
 ├── host/plugin-governance-host/     # Host-plane gateway service (10 Remotes)
 ├── client/ui-plugin-manager/        # Web Settings governance tab
+├── client/ui-settings-models/       # Model slot UI configuration
 ├── client/workbench/                # IDE dock (terminal, git, file browser)
 ├── extensions/omnivision/           # Vision pipeline (providers, bridge, security)
 ├── extensions/webstack/             # Integrated search & fetch kernel
