@@ -149,6 +149,42 @@ export class BlockAssembler {
   }
 
   /**
+   * The tool-call blocks a max-tokens finish could not safely execute, in
+   * stream order; empty for every other finish kind. A call is unsafe when it
+   * never received a `block-end` close or its arguments do not parse as JSON —
+   * either way it cannot be executed. Closed blocks with parseable arguments
+   * are complete calls, so they are excluded even though max-token truncation
+   * still drops them from {@link blocks}: an agent loop ends such a turn
+   * cleanly instead of reporting a truncation error.
+   * @returns the unsafe tool-call blocks in stream order, or an empty array
+   *   when the finish kind is not `max-tokens`.
+   */
+  truncatedToolCalls(): ContentBlock[] {
+    if (this.finish.kind !== 'max-tokens') return []
+    const unsafe: ContentBlock[] = []
+    for (const index of this.order) {
+      const partial = this.mustGet(index)
+      const block = partial.block
+      if (block === undefined) {
+        // Never closed by block-end: the arguments stream was cut off mid-way.
+        if (partial.blockType === 'tool-call') {
+          unsafe.push(this.assemble(partial, index))
+        }
+        continue
+      }
+      if (block.type !== 'tool-call') {
+        continue
+      }
+      try {
+        JSON.parse(block.arguments)
+      } catch {
+        unsafe.push(block) // closed, but the arguments are not valid JSON
+      }
+    }
+    return unsafe
+  }
+
+  /**
    * Assemble all blocks seen so far, in stream order.
    * @returns one block per seen index, except that max-token truncation drops
    *   tool calls that cannot be executed safely; an open block assembles from

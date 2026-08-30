@@ -197,6 +197,68 @@ describe('BlockAssembler replay metadata', () => {
   })
 })
 
+describe('BlockAssembler truncatedToolCalls (DSHV2-101)', () => {
+  it('reports the tool-call blocks a max-tokens finish drops, in stream order', () => {
+    const assembler = new BlockAssembler()
+    assembler.push({ type: 'block-end', index: 0, block: { type: 'text', text: 'lead' } })
+    assembler.push({
+      type: 'block-end',
+      index: 1,
+      block: { type: 'tool-call', id: ToolCallId('c1'), name: 'echo', arguments: '{"text":' },
+    })
+    assembler.push({
+      type: 'tool-call-delta',
+      index: 2,
+      id: ToolCallId('c2'),
+      name: 'read',
+      argumentsDelta: '{"pa',
+    })
+    assembler.push({ type: 'finish', reason: { kind: 'max-tokens' } })
+
+    expect(assembler.blocks()).toEqual([{ type: 'text', text: 'lead' }])
+    expect(assembler.truncatedToolCalls()).toEqual([
+      { type: 'tool-call', id: ToolCallId('c1'), name: 'echo', arguments: '{"text":' },
+      { type: 'tool-call', id: ToolCallId('c2'), name: 'read', arguments: '{"pa' },
+    ])
+  })
+
+  it('excludes a closed tool call whose arguments parse as JSON', () => {
+    // A block-end-closed call with parseable arguments is complete and safe to
+    // execute, so it is not reported even though max-token truncation still
+    // drops it from blocks().
+    const assembler = new BlockAssembler()
+    assembler.push({
+      type: 'block-end',
+      index: 0,
+      block: { type: 'tool-call', id: ToolCallId('c1'), name: 'echo', arguments: '{"text":"x"}' },
+    })
+    assembler.push({ type: 'finish', reason: { kind: 'max-tokens' } })
+
+    expect(assembler.blocks()).toEqual([])
+    expect(assembler.truncatedToolCalls()).toEqual([])
+  })
+
+  it('reports nothing for a text-only max-tokens response', () => {
+    const assembler = new BlockAssembler()
+    assembler.push({ type: 'block-end', index: 0, block: { type: 'text', text: 'partial' } })
+    assembler.push({ type: 'finish', reason: { kind: 'max-tokens' } })
+    expect(assembler.blocks()).toEqual([{ type: 'text', text: 'partial' }])
+    expect(assembler.truncatedToolCalls()).toEqual([])
+  })
+
+  it('reports nothing when tool calls survive a normal finish', () => {
+    const assembler = new BlockAssembler()
+    assembler.push({
+      type: 'block-end',
+      index: 0,
+      block: { type: 'tool-call', id: ToolCallId('c1'), name: 'echo', arguments: '{}' },
+    })
+    assembler.push({ type: 'finish', reason: { kind: 'tool-calls' } })
+    expect(assembler.blocks()).toHaveLength(1)
+    expect(assembler.truncatedToolCalls()).toEqual([])
+  })
+})
+
 describe('assertNever', () => {
   it('throws with diagnostics when a value escapes a closed union at runtime', async () => {
     const { assertNever } = await import('@deepseek-ai/dsh-llm')
