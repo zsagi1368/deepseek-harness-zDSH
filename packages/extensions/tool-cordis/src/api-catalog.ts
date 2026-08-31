@@ -1225,6 +1225,25 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'modelSlots',
+    summary: 'Registry of deployment-level auxiliary-model routes keyed by slot identity.',
+    description: 'Registry of deployment-level auxiliary-model routes keyed by slot identity. Consumers consult it right before each auxiliary dispatch; every successful resolution with a session sink appends the durable `slots/dispatch` audit record naming the exact route and the tier that produced it. The registry also registers the `llm-model-slots` settings namespace so the settings-mirror tier (user layer) can override the composition base.',
+    methods: [
+      {
+        signature: 'register(slot: SlotId, route: ModelRoute): () => void',
+        description: 'Register one programmatic slot route. Configuration-pinned slots reject registration so a deployment statement cannot be silently replaced at runtime.',
+        parameters: [{ name: 'slot', description: 'slot identity the route serves.' }, { name: 'route', description: 'exact provider/model pair dispatched under the slot.' }],
+        returns: 'an effect-scoped disposer removing the route again.',
+      },
+      {
+        signature: 'resolve(slot: SlotId, input: ModelSlotResolveInput = {}): ResolvedModelSlot | null',
+        description: 'Resolve one auxiliary-model route through the fixed precedence: the slot\'s own statement, then the deployment default, then the conversation\'s main-model route. With a session sink, the durable `slots/dispatch` record is appended before the caller dispatches.',
+        parameters: [{ name: 'slot', description: 'slot identity to resolve.' }, { name: 'input', description: 'main-model route fallback and audit sink.' }],
+        returns: 'the frozen resolution, or `null` when no tier can supply a route.',
+      },
+    ],
+  },
+  {
     key: 'permissionPresets',
     summary: 'Owns the deployment\'s permission presets and their write path.',
     description: 'Owns the deployment\'s permission presets and their write path. Requires a confining `ctx.shell` executor and `ctx.approval`; unmatched knob values are reported as CUSTOM_PRESET, not an error.',
@@ -1278,6 +1297,155 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Select whether plan mode should be active. Between turns the method appends the change immediately because no in-turn pre-step will run until another prompt starts a turn. The open-turn fold is the idle signal: agent status stays `running` through post-turn checkpointing, when no further in-turn pre-step runs. During an open turn the selection remains pending until the next accepted in-turn pre-step. Repeated selection of the current or already-pending state is a no-op.',
         parameters: [{ name: 'agent', description: 'The agent to switch.' }, { name: 'active', description: 'Whether plan mode should be active.' }],
         returns: 'what happened: `committed` (logged now), `queued` (awaiting the next accepted in-turn pre-step), `cancelled` (an opposite pending selection was cleared; the logged state already matches), or `noop` (already in that state).',
+      },
+    ],
+  },
+  {
+    key: 'pluginGovernance',
+    summary: 'The host governance service.',
+    description: 'The host governance service. It owns one PluginRegistry and one PluginPersistence bound to this service fiber; status mutations are snapshotted durably before their receipt is returned, so memory and disk never disagree behind an acknowledged call.',
+    methods: [
+      {
+        signature: '@Remote(\'list\') list(): GovernanceRosterSnapshot',
+        description: 'List every registered plugin with its live status and admission state.',
+        parameters: [],
+        returns: 'the point-in-time roster in registration order.',
+      },
+      {
+        signature: '@Remote(\'get\') get(request: PluginIdRequest): GovernanceResult<GovernedPluginDetail>',
+        description: 'Project one registered plugin in full for inspection surfaces.',
+        parameters: [{ name: 'request', description: 'the plugin to project.' }],
+        returns: 'the detail, or `plugin-not-found`.',
+      },
+      {
+        signature: '@Remote(\'install\') async install(request: InstallPluginRequest): Promise<GovernanceResult<GovernanceAcknowledgement>>',
+        description: 'Install a plugin from a local directory or an npm registry source (L3 admission pipeline). Local sources must be existing directories with a readable `package.json`; `npm:<name>[@<exact-version>]` sources are resolved against the configured registry, integrity-checked, and extracted into the governance storage area before the same manifest construction runs over them. The constructed manifest is admitted through the governance registry and the roster snapshot persists before the receipt returns.\n\nFail closed: a manifest whose permission posture requests an admission decision (`requiresAdmission`) registers **disabled** unless the approvals ledger already holds a decision, so installed code never runs before the operator approves it; `approve` + `enable` then activate it.',
+        parameters: [{ name: 'request', description: 'local source directory or `npm:` spec of the plugin.' }],
+        returns: 'a receipt, or `request-invalid` / `registry-unavailable` / `persistence-failed`.',
+      },
+      {
+        signature: '@Remote(\'uninstall\') async uninstall(request: PluginIdRequest): Promise<GovernanceResult<GovernanceAcknowledgement>>',
+        description: 'Uninstall a plugin: unregister it from the governance registry, purge its durable admission state (approvals-ledger entry and queued persisted decision — a later reinstall fails closed instead of inheriting stale grants), and snapshot the registry before the receipt returns. Entries mirrored from the Cordis Loader reappear on the next sync while their module stays mounted in the loader configuration.',
+        parameters: [{ name: 'request', description: 'the plugin to remove.' }],
+        returns: 'a receipt, or `plugin-not-found` / `persistence-failed`.',
+      },
+      {
+        signature: '@Remote(\'enable\') async enable(request: PluginIdRequest): Promise<GovernanceResult<GovernanceAcknowledgement>>',
+        description: 'Re-enable a previously disabled plugin and snapshot the registry. Plugins whose manifest requests an admission decision stay disabled until `approve` records one — the gate is enforced here on the server, not just in client UI.',
+        parameters: [{ name: 'request', description: 'the plugin to enable.' }],
+        returns: 'a receipt, or `plugin-not-found` / `approval-required` / `persistence-failed`.',
+      },
+      {
+        signature: '@Remote(\'disable\') async disable(request: DisablePluginRequest): Promise<GovernanceResult<GovernanceAcknowledgement>>',
+        description: 'Disable a plugin and snapshot the registry. An optional reason enters the registry\'s own per-plugin record until the next enable re-enables it.',
+        parameters: [{ name: 'request', description: 'the plugin to disable, with an optional reason.' }],
+        returns: 'a receipt, or `plugin-not-found` / `persistence-failed`.',
+      },
+      {
+        signature: '@Remote(\'health\') health(): GovernanceHealthReport',
+        description: 'Report aggregate and per-plugin health, including each plugin\'s own probe verdict when it declares one.',
+        parameters: [],
+        returns: 'the aggregated report over the current roster.',
+      },
+      {
+        signature: '@Remote(\'approve\') approve(request: PluginIdRequest): GovernanceResult<GovernanceAcknowledgement>',
+        description: 'Record the operator\'s admission decision for a plugin whose manifest requests confirmation. The decision survives restarts in the approvals ledger and is reported by `list` and `get`.',
+        parameters: [{ name: 'request', description: 'the plugin to approve.' }],
+        returns: 'a receipt, or `plugin-not-found` / `persistence-failed`.',
+      },
+      {
+        signature: '@Remote(\'presetSave\') presetSave(request: PresetNameRequest): GovernanceResult<GovernanceAcknowledgement>',
+        description: 'Snapshot which plugins are currently enabled or disabled under a preset name. Statuses other than active/disabled are runtime facts rather than operator decisions and stay out of presets.',
+        parameters: [{ name: 'request', description: 'name of the preset to write.' }],
+        returns: 'a receipt, or `preset-already-exists` / `request-invalid` / `persistence-failed`.',
+      },
+      {
+        signature: '@Remote(\'presetLoad\') async presetLoad(request: PresetNameRequest): Promise<GovernanceResult<PresetApplicationReport>>',
+        description: 'Apply a stored preset: re-enable or disable each listed plugin against the live registry. Entries naming unknown plugins are reported untouched.',
+        parameters: [{ name: 'request', description: 'name of the preset to apply.' }],
+        returns: 'applied and unknown ids, or `preset-not-found` / `request-invalid` / `persistence-failed`.',
+      },
+      {
+        signature: '@Remote(\'presetDelete\') presetDelete(request: PresetNameRequest): GovernanceResult<GovernanceAcknowledgement>',
+        description: 'Delete one stored preset. The live registry is untouched.',
+        parameters: [{ name: 'request', description: 'name of the preset to delete.' }],
+        returns: 'a receipt, or `preset-not-found` / `request-invalid` / `persistence-failed`.',
+      },
+      {
+        signature: 'async syncMountedPlugins(): Promise<void>',
+        description: 'Mirror the Cordis Loader\'s currently mounted plugin entries into the governed registry, so the roster and the plugin-manager UI report real production data instead of an empty list. Each entry is wrapped through the governance Cordis adapter in mirror mode: lifecycle stays owned by Cordis, and the operator\'s mount decision in the loader configuration counts as the admission decision. One entry failing to wrap or register never blocks the rest; already-mirrored ids are skipped on re-runs.\n\nRuns once at service init and is re-triggered by every `list`/`health` read so entries mounted after this service can still appear.',
+        parameters: [],
+        returns: 'when one full sync pass has settled (also a test seam).',
+      },
+    ],
+  },
+  {
+    key: 'projectPluginLayer',
+    summary: 'The host-side project plugin layer service.',
+    description: 'The host-side project plugin layer service.',
+    methods: [
+      {
+        signature: 'mount(accepted: ProjectPluginCandidate[]): Promise<MountResult>',
+        description: 'Mount accepted candidates, one by one, isolated per entry.',
+        parameters: [{ name: 'accepted', description: 'candidates that passed the discovery gate.' }],
+        returns: 'mount result with successfully mounted entry ids and full audit trail.',
+      },
+      {
+        signature: 'provenanceOf(entryId: string): ProjectPluginProvenance | undefined',
+        description: 'Provenance of one mounted loader entry id.',
+        parameters: [{ name: 'entryId', description: 'loader entry id returned by mount.' }],
+        returns: 'the provenance record, or `undefined` when the id is unknown.',
+      },
+      {
+        signature: 'guardedManifestOf(entryId: string): PluginManifest | undefined',
+        description: 'The guarded manifest of one mounted loader entry id.',
+        parameters: [{ name: 'entryId', description: 'loader entry id returned by mount.' }],
+        returns: 'the guarded manifest, or `undefined` when the id is unknown.',
+      },
+      {
+        signature: 'toolOwnerOf(toolName: string): string | undefined',
+        description: 'Canonical manifest id owning one tool name.',
+        parameters: [{ name: 'toolName', description: 'tool name registered by a project plugin.' }],
+        returns: 'the manifest id that owns the tool, or `undefined` when unattributed.',
+      },
+      {
+        signature: 'projectRootOf(pluginId: string): string | undefined',
+        description: 'Project root owning one manifest id.',
+        parameters: [{ name: 'pluginId', description: 'manifest id of a mounted project plugin.' }],
+        returns: 'the project root path, or `undefined` when unknown (M3 scope check).',
+      },
+      {
+        signature: 'isSubprocess(pluginId: string): boolean',
+        description: 'Whether one manifest id runs in a subprocess.',
+        parameters: [{ name: 'pluginId', description: 'manifest id of a mounted project plugin.' }],
+        returns: '`true` when the plugin runs in an M2b subprocess (process/worker tier).',
+      },
+      {
+        signature: 'subprocessOf(pluginId: string): SubprocessRuntime | undefined',
+        description: 'The subprocess runtime of one manifest id.',
+        parameters: [{ name: 'pluginId', description: 'manifest id of a mounted project plugin.' }],
+        returns: 'the subprocess runtime, or `undefined` when the plugin runs inline.',
+      },
+      {
+        signature: 'subprocessEntryIds(): string[]',
+        description: 'Loader entry ids of subprocess-tier project plugins (M2b). These entries have NO loader row — their tools are host-side proxies — so the governance mirror must enumerate them separately from `loader.entries()`.',
+        parameters: [],
+        returns: 'an array of subprocess-tier loader entry ids.',
+      },
+      {
+        signature: 'readonly report: readonly GateReportEntry[]',
+        description: 'The accumulated gate+mount report.',
+        parameters: [],
+      },
+      {
+        signature: 'readonly runGuard: RunGuard',
+        description: 'The RunGuard backing every project tool call.',
+        parameters: [],
+      },
+      {
+        signature: 'dispose(): void',
+        description: 'Remove the tools/execute wrapper and drop all watchers and subprocesses.',
+        parameters: [],
       },
     ],
   },
@@ -3451,16 +3619,8 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ApiSessionAgentResult = {\n    readonly agent: Agent;\n} | {\n    readonly error: ApiSessionAgentError;\n};',
   },
   {
-    name: 'ApprovalOutcome',
-    declaration: 'export type ApprovalOutcome = \'allowed-once\' | \'rejected\' | \'cancelled\' | \'unavailable\';',
-  },
-  {
     name: 'ApprovalPolicy',
     declaration: 'export type ApprovalPolicy = \'ask\' | \'never\';',
-  },
-  {
-    name: 'ApprovalRequest',
-    declaration: 'export interface ApprovalRequest extends ApprovalRequestEvent {\n    readonly agent: Agent;\n    readonly toolName: string;\n    readonly callId?: ToolCallId;\n    readonly reason?: string;\n    readonly signal?: AbortSignal;\n}',
   },
   {
     name: 'ApprovalRequestEvent',
@@ -3589,6 +3749,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'Branded',
     declaration: 'export type Branded<B extends string> = string & {\n    readonly [BRAND]: B;\n};',
+  },
+  {
+    name: 'CapabilityDeclaration',
+    declaration: 'export interface CapabilityDeclaration {\n    type: CapabilityType;\n    tool?: {\n        name: string;\n        description: string;\n        schema: Record<string, unknown>;\n        maxResultBytes?: number;\n        concurrencyLimit?: number;\n        timeoutMs?: number;\n    };\n    hook?: {\n        name: string;\n        event: string;\n        priority?: number;\n        allowed?: boolean;\n    };\n    service?: {\n        name: string;\n        factory: string;\n        dependencies?: string[];\n        singleton?: boolean;\n    };\n    event?: {\n        name: string;\n        schema?: Record<string, unknown>;\n    };\n    uiSlot?: {\n        name: string;\n        key?: string;\n        mountPoint: string;\n        component: string;\n    };\n    llmAdapter?: {\n        name: string;\n        factory: string;\n        contextWindow?: number;\n    };\n}',
+  },
+  {
+    name: 'CapabilityType',
+    declaration: 'export type CapabilityType = \'tool\' | \'hook\' | \'service\' | \'event\' | \'ui-slot\' | \'llm-adapter\';',
   },
   {
     name: 'ChunkRowEvent',
@@ -3887,6 +4055,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface DirectoryRegistrationHandle {\n    (): void;\n    replace(entries: readonly LlmConfigurableProvider[]): void;\n}',
   },
   {
+    name: 'DisablePluginRequest',
+    declaration: 'export interface DisablePluginRequest {\n    readonly pluginId: PluginGovernanceId;\n    readonly reason: string | null;\n}',
+  },
+  {
+    name: 'DiscoveredProjectPlugin',
+    declaration: 'export interface DiscoveredProjectPlugin {\n    id: string;\n    version: string;\n    name: string;\n    projectRoot: string;\n    pluginDir: string;\n    manifest: PluginManifest;\n    manifestHash: string;\n    entryFile: string;\n    source: \'project\';\n}',
+  },
+  {
     name: 'Domain',
     declaration: 'export interface Domain<S extends DomainSpec> {\n    readonly name: string;\n    readonly global: DomainGlobalHandleOf<S>;\n    table<N extends keyof S[\'tables\'] & string>(name: N): KvTable<TableKeyOf<S, N>, TableValueOf<S, N>>;\n    close(): Promise<void>;\n}',
   },
@@ -3967,6 +4143,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface EpochHeader {\n    config: LlmCallConfig;\n    adapterDefaults?: LlmCallConfigAdapterDefaults;\n    system?: string;\n    tools?: ToolSchema[];\n}',
   },
   {
+    name: 'ExecOptions',
+    declaration: 'export interface ExecOptions {\n    timeout?: number;\n    env?: Record<string, string>;\n    cwd?: string;\n}',
+  },
+  {
+    name: 'ExecResult',
+    declaration: 'export interface ExecResult {\n    exitCode: number;\n    stdout: string;\n    stderr: string;\n    duration: number;\n}',
+  },
+  {
     name: 'FileDiff',
     declaration: 'export interface FileDiff {\n    path: string;\n    oldText: string | null;\n    newText: string;\n}',
   },
@@ -4031,6 +4215,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface FsWriteOutcome {\n    operation: \'create\' | \'update\';\n    version: FsVersion;\n    before: string | null;\n    after: string;\n}',
   },
   {
+    name: 'GateReportEntry',
+    declaration: 'export interface GateReportEntry {\n    root: string;\n    id: string;\n    version: string;\n    verdict: \'rejected\' | \'warned\' | \'mounted\' | \'mount-failed\';\n    check: string;\n    message: string;\n}',
+  },
+  {
     name: 'GenerateOptions',
     declaration: 'export interface GenerateOptions {\n    provider: string;\n    model: string;\n    reasoningEffort?: ReasoningEffortId;\n    messages: Message[];\n    system?: string;\n    tools?: ToolSchema[];\n    temperature?: number;\n    maxTokens?: number;\n    stop?: string[];\n    signal?: AbortSignal;\n    sessionId?: Branded<\'SessionId\'>;\n    purpose?: \'compaction\' | \'session-title\';\n}',
   },
@@ -4077,6 +4265,50 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'GoalView',
     declaration: 'export interface GoalView extends GoalSnapshot {\n    readonly roundsStarted: number;\n    readonly createdAt: number;\n    readonly updatedAt: number;\n    readonly activation: GoalActivation;\n}',
+  },
+  {
+    name: 'GovernanceAcknowledgement',
+    declaration: 'export interface GovernanceAcknowledgement {\n    readonly acknowledged: boolean;\n}',
+  },
+  {
+    name: 'GovernanceErrorCode',
+    declaration: 'export type GovernanceErrorCode = \'plugin-not-found\' | \'approval-required\' | \'preset-not-found\' | \'preset-already-exists\' | \'not-implemented\' | \'persistence-failed\' | \'request-invalid\' | \'registry-unavailable\';',
+  },
+  {
+    name: 'GovernanceFailure',
+    declaration: 'export interface GovernanceFailure {\n    readonly code: GovernanceErrorCode;\n    readonly message: string;\n}',
+  },
+  {
+    name: 'GovernanceHealthReport',
+    declaration: 'export interface GovernanceHealthReport {\n    readonly total: number;\n    readonly active: number;\n    readonly warnings: number;\n    readonly errors: number;\n    readonly disabled: number;\n    readonly plugins: readonly GovernedPluginHealthEntry[];\n}',
+  },
+  {
+    name: 'GovernanceResult',
+    declaration: 'export type GovernanceResult<T> = {\n    readonly ok: true;\n    readonly value: T;\n} | {\n    readonly ok: false;\n    readonly error: GovernanceFailure;\n};',
+  },
+  {
+    name: 'GovernanceRosterSnapshot',
+    declaration: 'export interface GovernanceRosterSnapshot {\n    readonly plugins: readonly GovernedPluginSummary[];\n}',
+  },
+  {
+    name: 'GovernedCapabilityView',
+    declaration: 'export interface GovernedCapabilityView {\n    readonly type: string;\n    readonly name: string;\n}',
+  },
+  {
+    name: 'GovernedPluginDetail',
+    declaration: 'export interface GovernedPluginDetail {\n    readonly summary: GovernedPluginSummary;\n    readonly description: string | null;\n    readonly author: string | null;\n    readonly certification: string | null;\n    readonly permissionLevel: string | null;\n    readonly capabilities: readonly GovernedCapabilityView[];\n    readonly sandbox: GovernedSandboxView;\n    readonly errors: readonly string[];\n}',
+  },
+  {
+    name: 'GovernedPluginHealthEntry',
+    declaration: 'export interface GovernedPluginHealthEntry {\n    readonly pluginId: PluginGovernanceId;\n    readonly displayName: string;\n    readonly status: PluginGovernanceStatus;\n    readonly healthy: boolean | null;\n    readonly errors: readonly string[];\n    readonly warnings: readonly string[];\n}',
+  },
+  {
+    name: 'GovernedPluginSummary',
+    declaration: 'export interface GovernedPluginSummary {\n    readonly pluginId: PluginGovernanceId;\n    readonly displayName: string;\n    readonly version: string;\n    readonly status: PluginGovernanceStatus;\n    readonly source: \'loader-mirror\' | \'native\' | \'project\';\n    readonly projectRoot?: string;\n    readonly approvalRequired: boolean;\n    readonly approved: boolean;\n    readonly warnings: readonly string[];\n}',
+  },
+  {
+    name: 'GovernedSandboxView',
+    declaration: 'export interface GovernedSandboxView {\n    readonly type: string;\n    readonly filesystemAccess: string;\n    readonly networkAccess: string;\n    readonly maySpawnProcesses: boolean;\n    readonly runtimeTier?: string;\n}',
   },
   {
     name: 'GrantRecord',
@@ -4129,6 +4361,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'InspectorJsonValue',
     declaration: 'export type InspectorJsonValue = InspectorJsonPrimitive | readonly InspectorJsonValue[] | InspectorJsonObject;',
+  },
+  {
+    name: 'InstallPluginRequest',
+    declaration: 'export interface InstallPluginRequest {\n    readonly source: string;\n}',
   },
   {
     name: 'InvariantFailure',
@@ -4471,6 +4707,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ModelReasoningEffort {\n    readonly id: string;\n    readonly name: string;\n    readonly description?: string;\n}',
   },
   {
+    name: 'ModelRoute',
+    declaration: 'export interface ModelRoute {\n    readonly provider: string;\n    readonly model: string;\n}',
+  },
+  {
+    name: 'ModelSlotResolveInput',
+    declaration: 'export interface ModelSlotResolveInput {\n    readonly mainRoute?: ModelRoute;\n    readonly session?: Session;\n}',
+  },
+  {
+    name: 'ModelSlotSource',
+    declaration: 'export type ModelSlotSource = \'slot\' | \'deployment-default\' | \'main-route\';',
+  },
+  {
+    name: 'MountResult',
+    declaration: 'export interface MountResult {\n    mounted: string[];\n    report: GateReportEntry[];\n}',
+  },
+  {
     name: 'ObjectJsonSchema',
     declaration: 'export type ObjectJsonSchema = JsonSchemaNode & {\n    type: \'object\';\n};',
   },
@@ -4481,6 +4733,54 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'PermissionSelect',
     declaration: 'export interface PermissionSelect {\n    options: PresetOption[];\n    currentValue: string;\n}',
+  },
+  {
+    name: 'Plugin',
+    declaration: 'export interface Plugin {\n    manifest: PluginManifest;\n    install(ctx: PluginContext): Promise<void> | void;\n    uninstall?(ctx: PluginContext): Promise<void> | void;\n    getHealthStatus?(): PluginHealthStatus;\n}',
+  },
+  {
+    name: 'PluginCertificationInfo',
+    declaration: 'export interface PluginCertificationInfo {\n    level: PluginCertification;\n    certifier?: string;\n    certifiedAt: number;\n    expiresAt?: number;\n    score?: number;\n    reviews?: PluginReview[];\n}',
+  },
+  {
+    name: 'PluginContext',
+    declaration: 'export interface PluginContext {\n    services: Map<string, unknown>;\n    emit(event: string, data: unknown): void;\n    on(event: string, handler: (data: unknown) => void): () => void;\n    once(event: string, handler: (data: unknown) => void): () => void;\n    off(event: string, handler: (data: unknown) => void): void;\n    config: Record<string, unknown>;\n    setConfig(key: string, value: unknown): void;\n    getConfig<T>(key: string, defaultValue?: T): T;\n    effect(fn: () => void | (() => void)): void;\n    onDispose(fn: () => void): void;\n    logger: PluginLogger;\n    status: PluginStatus;\n    setWarnings(warnings: string[]): void;\n    markDeprecated(reason: string, replaceWith?: string): void;\n    sandbox: SandboxContext;\n    registerCapability(capability: CapabilityDeclaration): void;\n    unregisterCapability(name: string): void;\n    approval?: ApprovalService;\n    agent?: Record<string, unknown>;\n}',
+  },
+  {
+    name: 'PluginGovernanceId',
+    declaration: 'export type PluginGovernanceId = Branded<\'PluginGovernanceId\'>;',
+  },
+  {
+    name: 'PluginGovernanceStatus',
+    declaration: 'export type PluginGovernanceStatus = \'active\' | \'warnings\' | \'disabled\' | \'error\' | \'deprecated\';',
+  },
+  {
+    name: 'PluginHealthStatus',
+    declaration: 'export interface PluginHealthStatus {\n    healthy: boolean;\n    errors?: string[] | undefined;\n    warnings?: string[] | undefined;\n    lastError?: string | undefined;\n    lastErrorTime?: number | undefined;\n    uptime?: number | undefined;\n    callCount?: number | undefined;\n    errorRate?: number | undefined;\n}',
+  },
+  {
+    name: 'PluginIdRequest',
+    declaration: 'export interface PluginIdRequest {\n    readonly pluginId: PluginGovernanceId;\n}',
+  },
+  {
+    name: 'PluginLogger',
+    declaration: 'export interface PluginLogger {\n    info(msg: string, meta?: Record<string, unknown>): void;\n    warn(msg: string, meta?: Record<string, unknown>): void;\n    error(msg: string, meta?: Record<string, unknown>): void;\n    debug(msg: string, meta?: Record<string, unknown>): void;\n}',
+  },
+  {
+    name: 'PluginManifest',
+    declaration: 'export interface PluginManifest {\n    id: string;\n    version: string;\n    name: string;\n    description?: string;\n    author?: string;\n    license?: string;\n    homepage?: string;\n    repository?: string;\n    changelog?: string;\n    dsh: {\n        compatible: string;\n        required?: string;\n        peerDependencies?: Record<string, string>;\n    };\n    capabilities: CapabilityDeclaration[];\n    configSchema?: Record<string, unknown>;\n    permissionLevel?: PluginPermissionLevel;\n    permissionLevelLegacy?: PluginLevel;\n    autoApprove?: boolean;\n    sandbox: PluginSandboxConfig;\n    lifecycle?: {\n        init?: string;\n        destroy?: string;\n    };\n    certification?: PluginCertificationInfo;\n}',
+  },
+  {
+    name: 'PluginReview',
+    declaration: 'export interface PluginReview {\n    id: string;\n    userId: string;\n    pluginId: string;\n    rating: number;\n    title: string;\n    content: string;\n    tags: string[];\n    createdAt: number;\n    helpfulCount: number;\n    developerResponse?: {\n        content: string;\n        createdAt: number;\n    };\n}',
+  },
+  {
+    name: 'PluginSandboxConfig',
+    declaration: 'export interface PluginSandboxConfig {\n    type: SandboxType;\n    resources: {\n        memoryLimitMb: number;\n        cpuLimit: number;\n        timeoutMs: number;\n        maxOutputBytes: number;\n    };\n    filesystem: {\n        access: \'readonly\' | \'readwrite\';\n        allowedPaths: string[];\n        deniedPatterns: string[];\n    };\n    network: {\n        access: \'none\' | \'external\' | \'internal\';\n        allowedHosts: string[];\n        deniedHosts: string[];\n        allowLocal: boolean;\n    };\n    environment: {\n        whitelist: string[];\n        blacklist: string[];\n        clear: boolean;\n    };\n    process: {\n        spawn: boolean;\n        exec: boolean;\n        allowedCommands: string[];\n        fullyAuthorized?: boolean;\n    };\n}',
+  },
+  {
+    name: 'PluginWatcher',
+    declaration: 'export class PluginWatcher {\n    readonly pluginId: string;\n    constructor(pluginId: string, plugin: Plugin);\n    async execute<T>(fn: () => Promise<T>, _context?: Record<string, unknown>): Promise<T>;\n    getHealthStatus(): PluginHealthStatus;\n}',
   },
   {
     name: 'PostToolDecision',
@@ -4509,6 +4809,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'PrepareSessionOptions',
     declaration: 'export type PrepareSessionOptions = (CreateSessionOptions & {\n    readonly seedSource?: undefined;\n}) | RestoredSessionOptions;',
+  },
+  {
+    name: 'PresetApplicationReport',
+    declaration: 'export interface PresetApplicationReport {\n    readonly applied: readonly PluginGovernanceId[];\n    readonly unknown: readonly PluginGovernanceId[];\n}',
+  },
+  {
+    name: 'PresetNameRequest',
+    declaration: 'export interface PresetNameRequest {\n    readonly name: string;\n}',
   },
   {
     name: 'PresetOption',
@@ -4549,6 +4857,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ProjectionSnapshot',
     declaration: 'export interface ProjectionSnapshot {\n    asOfSeq: number;\n    values: Partial<SessionProjectionMap>;\n}',
+  },
+  {
+    name: 'ProjectPluginCandidate',
+    declaration: 'export interface ProjectPluginCandidate extends DiscoveredProjectPlugin {\n    clampedSandbox: PluginSandboxConfig;\n}',
+  },
+  {
+    name: 'ProjectPluginProvenance',
+    declaration: 'export interface ProjectPluginProvenance {\n    entryId: string;\n    manifestId: string;\n    version: string;\n    projectRoot: string;\n    pluginDir: string;\n    manifestHash: string;\n    clampedSandbox: PluginSandboxConfig;\n    runtimeTier: ProjectPluginRuntimeTier;\n    mountTime: number;\n    guardVerdict: \'allowed\' | \'warned\';\n}',
+  },
+  {
+    name: 'ProjectPluginRuntimeTier',
+    declaration: 'export type ProjectPluginRuntimeTier = \'in-process\' | \'subprocess\';',
   },
   {
     name: 'PromptAssembly',
@@ -4639,6 +4959,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ResolvedCredential {\n    value: string;\n    source: string;\n}',
   },
   {
+    name: 'ResolvedModelSlot',
+    declaration: 'export interface ResolvedModelSlot {\n    readonly slot: SlotId;\n    readonly provider: string;\n    readonly model: string;\n    readonly source: ModelSlotSource;\n}',
+  },
+  {
     name: 'ResolvedNormalRetryPolicy',
     declaration: 'export interface ResolvedNormalRetryPolicy extends ResolvedRetryBackoff {\n    readonly mode: \'normal\';\n    readonly maxRetries: number;\n    readonly retryableCodes: readonly string[];\n}',
   },
@@ -4663,8 +4987,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ResumeAgentOptions {\n    readonly resumeSessionId: SessionId;\n    readonly agentOptions?: AgentOptions;\n    readonly signal?: AbortSignal;\n    readonly setup?: AgentSetup;\n}',
   },
   {
+    name: 'RunGuard',
+    declaration: 'export class RunGuard {\n    watch(pluginId: string, plugin: Plugin): PluginWatcher;\n    unwatch(pluginId: string): void;\n    async execute<T>(pluginId: string, fn: () => Promise<T>, _context?: Record<string, unknown>): Promise<T>;\n    getActiveWatchers(): string[];\n    getWatcher(pluginId: string): PluginWatcher | undefined;\n}',
+  },
+  {
     name: 'RunnerFailureRule',
     declaration: 'export interface RunnerFailureRule {\n    allowedExitCodes?: readonly number[];\n    fatalSignatures: readonly string[];\n    informationalLines?: readonly string[];\n}',
+  },
+  {
+    name: 'SandboxContext',
+    declaration: 'export interface SandboxContext {\n    exec(command: string, options?: ExecOptions): Promise<ExecResult>;\n    read(path: string): Promise<string>;\n    write(path: string, content: string): Promise<void>;\n    list(path: string): Promise<string[]>;\n}',
   },
   {
     name: 'SandboxEnforcement',
@@ -4685,6 +5017,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SandboxPolicyRequest',
     declaration: 'export interface SandboxPolicyRequest {\n    session?: Session;\n    mode?: SandboxMode;\n}',
+  },
+  {
+    name: 'SandboxType',
+    declaration: 'export type SandboxType = \'process\' | \'worker\' | \'inline\';',
   },
   {
     name: 'SaveImageAttachment',
@@ -5305,6 +5641,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SkillViewOptions',
     declaration: 'export interface SkillViewOptions extends SkillLookupOptions {\n    readonly scope?: ScopeKey | undefined;\n}',
+  },
+  {
+    name: 'SlotId',
+    declaration: 'export type SlotId = Branded<\'SlotId\'>;',
   },
   {
     name: 'SpawnTeammateRequest',

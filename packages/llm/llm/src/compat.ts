@@ -12,6 +12,8 @@
  */
 
 import { guardFeature, consoleCompatLogger } from '@deepseek-ai/dsh-compat'
+import { BlockAssembler } from './assembler.ts'
+import { TRUNCATED_TOOL_CALL_CODE } from './error.ts'
 
 /**
  * Probe whether the loaded `@deepseek-ai/dsh-llm` exposes the
@@ -19,6 +21,12 @@ import { guardFeature, consoleCompatLogger } from '@deepseek-ai/dsh-compat'
  * the `BlockAssembler.truncatedToolCalls` method and the
  * `TRUNCATED_TOOL_CALL_CODE` constant are present; otherwise logs a warning
  * and returns `false` so callers skip the zDSH checks. Never throws.
+ *
+ * The probes are static local imports, not a dynamic self-import: the module
+ * ships inside this package, so a dynamic `import('@deepseek-ai/dsh-llm')`
+ * would make tsdown split the assembler into a side chunk the webworker
+ * packer's `files` whitelist cannot ship. On an official build this module
+ * does not exist at all, so the guard simply never runs there.
  *
  * @param logger - Optional logger for the disable diagnostic; defaults to `console`.
  * @returns Whether the D-005 enhancement is available and may be used.
@@ -29,27 +37,17 @@ export async function guardTruncatedToolCalls(logger = consoleCompatLogger()): P
       {
         name: 'llm:BlockAssembler',
         run: async () => {
-          try {
-            const { BlockAssembler } = await import('@deepseek-ai/dsh-llm')
-            const hasMethod = typeof BlockAssembler === 'function'
-              && typeof BlockAssembler.prototype.truncatedToolCalls === 'function'
-            return hasMethod ? null : 'BlockAssembler.truncatedToolCalls not found'
-          } catch {
-            return 'cannot import BlockAssembler'
-          }
+          const hasMethod = typeof BlockAssembler === 'function'
+            && typeof BlockAssembler.prototype.truncatedToolCalls === 'function'
+          return hasMethod ? null : 'BlockAssembler.truncatedToolCalls not found'
         },
       },
       {
         name: 'llm:TRUNCATED_TOOL_CALL_CODE',
         run: async () => {
-          try {
-            const { TRUNCATED_TOOL_CALL_CODE } = await import('@deepseek-ai/dsh-llm')
-            return typeof TRUNCATED_TOOL_CALL_CODE === 'string'
-              ? null
-              : 'TRUNCATED_TOOL_CALL_CODE not a string'
-          } catch {
-            return 'cannot import TRUNCATED_TOOL_CALL_CODE'
-          }
+          return typeof TRUNCATED_TOOL_CALL_CODE === 'string'
+            ? null
+            : 'TRUNCATED_TOOL_CALL_CODE not a string'
         },
       },
     ],

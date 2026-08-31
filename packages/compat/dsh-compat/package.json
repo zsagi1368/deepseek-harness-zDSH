@@ -27,5 +27,13 @@
     "lib/types/**/*.d.ts"
   ],
   "license": "MIT",
-  "dependencies": {}
+  "dependencies": {},
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/dsh-invariants": "workspace:^"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/dsh-invariants": "workspace:^"
+  }
 }

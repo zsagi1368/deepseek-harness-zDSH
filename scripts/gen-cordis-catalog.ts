@@ -123,6 +123,11 @@ export const SERVICE_PAGE: Record<string, string> = {
   workspaceRegistry: 'workspace.md',
   workspaceController: 'workspace.md',
   directoryPickerController: 'workspace.md',
+  // zDSH version-adaptive host services (S-43/S-45); documented on the
+  // dedicated zdsh subsystems page.
+  modelSlots: 'zdsh.md',
+  pluginGovernance: 'zdsh.md',
+  projectPluginLayer: 'zdsh.md',
 }
 
 /**
@@ -154,6 +159,7 @@ export const SERVICE_WALK_EXEMPTIONS: Record<string, string> = {
   launchEnvironment: 'not a service: launcher-provided root accessor value (LaunchEnvironmentSnapshot | undefined) — packages/util/launch-environment/README.md owns this launcher contract',
   connection: 'interface-typed (HostConnectionHandle); implementing class HostConnectionService is declared in rpc-host.ts — packages/client/connection/README.md owns the API',
   uiRenderer: 'client-side interface-typed browser service — packages/client/ui-renderer/README.md owns the API',
+  workbench: 'client-side interface-typed browser service — packages/client/workbench/README.md owns the API',
   uiSession: 'client-side Session source adapter — packages/client/ui-session/README.md owns the API',
   uiConversation: 'client-side Conversation registries and assembler — packages/client/ui-conversation/README.md owns the API',
   uiWorkspace: 'client-side Workspace navigation adapter — packages/client/ui-workspace/README.md owns the API',
@@ -722,6 +728,28 @@ export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   WorkflowAgentEndInfo: 'event-local snapshot is owned by packages/workflow/workflow/src/index.ts',
   WorkflowAgentInfo: 'event-local snapshot is owned by packages/workflow/workflow/src/index.ts',
   WorkflowResultInfo: 'event-local snapshot is owned by packages/workflow/workflow/src/index.ts',
+  // zDSH model-slots service vocabulary (S-45).
+  ModelRoute: 'slot routing pair is owned by packages/llm/model-slots/src/vocabulary.ts',
+  SlotId: 'slot identity brand is owned by packages/llm/model-slots/src/vocabulary.ts',
+  ModelSlotResolveInput: 'slot resolution input is owned by packages/llm/model-slots/src/index.ts',
+  ResolvedModelSlot: 'slot resolution result is owned by packages/llm/model-slots/src/index.ts',
+  // zDSH plugin-governance-host remote vocabulary (S-08/S-43).
+  GovernanceRosterSnapshot: 'governance roster view is owned by packages/host/plugin-governance-host/src/types.ts',
+  GovernanceResult: 'governance business envelope is owned by packages/host/plugin-governance-host/src/types.ts',
+  GovernedPluginDetail: 'governance detail view is owned by packages/host/plugin-governance-host/src/types.ts',
+  PluginIdRequest: 'governance plugin identity request is owned by packages/host/plugin-governance-host/src/types.ts',
+  GovernanceAcknowledgement: 'governance ack payload is owned by packages/host/plugin-governance-host/src/types.ts',
+  InstallPluginRequest: 'governance install request is owned by packages/host/plugin-governance-host/src/types.ts',
+  DisablePluginRequest: 'governance disable request is owned by packages/host/plugin-governance-host/src/types.ts',
+  GovernanceHealthReport: 'governance health view is owned by packages/host/plugin-governance-host/src/types.ts',
+  PresetNameRequest: 'governance preset identity request is owned by packages/host/plugin-governance-host/src/types.ts',
+  PresetApplicationReport: 'governance preset application report is owned by packages/host/plugin-governance-host/src/types.ts',
+  // zDSH project-plugin-root layer vocabulary (S-43).
+  MountResult: 'project plugin mount result is owned by packages/plugins/plugin-project-root/src/plugin.ts',
+  ProjectPluginCandidate: 'project plugin discovery candidate is owned by packages/plugins/plugin-project-root/src/discover.ts',
+  ProjectPluginProvenance: 'project plugin provenance record is owned by packages/plugins/plugin-project-root/src/plugin.ts',
+  PluginManifest: 'plugin manifest contract is owned by packages/plugins/plugin-governance/src/spec/index.ts',
+  SubprocessRuntime: 'subprocess runtime contract is owned by packages/plugins/plugin-project-root/src/subprocess-runtime.ts',
 }
 
 /** Repository data policy consumed by the Cordis catalog projector. */

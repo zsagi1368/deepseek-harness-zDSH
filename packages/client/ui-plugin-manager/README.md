@@ -1,16 +1,32 @@
+---
+description: "Governance tab in Web Plugins settings: roster badges, lifecycle and admission actions, health counts, and presets."
+kind: "package-reference"
+---
+
 # dsh-client-ui-plugin-manager
 
 English | [中文](README.zh.md)
 
-zDSH 治理标签页：Web Plugins 设置区内的评分徽章、生命周期与准入操作、健康计数与预设。
+## Summary
 
+The plugin-manager tab lives in Web Plugins settings and gives the roster, lifecycle, admission, health, and presets of the governance surface. It projects rows through `pluginGovernance.list`, offers `approve`/`enable`/`disable` remote actions, and saves/loads/deletes governance presets. Choose it when a browser UI must operate the plugin governance host without a terminal.
+
+## Table of Contents
+
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Dev Note](#dev-note)
+
+-----
+
+<a id="model-experience"></a>
 ## Model Experience
 
 ### Governance roster
 
 #### What the model sees
 
-名单行经 `pluginGovernance.list` 投影：每行携带来源与准入状态；操作走 `approve`/`enable`/`disable` 远程面。
+Roster rows are projected through `pluginGovernance.list`: each row carries its source and admission state; operations go through the `approve`/`enable`/`disable` remote faces.
 
 ##### Roster view
 
@@ -20,13 +36,28 @@ roster row -> { pluginId, source, approvalRequired, approved, status }
 
 #### Token effect
 
-仅查询时装配名单行；不注入固定 prompt 文本，不产生会话事件。
+Rows are assembled only when queried; no fixed prompt text is injected and no session event is produced.
 
 #### KV Cache effect
 
-无：本包不读写 KV 缓存。
+None: this package reads and writes no KV cache.
 
+<a id="known-limitations-and-deferred-work"></a>
 ## Known Limitations and Deferred Work
 
-- 插件远程安装（npm 来源）的 UI 接线尚未实现，服务端已具备。
-- 预设编辑器仅支持保存/加载/删除，不支持可视化编排。
+- The UI wiring for remote plugin install (npm source) is not implemented yet; the server side already has it.
+- The preset editor only supports save/load/delete, not visual orchestration.
+
+<a id="dev-note"></a>
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+This Dev Note is working context for maintainers: open design questions and directions that are not decided. It is explicitly non-authoritative — shipped behavior, limits, and accepted rationale live in the sections above, the package code, and the linked Agent Note.
+
+#### Future: visual preset orchestration
+
+The preset editor intentionally ships save/load/delete only. A visual editor would need a schema-driven form for `PresetNameRequest`-style payloads; the governance host already exposes the full preset surface, so this is purely a client-side investment.
+
+</details>

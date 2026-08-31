@@ -51,24 +51,53 @@ export interface MountResult {
 
 /** The host-side project plugin layer service. */
 export interface ProjectPluginLayer {
-  /** Mount accepted candidates, one by one, isolated per entry. */
+  /**
+   * Mount accepted candidates, one by one, isolated per entry.
+   * @param accepted - candidates that passed the discovery gate.
+   * @returns mount result with successfully mounted entry ids and full audit trail.
+   */
   mount(accepted: ProjectPluginCandidate[]): Promise<MountResult>
-  /** Provenance of one mounted loader entry id, `undefined` when unknown. */
+  /**
+   * Provenance of one mounted loader entry id.
+   * @param entryId - loader entry id returned by mount.
+   * @returns the provenance record, or `undefined` when the id is unknown.
+   */
   provenanceOf(entryId: string): ProjectPluginProvenance | undefined
-  /** The guarded manifest of one mounted loader entry id. */
+  /**
+   * The guarded manifest of one mounted loader entry id.
+   * @param entryId - loader entry id returned by mount.
+   * @returns the guarded manifest, or `undefined` when the id is unknown.
+   */
   guardedManifestOf(entryId: string): PluginManifest | undefined
-  /** Canonical manifest id owning one tool name, `undefined` when unattributed. */
+  /**
+   * Canonical manifest id owning one tool name.
+   * @param toolName - tool name registered by a project plugin.
+   * @returns the manifest id that owns the tool, or `undefined` when unattributed.
+   */
   toolOwnerOf(toolName: string): string | undefined
-  /** Project root owning one manifest id, `undefined` when unknown (M3 scope check). */
+  /**
+   * Project root owning one manifest id.
+   * @param pluginId - manifest id of a mounted project plugin.
+   * @returns the project root path, or `undefined` when unknown (M3 scope check).
+   */
   projectRootOf(pluginId: string): string | undefined
-  /** Whether one manifest id runs in a subprocess (M2b process/worker tier). */
+  /**
+   * Whether one manifest id runs in a subprocess.
+   * @param pluginId - manifest id of a mounted project plugin.
+   * @returns `true` when the plugin runs in an M2b subprocess (process/worker tier).
+   */
   isSubprocess(pluginId: string): boolean
-  /** The subprocess runtime of one manifest id, `undefined` when inline. */
+  /**
+   * The subprocess runtime of one manifest id.
+   * @param pluginId - manifest id of a mounted project plugin.
+   * @returns the subprocess runtime, or `undefined` when the plugin runs inline.
+   */
   subprocessOf(pluginId: string): SubprocessRuntime | undefined
   /**
-   * Loader entry ids of subprocess-tier project plugins (M2b). These entries
-   * have NO loader row — their tools are host-side proxies — so the governance
-   * mirror must enumerate them separately from `loader.entries()`.
+   * Loader entry ids of subprocess-tier project plugins (M2b).
+   * These entries have NO loader row — their tools are host-side proxies — so
+   * the governance mirror must enumerate them separately from `loader.entries()`.
+   * @returns an array of subprocess-tier loader entry ids.
    */
   subprocessEntryIds(): string[]
   /** The accumulated gate+mount report. */
