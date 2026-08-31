@@ -182,10 +182,13 @@ export async function apply(ctx: Context, config: AcpConfig): Promise<void> {
 
   // Permission requests are a machine policy channel for ACP clients such as
   // dsh-subagent-acp. The bridge offers one-shot choices only and never infers a
-  // durable grant from an unknown client response.
+  // durable grant from an unknown client response. When the compat guard found
+  // the permission overlay unavailable (APPROVAL_POLICIES missing), fall
+  // through to the base approval flow instead of failing the request.
   ctx.on('approval/request', (request, next) => {
     const record = ownedRecord(request.agent)
     if (record === undefined || request.callId === undefined) return next()
+    if (!verdict.permissionOverlay) return next()
     const callId = request.callId
     return record.drainUpdates().then(async () => {
       const params: RequestPermissionRequest = {
