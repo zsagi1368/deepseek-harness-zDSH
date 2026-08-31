@@ -15,6 +15,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { loadLayeredEnv } from './index.ts'
 
 /** Verdict of one behavior probe of the installed env blacklist. */
 export interface EnvBlacklistProbe {
@@ -40,11 +41,6 @@ const PROBE_BIN_NAME = 'dsh-env-compat'
 /** A bootstrap-only name the enhancement rejects; probes whether the installed build rejects it too. */
 const PROBE_VAR = 'SYSTEMROOT'
 
-/** The minimal probed surface of `@deepseek-ai/dsh-app-boot`; the full module keeps extra exports. */
-interface AppBootModule {
-  loadLayeredEnv?: (binName: string, cwd?: string, warn?: (line: string) => void) => unknown
-}
-
 /**
  * Probe whether the installed `@deepseek-ai/dsh-app-boot` rejects the
  * `SYSTEMROOT` bootstrap name in a project-layer `.env` file.
@@ -63,13 +59,8 @@ export async function probeEnvBlacklist(logger?: (line: string) => void): Promis
     // keeps the user layer from influencing the verdict.
     process.env.DSH_HOME = homeDir
     writeFileSync(join(fixtureDir, '.env'), `${PROBE_VAR}=C:\\evil\n`, 'utf8')
-    const appBoot = (await import('@deepseek-ai/dsh-app-boot')) as unknown as AppBootModule
-    if (typeof appBoot.loadLayeredEnv !== 'function') {
-      warn('env-compat: @deepseek-ai/dsh-app-boot exposes no loadLayeredEnv export')
-      return { patched: false, reason: 'env-blacklist:unprobeable' }
-    }
     try {
-      appBoot.loadLayeredEnv(PROBE_BIN_NAME, fixtureDir, warn)
+      loadLayeredEnv(PROBE_BIN_NAME, fixtureDir, warn)
     } catch {
       // Thrown while loading the fixture: the installed build rejected the name.
       return { patched: true, reason: 'env-blacklist:patched' }
