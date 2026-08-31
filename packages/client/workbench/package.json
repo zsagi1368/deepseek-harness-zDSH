@@ -24,6 +24,9 @@
   "dsh": {
     "client": {
       "inject": [],
+      "external": [
+        "@deepseek-ai/dsh-compat"
+      ],
       "platform": "web"
     }
   },
