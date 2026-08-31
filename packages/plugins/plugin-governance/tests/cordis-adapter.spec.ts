@@ -335,8 +335,8 @@ describe('cordis helpers', () => {
     expect(fromCtor.manifest.id).toBe('PlainService')
   })
 
-  it('createCordisAdapter wraps and detects', () => {
-    const adapter = createCordisAdapter(mockContext())
+  it('createCordisAdapter wraps and detects', async () => {
+    const adapter = await createCordisAdapter(mockContext())
     const plugin = adapter.wrap(new OfficialService())
     expect(plugin.manifest.id).toBe('official-service')
     expect(adapter.isCordis(new OfficialService())).toBe(true)

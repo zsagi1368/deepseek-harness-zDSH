@@ -32,6 +32,8 @@ import { HarnessError, INVALID_CREDENTIAL_CODE } from './error.ts'
 import { normalizeLlmFailure } from './adapter-failure.ts'
 import { normalizeApiKey } from './api-key.ts'
 import { contentHasImage, projectImagesForTextModel } from './content.ts'
+import { BlockAssembler } from './assembler.ts'
+import { guardTruncatedToolCalls } from './compat.ts'
 
 export * from './attribution.ts'
 export * from './brand.ts'
@@ -334,6 +336,14 @@ export class LlmRuntime extends TypertRemoteService {
 
   constructor(ctx: Context) {
     super(ctx, 'llm')
+    // Compat guard: when the D-005 enhancement is unavailable on the loaded
+    // build, degrade `truncatedToolCalls` to an empty-array stub so consumers
+    // never see the zDSH fail-loud behavior on an unpatched assembler.
+    void guardTruncatedToolCalls(ctx.logger).then((enabled) => {
+      if (!enabled) {
+        BlockAssembler.prototype.truncatedToolCalls = () => []
+      }
+    })
   }
 
   /** Notify topology observers without letting one broken listener veto the commit. */

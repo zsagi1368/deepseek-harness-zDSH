@@ -290,7 +290,7 @@ export async function makeBridgeHarness(options: {
   harness.acpFiber = await ctx.plugin({
     name: 'acp-test',
     inject: [...AcpPlugin.inject],
-    apply: (inner: Context) => { AcpPlugin.apply(inner, config) },
+    apply: async (inner: Context) => { await AcpPlugin.apply(inner, config) },
   })
   const clientConnection = clientApp.connect(clientStream)
   const client = clientConnection.agent

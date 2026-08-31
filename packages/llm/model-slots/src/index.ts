@@ -15,6 +15,7 @@ import type Schema from '@deepseek-ai/schemastery'
 import type { Session } from '@deepseek-ai/dsh-session'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import { MODEL_SLOT_COMPACTION_SUMMARIZE, MODEL_SLOT_IDS, MODEL_SLOT_PLAN, MODEL_SLOT_SOURCES, MODEL_SLOT_TITLE, MODEL_SLOT_VISION, SlotId } from './vocabulary.ts'
+import { guardModelSlots } from './compat.ts'
 
 export { MODEL_SLOT_COMPACTION_SUMMARIZE, MODEL_SLOT_IDS, MODEL_SLOT_PLAN, MODEL_SLOT_SOURCES, MODEL_SLOT_TITLE, MODEL_SLOT_VISION, SlotId }
 
@@ -244,9 +245,17 @@ export class ModelSlotRegistry extends Service {
     }
     this.fallbackRoute = resolved.fallback
     this.source = () => config
-    installSettingsSection(ctx, MODEL_SLOTS_SETTINGS_NAMESPACE, MODEL_SLOTS_SETTINGS_SCHEMA, config, {
-      setSource: (current) => { this.source = current },
-      onChange: () => { this.rebuildFromSource() },
+    // Compat guard: the settings namespace is only installed when the feature is
+    // enabled; the service itself stays registered (degraded to no settings).
+    void guardModelSlots(ctx.logger).then((enabled) => {
+      if (!enabled) {
+        ctx.logger.warn('model-slots: disabled by compat guard (settings section skipped)')
+        return
+      }
+      installSettingsSection(ctx, MODEL_SLOTS_SETTINGS_NAMESPACE, MODEL_SLOTS_SETTINGS_SCHEMA, config, {
+        setSource: (current) => { this.source = current },
+        onChange: () => { this.rebuildFromSource() },
+      })
     })
   }
 

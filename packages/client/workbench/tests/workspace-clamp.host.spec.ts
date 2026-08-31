@@ -35,7 +35,7 @@ async function startClamped(clampRoot: string): Promise<TestServer> {
       },
     },
   } as unknown as Context
-  apply(fakeCtx, { allowedRoots: [clampRoot] })
+  await apply(fakeCtx, { allowedRoots: [clampRoot] })
   const httpServer: Server = createServer((req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => {
     const parsed = new URL(req.url ?? '/', 'http://workbench.invalid')
     const exact = routes.find(route => route.kind === 'exact' && route.path === parsed.pathname)

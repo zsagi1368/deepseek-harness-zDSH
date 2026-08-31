@@ -19,6 +19,7 @@ import { dshHomePath, resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { createLaunchEnvironmentSnapshot, type LaunchEnvironmentSnapshot } from '@deepseek-ai/dsh-launch-environment'
 import type {} from '@deepseek-ai/cordis-plugin-hmr'
 import { FIRST_PARTY_SECTION_ORDER } from '@deepseek-ai/dsh-system-prompt'
+import { guardEnvBlacklist } from './env-compat.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -127,6 +128,14 @@ const BOOTSTRAP_NAMES = new Set([
 const BOOTSTRAP_PREFIXES = ['DSH_', 'XDG_', 'DYLD_', 'BASH_FUNC_']
 
 /**
+ * Whether the env blacklist rejection is active. The compat guard probes the
+ * installed `@deepseek-ai/dsh-app-boot` at boot time; when the installed build
+ * does NOT already reject bootstrap-only names, the fork's own rejection is
+ * skipped so behavior matches the installed build.
+ */
+let envBlacklistEnabled = true
+
+/**
  * Whether a variable may come only from the inherited process environment
  * because it changes process, runtime, VCS, or network bootstrap.
  * @param name - the variable name.
@@ -163,7 +172,7 @@ function readEnvLayer(
   // Parse once so validation and materialization use exactly the same entries.
   const values = parseEnv(content) as Record<string, string>
   for (const name of Object.keys(values)) {
-    if (!isBootstrapOnly(name)) continue
+    if (!envBlacklistEnabled || !isBootstrapOnly(name)) continue
     throw new Error(
       `${binName}: ${path} sets "${name}", which only the launching environment may set`
       + ' (it decides how this process starts, where its code and instructions load from, or how it'
@@ -783,6 +792,17 @@ export async function boot(
   prepare?: (ctx: Context) => Promise<void> | void,
   bareModuleBaseUrl?: string,
 ): Promise<Context> {
+  // Compat guard: probe the installed build before any env layer is read.
+  // When the installed app-boot does not already reject bootstrap-only names,
+  // skip the fork's own blacklist rejection so behavior matches the build.
+  const envVerdict = await guardEnvBlacklist(
+    (line: string) => void process.stderr.write(`${binName}: env-compat: ${line}\n`),
+  )
+  if (!envVerdict.enabled) {
+    envBlacklistEnabled = false
+    process.stderr.write(`${binName}: env blacklist skipped (${envVerdict.reason})\n`)
+  }
+
   const ctx = new Context()
   // Two failure labels: `prepare` runs before any config-tree entry mounts,
   // so its failure is host setup, not the plugin tree.

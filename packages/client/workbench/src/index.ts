@@ -19,6 +19,7 @@ import { FsWatcherManager } from './fs-watch.ts'
 import { PtyRegistry } from './pty-registry.ts'
 import { acceptTerminalSocket } from './terminal-route.ts'
 import { assertTrustedAuthorityEntry, isTrustedRequestHost } from './trust.ts'
+import { guardWorkbench } from './compat.ts'
 
 /** Services required from the host composition. */
 export const inject = ['webServer']
@@ -73,7 +74,13 @@ function fail(code: string, message: string): WorkbenchRouteEnvelope<never> {
   return { ok: false, error: { code, message } }
 }
 
-export function apply(ctx: Context, options?: WorkbenchHostConfig): void {
+export async function apply(ctx: Context, options?: WorkbenchHostConfig): Promise<void> {
+  const enabled = await guardWorkbench(ctx.logger)
+  if (!enabled) {
+    ctx.logger.warn('workbench: skipped registration (compat guard disabled the dock)')
+    return
+  }
+
   const trustedHosts = options?.trustedHosts ?? []
   for (const entry of trustedHosts) assertTrustedAuthorityEntry(entry)
 

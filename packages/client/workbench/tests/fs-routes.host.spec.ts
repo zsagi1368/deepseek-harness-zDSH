@@ -35,7 +35,7 @@ async function startServer(): Promise<TestServer> {
       },
     },
   } as unknown as Context
-  apply(fakeCtx)
+  await apply(fakeCtx)
 
   const server: Server = createServer((req, res) => {
     const parsed = new URL(req.url ?? '/', 'http://workbench.invalid')

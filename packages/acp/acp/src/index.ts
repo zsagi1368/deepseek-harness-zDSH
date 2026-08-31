@@ -54,6 +54,7 @@ import { supportsAcpImagePrompts } from './content.ts'
 import { AcpMcpConfigError } from './mcp.ts'
 import { AcpModelConfigError } from './model-control.ts'
 import { AcpSession } from './session.ts'
+import { guardACP } from './compat.ts'
 
 const DEFAULT_SESSION_LIST_PAGE_SIZE = 100
 
@@ -110,7 +111,13 @@ export const Config: Schema<AcpConfig> = Schema.object({
  * @param ctx - Cordis context carrying the agent factory and session events.
  * @param config - Initial provider/model selection and optional test transport.
  */
-export function apply(ctx: Context, config: AcpConfig): void {
+export async function apply(ctx: Context, config: AcpConfig): Promise<void> {
+  const verdict = await guardACP(ctx.logger)
+  if (!verdict.enabled) {
+    ctx.logger.warn('acp: skipped registration (compat guard disabled the ACP bridge)')
+    return
+  }
+
   // ACP handlers execute outside this plugin's injection scope, so capture the
   // injected service during apply rather than reading it lazily in a callback.
   const persistence = ctx.sessionPersistence

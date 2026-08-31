@@ -25,6 +25,7 @@ import { RunGuard, PluginError, type PluginManifest } from '@deepseek-ai/dsh-plu
 import { discoverProjectPlugins, PROJECT_PLUGIN_MANIFEST_FILENAME } from './discover.ts'
 import { gate } from './gate.ts'
 import { resolveProjectPluginEnabled } from './resolve.ts'
+import { guardProjectRoot } from './compat.ts'
 import {
   loadProjectTrusts,
   projectRootKey,
@@ -460,6 +461,14 @@ export async function mountProjectPlugins(
   options: MountProjectPluginsOptions = {},
 ): Promise<{ layer: ProjectPluginLayer | undefined; report: GateReportEntry[]; mounted: string[] }> {
   const warn = options.warn ?? ((message: string) => void process.stderr.write(`dsh project-plugins: ${message}\n`))
+
+  // Compat guard: skip mount when the project-root plugin is disabled by the runtime.
+  const enabled = await guardProjectRoot(ctx.logger)
+  if (!enabled) {
+    warn('project-root: disabled by compat guard')
+    return { layer: undefined, report: [], mounted: [] }
+  }
+
   // A-01/A-02: switch off ⇒ short-circuit before discovery (zero reads).
   if (!resolveProjectPluginEnabled(rows)) {
     return { layer: undefined, report: [], mounted: [] }

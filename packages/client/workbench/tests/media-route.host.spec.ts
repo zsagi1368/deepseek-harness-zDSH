@@ -30,7 +30,7 @@ async function startServer(): Promise<TestServer> {
       },
     },
   } as unknown as Context
-  apply(fakeCtx)
+  await apply(fakeCtx)
   const httpServer: Server = createServer((req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => {
     const parsed = new URL(req.url ?? '/', 'http://workbench.invalid')
     const exact = routes.find(route => route.kind === 'exact' && route.path === parsed.pathname)

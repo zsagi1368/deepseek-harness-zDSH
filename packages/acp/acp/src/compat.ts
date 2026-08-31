@@ -16,7 +16,7 @@
  * @module @deepseek-ai/dsh-acp
  */
 
-import { consoleCompatLogger, guardFeature, probeSymbol } from '@deepseek-ai/dsh-compat'
+import { consoleCompatLogger, guardFeature, memberOf } from '@deepseek-ai/dsh-compat'
 import type { CompatLogger } from '@deepseek-ai/dsh-compat'
 
 /**
@@ -36,37 +36,50 @@ export async function guardACP(
   const officialSessionCheck = {
     name: 'acp:official-session',
     run: async () => {
-      const official = await probeSymbol('@agentclientprotocol/sdk', 'agent', v => typeof v === 'function')
-      if (official.present) return null // official SDK present -> use official resume
-      const zdsh = await probeSymbol('@agentclientprotocol/sdk', 'AgentSideConnection')
-      if (!zdsh.present) return 'neither official nor zDSH ACP SDK found'
+      // Literal dynamic import: resolves the SDK from this package's own
+      // dependency, in vitest and in production alike (a variable specifier
+      // would resolve relative to the compat helper's package instead).
+      let sdk: Record<string, unknown>
+      try {
+        sdk = (await import('@agentclientprotocol/sdk')) as Record<string, unknown>
+      } catch {
+        return 'cannot import @agentclientprotocol/sdk'
+      }
+      const official = memberOf(sdk, 'agent')
+      if (typeof official === 'function') return null // official SDK present -> use official resume
+      const zdsh = memberOf(sdk, 'AgentSideConnection')
+      if (zdsh === undefined) return 'neither official nor zDSH ACP SDK found'
       return null // zDSH SDK -> use zDSH resume
     },
   }
-  const approvalOverlayCheck = {
-    name: 'acp:approval-overlay',
-    run: async () => {
-      try {
-        const { APPROVAL_POLICIES } = await import('@deepseek-ai/dsh-user-approval')
-        return typeof APPROVAL_POLICIES === 'object' ? null : 'APPROVAL_POLICIES not an object'
-      } catch {
-        return 'cannot import APPROVAL_POLICIES'
-      }
-    },
-  }
 
-  const verdict = await guardFeature('dsh-acp', { deps: [officialSessionCheck, approvalOverlayCheck], logger })
+  const verdict = await guardFeature('dsh-acp', { deps: [officialSessionCheck], logger })
   if (!verdict.enabled) {
     return { enabled: false, resumeStrategy: 'disabled', permissionOverlay: false }
   }
 
   // Re-check which SDK is present to determine the strategy.
-  const official = await probeSymbol('@agentclientprotocol/sdk', 'agent', v => typeof v === 'function')
-  const approvalOk = (await approvalOverlayCheck.run()) === null
+  let official: unknown
+  try {
+    const sdk = (await import('@agentclientprotocol/sdk')) as Record<string, unknown>
+    official = memberOf(sdk, 'agent')
+  } catch {
+    official = undefined
+  }
+
+  // The permission overlay is independent of the resume path: its absence
+  // only drops the overlay, never the official/zDSH base resume (API-DELTA §6).
+  let approvalOk = false
+  try {
+    const { APPROVAL_POLICIES } = await import('@deepseek-ai/dsh-user-approval')
+    approvalOk = typeof APPROVAL_POLICIES === 'object'
+  } catch {
+    approvalOk = false
+  }
 
   return {
     enabled: true,
-    resumeStrategy: official.present ? 'use-official' : 'use-zdsh',
+    resumeStrategy: typeof official === 'function' ? 'use-official' : 'use-zdsh',
     permissionOverlay: approvalOk,
   }
 }

@@ -16,6 +16,7 @@ import {
   PluginPermissionLevel,
   SandboxType,
 } from '../spec/index.js'
+import { guardGovernance } from './../compat.ts'
 
 /**
  * CordisService - Cordis 插件服务实例形状
@@ -456,14 +457,40 @@ export function wrapCordisPlugin(
 /**
  * createCordisAdapter - 创建适配器实例
  *
- * 用于 PluginRegistry 的自动适配。
+ * 用于 PluginRegistry 的自动适配。先运行兼容性守卫，当 peer 符号不可用时
+ * 降级为一个不做任何管控的假适配器。
  * @param context - 插件上下文。
  * @returns 包含 wrap 与 isCordis 的适配器实例。
  */
-export function createCordisAdapter(context: PluginContext): {
+export async function createCordisAdapter(context: PluginContext): Promise<{
   wrap: (service: CordisService, options?: Parameters<typeof wrapCordisPlugin>[2]) => Plugin
   isCordis: typeof isCordisPlugin
-} {
+}> {
+  const enabled = await guardGovernance(context.logger)
+  if (!enabled) {
+    context.logger.warn('dsh-plugin-governance: cordis adapter degraded — peer symbols unavailable, governance disabled')
+    return {
+      wrap: (service, options) => {
+        const statics = readCordisStatics(service)
+        const id = options?.id || (typeof statics.serviceName === 'string' ? statics.serviceName : undefined) || statics.name
+        return {
+          manifest: {
+            id: normalizeCordisPluginId(id),
+            version: options?.version || '1.0.0',
+            name: options?.name || statics.name,
+            dsh: { compatible: '>=0.1.0-rc.8', peerDependencies: {} },
+            capabilities: [],
+            sandbox: { ...OFFICIAL_SANDBOX_CONFIG },
+            autoApprove: true,
+            certification: { level: PluginCertification.OFFICIAL, certifiedAt: Date.now() },
+          },
+          install: async () => {},
+          uninstall: async () => {},
+        }
+      },
+      isCordis: isCordisPlugin,
+    }
+  }
   return {
     wrap: (service: CordisService, options?: Parameters<typeof wrapCordisPlugin>[2]) =>
       wrapCordisPlugin(service, context, options),
