@@ -1,9 +1,25 @@
+---
+description: "Host-side plugin governance service: registry mirror, lifecycle, health, admission, and preset operations published as a typed Remote."
+kind: "package-reference"
+---
+
 # dsh-plugin-governance-host
 
 English | [中文](README.zh.md)
 
+## Summary
+
 宿主面治理服务：注册表镜像、生命周期、健康、准入与预设操作，以类型化 Remote 发布。
 
+## Table of Contents
+
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Dev Note](#dev-note)
+
+-----
+
+<a id="model-experience"></a>
 ## Model Experience
 
 ### Governance gateway
@@ -27,7 +43,22 @@ pluginGovernance.install({ source }): GovernanceAcknowledgement
 
 无：注册表镜像与审批账本经耐久快照/台账落盘，不依赖 KV 缓存。
 
+<a id="known-limitations-and-deferred-work"></a>
 ## Known Limitations and Deferred Work
 
 - Loader 镜像仅覆盖已挂载条目；安装目录清理为 best-effort。
 - npm 来源仅接受精确版本（无范围解析）。
+
+<a id="dev-note"></a>
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+This Dev Note is working context for maintainers: open design questions and directions that are not decided. It is explicitly non-authoritative — shipped behavior, limits, and accepted rationale live in the sections above, the package code, and the linked Agent Note.
+
+#### Future: range resolution for npm sources
+
+The npm admission path intentionally accepts exact versions only. Range resolution would need a resolved-lock story before admission so that a re-install cannot silently upgrade a governed plugin; until that lands, exact pins keep the admission ledger reproducible.
+
+</details>

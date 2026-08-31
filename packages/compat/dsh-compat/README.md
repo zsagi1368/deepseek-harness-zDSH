@@ -1,9 +1,25 @@
+---
+description: "Version-adaptive shim framework for fork/upstream drift: dynamic API-shape probing, feature guards, and a process-level compat roster."
+kind: "package-reference"
+---
+
 # @deepseek-ai/dsh-compat
 
 English | [中文](README.zh.md)
 
+## Summary
+
 Version-adaptive shim framework for fork/upstream drift in the DeepSeek Harness. It is the single layer allowed to dynamically probe the official core API shape; every other zDSH feature package gates its own registration against the symbols it depends on and auto-disables when a conflict is detected, instead of throwing during a partially-loaded or upstream-drifted boot. `dsh-compat` carries zero runtime dependencies and is used by seven feature packages today (`dsh-acp`, `ui-settings-models`, `workbench`, `dsh-llm`, `dsh-model-slots`, `dsh-plugin-governance`, `dsh-plugin-project-root`).
 
+## Table of Contents
+
+- [API](#api)
+- [Design constraints](#design-constraints)
+- [Dev Note](#dev-note)
+
+-----
+
+<a id="api"></a>
 ## API
 
 ### probeSymbol
@@ -72,7 +88,18 @@ const entry = roster.get('dsh-model-slots')
 // entry?.enabled, entry?.reason, entry?.checkedAt
 ```
 
+<a id="design-constraints"></a>
 ## Design constraints
 
 - Zero runtime dependencies: `package.json` declares an empty `dependencies` field.
 - `dsh-compat` is the only layer allowed to perform dynamic probing of the official core API; consumers register through `guardFeature` and never probe on their own.
+
+<a id="dev-note"></a>
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+This package is deliberately frozen at zero runtime dependencies and a closed four-value `ProbeReason` taxonomy: new probes belong in feature packages behind `guardFeature`, and widening what `dsh-compat` itself imports erodes the single-probing-layer stance.
+
+</details>

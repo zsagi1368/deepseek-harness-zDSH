@@ -1,9 +1,26 @@
+---
+description: "DeepSeek Harness 的项目级插件根：从 <projectRoot>/.dsh/plugins 发现插件，经宿主钳制沙箱、门控、信任 ledger 与 post-boot Cordis 层挂载。"
+kind: "package-reference"
+---
+
 # @deepseek-ai/dsh-plugin-project-root
 
 [English](README.md) | 中文
 
+## 概述
+
 DeepSeek Harness 的项目级插件根（S-43 M1 + M2a + M2b）。插件从 `<projectRoot>/.dsh/plugins/<id>/` 被发现，经宿主钳制、门控、ledger 过滤后，在 post-boot 以 Cordis 层（`ctx.projectPluginLayer`）挂载。本模块中的每个值都是服务端（宿主）构造：UI 负责渲染，从不自行推断。
 
+## 目录
+
+- [能力](#capabilities)
+- [设计依据](#design-basis)
+- [兼容守卫](#compatibility-guard)
+- [开发备注](#dev-note)
+
+-----
+
+<a id="capabilities"></a>
 ## 能力
 
 - **发现**（`discoverProjectPlugins`）：在 `findProjectRoot` 找到的项目根（最近的带 `.git` 祖先，否则 `cwd`）之下扫描 `<root>/.dsh/plugins/<id>/`。符号链接/联结条目以指名路径的警告被拒绝（A-04）；清单畸形或不完整则跳过该候选并给出警告，绝不导致启动失败（A-05）。候选是普通对象——任何内容都不会被序列化为 YAML，因此 `!!js` 表达式注入没有攻击面（A-06/A7.4）。`pluginDir` 在使用前先做 realpath。
@@ -16,10 +33,12 @@ DeepSeek Harness 的项目级插件根（S-43 M1 + M2a + M2b）。插件从 `<pr
 - **会话作用域**（`wireSessionScope`，M3/C-03）：每个项目工具绑定到其所属项目根；对每个会话 `cwd` 未命中该根（`cwdHitsProjectRoot`）的存活 agent，该工具经 `agent.ctx.tools.restrict({ deny: [...] })` 被限制移除，包装器中的执行时 cwd 检查作为纵深防御。新 agent 由 `agent/created` 监听覆盖。
 - **UI 徽标**：`runtimeTier`（`in-process` / `subprocess`）是名册/UI 显示字段；层暴露 `isSubprocess(pluginId)`、`subprocessEntryIds()` 与 provenance（`provenanceOf`）供 UI 渲染。
 
+<a id="design-basis"></a>
 ## 设计依据
 
 R-S43 红队裁决的三个条件均已落实：(1) 自声明不再自动授予任何权限——声明的沙箱是申请，宿主钳制决定结果（R-S43 前提 B，fail-closed 落回白名单检查）；(2) `untrusted` 已从沙箱词汇中移除，信任只存在于项目根 ledger；(3) 每个项目工具都限定在其所属项目根内，注册时与执行时双重强制。
 
+<a id="compatibility-guard"></a>
 ## 兼容守卫
 
 `guardProjectRoot()` 包装 `@deepseek-ai/dsh-compat` 的 `guardFeature`：在插件注册前探测对等符号（`cordis:Service`、`governance:LoadGuard`、`tools:defineTool`），任一探测失败即返回 `false`（永不抛错），使部分加载或上游漂移的宿主优雅降级。按 COMPAT-DESIGN §4.5，只检查核心符号的存在性，绝不检查其内部实现。
@@ -32,3 +51,17 @@ if (!enabled) {
   // skip registration; do not throw
 }
 ```
+
+<a id="dev-note"></a>
+### 开发备注
+
+<details>
+<summary>维护者工作上下文 — 点击展开</summary>
+
+本开发备注是维护者的工作上下文：未决的设计问题与方向。它明确非权威——已交付的行为、限制与既定理由见上文各节、包代码及关联 Agent Note。
+
+#### 未来：会话作用域之外的 M3 里程碑
+
+会话作用域（M3/C-03）把工具绑定到所属项目根；更多里程碑工作——更丰富的名册投影、按插件的资源核算、ledger 迁移工具——有意保持未定范围，直到 S-45 settings 里程碑确定操作者如何编辑信任决策。
+
+</details>

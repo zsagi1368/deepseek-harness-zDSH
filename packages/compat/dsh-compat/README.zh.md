@@ -1,9 +1,25 @@
+---
+description: "面向 fork/upstream 漂移的版本自适应垫片框架：动态 API 形状探测、功能守卫与进程级兼容名册。"
+kind: "package-reference"
+---
+
 # @deepseek-ai/dsh-compat
 
 [English](README.md) | 中文
 
+## 概述
+
 面向 fork/upstream 漂移的版本自适应垫片框架。它是唯一被允许动态探测官方核心 API 形状的层；其余每个 zDSH 功能包都通过它对自己的注册做闸门控制——探测其所依赖的符号，检测到冲突时自动禁用，而不是在宿主部分加载或上游漂移的启动过程中抛错。`dsh-compat` 零运行时依赖，当前被七个功能包共用（`dsh-acp`、`ui-settings-models`、`workbench`、`dsh-llm`、`dsh-model-slots`、`dsh-plugin-governance`、`dsh-plugin-project-root`）。
 
+## 目录
+
+- [API](#api)
+- [设计约束](#design-constraints)
+- [开发备注](#dev-note)
+
+-----
+
+<a id="api"></a>
 ## API
 
 ### probeSymbol
@@ -72,7 +88,18 @@ const entry = roster.get('dsh-model-slots')
 // entry?.enabled, entry?.reason, entry?.checkedAt
 ```
 
+<a id="design-constraints"></a>
 ## 设计约束
 
 - 零运行时依赖：`package.json` 声明了空的 `dependencies` 字段。
 - `dsh-compat` 是唯一允许动态探测官方核心 API 的层；消费方通过 `guardFeature` 注册，绝不自作主张探测。
+
+<a id="dev-note"></a>
+### 开发备注
+
+<details>
+<summary>维护者工作上下文 — 点击展开</summary>
+
+本包有意冻结在零运行时依赖与封闭的四值 `ProbeReason` 分类上：新的探测应放在功能包内并经由 `guardFeature`，拓宽 `dsh-compat` 自身的导入范围会侵蚀单一探测层的立场。
+
+</details>
