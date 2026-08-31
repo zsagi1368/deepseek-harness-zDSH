@@ -48,8 +48,8 @@ import {
 import type { ModelSelection } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
-// The value import also declaration-merges the approval waterfall answered below.
-import { APPROVAL_POLICIES } from '@deepseek-ai/dsh-user-approval'
+// The type import declaration-merges the approval waterfall answered below.
+import type {} from '@deepseek-ai/dsh-user-approval'
 import { supportsAcpImagePrompts } from './content.ts'
 import { AcpMcpConfigError } from './mcp.ts'
 import { AcpModelConfigError } from './model-control.ts'
@@ -78,15 +78,23 @@ function internalError(detail: string): RequestError {
  * automation wire stays in sync with the harness's permission vocabulary: the
  * `'ask'` tier lets the client allow once, and the `'never'` tier's
  * deterministic rejection is offered as an explicit one-shot reject.
+ *
+ * Lazy-loaded: a missing export must degrade to an empty option list instead
+ * of failing module evaluation, so the compatibility guard (which decides
+ * whether the bridge registers at all) runs before any approval options are
+ * needed.
  */
-const approvalOptions: PermissionOption[] = APPROVAL_POLICIES.map((policy) => {
-  if (policy === 'ask') {
-    return { optionId: 'allow-once', name: 'Allow once', kind: 'allow_once' }
-  }
-  // The approval-policy vocabulary is closed ('ask' | 'never'); a future tier
-  // must map to an explicit one-shot option here.
-  return { optionId: 'reject-once', name: 'Reject', kind: 'reject_once' }
-})
+async function loadApprovalOptions(): Promise<PermissionOption[]> {
+  const { APPROVAL_POLICIES } = await import('@deepseek-ai/dsh-user-approval')
+  return APPROVAL_POLICIES.map((policy) => {
+    if (policy === 'ask') {
+      return { optionId: 'allow-once', name: 'Allow once', kind: 'allow_once' }
+    }
+    // The approval-policy vocabulary is closed ('ask' | 'never'); a future tier
+    // must map to an explicit one-shot option here.
+    return { optionId: 'reject-once', name: 'Reject', kind: 'reject_once' }
+  })
+}
 
 /** Plugin config: the provider/model selection used for each ACP-created agent. */
 export interface AcpConfig {
@@ -179,11 +187,11 @@ export async function apply(ctx: Context, config: AcpConfig): Promise<void> {
     const record = ownedRecord(request.agent)
     if (record === undefined || request.callId === undefined) return next()
     const callId = request.callId
-    return record.drainUpdates().then(() => {
+    return record.drainUpdates().then(async () => {
       const params: RequestPermissionRequest = {
         sessionId: record.agent.session.id,
         toolCall: { toolCallId: callId },
-        options: approvalOptions,
+        options: await loadApprovalOptions(),
       }
       return conn.request(methods.client.session.requestPermission, params)
     }).then(({ outcome }) => {
