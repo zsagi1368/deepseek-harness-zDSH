@@ -7,11 +7,10 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantFailure, InvariantInstaller } from '@deepseek-ai/dsh-invariants'
-import { DSH_BRANCH_HOME_ENV, DSH_BRANCH_DIR_NAME } from '@deepseek-ai/dsh-plugin-governance'
+import { resolveBranchStorageRoot } from '@deepseek-ai/dsh-plugin-governance'
 
 const PACKAGE_NAME = '@deepseek-ai/dsh-plugin-project-root'
 
@@ -21,12 +20,12 @@ export const name = 'plugin-project-root-invariant'
 export const inject = ['invariants']
 
 /**
- * Storage root agreed with PluginPersistence defaults: `DSH_BRANCH_HOME`
- * when set, else the governance package's own root under the home dir.
+ * Storage root agreed with PluginPersistence defaults, via the authoritative
+ * `resolveBranchStorageRoot` chain (`DSH_BRANCH_HOME` → `<DSH_HOME>/zdsh` →
+ * `~/.dsh-zdsh`).
  */
 function storageRoot(): string {
-  const branchHome = process.env[DSH_BRANCH_HOME_ENV]
-  return branchHome !== undefined && branchHome.trim().length > 0 ? resolve(branchHome) : join(homedir(), DSH_BRANCH_DIR_NAME)
+  return resolveBranchStorageRoot()
 }
 
 /** A record (plain object) view check. */

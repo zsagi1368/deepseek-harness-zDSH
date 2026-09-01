@@ -18,9 +18,8 @@
  */
 
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { normalizePluginId, DSH_BRANCH_HOME_ENV, DSH_BRANCH_DIR_NAME } from '@deepseek-ai/dsh-plugin-governance'
+import { normalizePluginId, resolveBranchStorageRoot } from '@deepseek-ai/dsh-plugin-governance'
 
 /** The ledger file name under the persistence data directory. */
 export const PROJECT_TRUSTS_FILENAME = 'project-trusts.json'
@@ -62,17 +61,13 @@ export function projectRootKey(projectRoot: string): string {
 }
 
 /**
- * Resolve the persistence data directory used for the ledger, mirroring
- * PluginPersistence's default storage root resolution
- * (`DSH_BRANCH_HOME` → `~/.dsh-zdsh`), then `data/`.
+ * Resolve the persistence data directory used for the ledger, delegating to
+ * the authoritative `resolveBranchStorageRoot` chain (`DSH_BRANCH_HOME` →
+ * `<DSH_HOME>/zdsh` → `~/.dsh-zdsh`), then `data/`.
  * @returns the absolute data directory path.
  */
 export function projectTrustsDataDir(env: NodeJS.ProcessEnv = process.env): string {
-  const dshHome = env[DSH_BRANCH_HOME_ENV]
-  if (dshHome !== undefined && dshHome.trim().length > 0) {
-    return join(resolve(dshHome), 'data')
-  }
-  return join(homedir(), DSH_BRANCH_DIR_NAME, 'data')
+  return join(resolveBranchStorageRoot(env), 'data')
 }
 
 /** The ledger file path under `dataDir`. */

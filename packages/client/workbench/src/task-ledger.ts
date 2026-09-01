@@ -5,7 +5,7 @@
  * empty one — fail visible, never fail the boot).
  */
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { envelopeFail, envelopeOk } from './shared/protocol-envelope.ts'
 import type { WorkbenchRouteEnvelope } from './shared/protocol-envelope.ts'
@@ -27,6 +27,17 @@ export interface TaskLedgerOptions {
 const TITLE_MAX = 200
 
 function defaultFilePath(): string {
+  // Mirrors resolveBranchStorageRoot (dsh-plugin-governance, kept local so the
+  // workbench bundle does not pull the governance host package):
+  // DSH_BRANCH_HOME → <DSH_HOME>/zdsh → legacy ~/.zdsh-workbench.
+  const branchHome = process.env.DSH_BRANCH_HOME
+  if (branchHome !== undefined && branchHome.trim().length > 0) {
+    return join(resolve(branchHome), 'workbench', 'tasks.json')
+  }
+  const dshHome = process.env.DSH_HOME
+  if (dshHome !== undefined && dshHome.trim().length > 0) {
+    return join(resolve(dshHome), 'zdsh', 'workbench', 'tasks.json')
+  }
   const home = process.env.HOME ?? process.env.UserProfile ?? '.'
   return join(home, '.zdsh-workbench', 'tasks.json')
 }

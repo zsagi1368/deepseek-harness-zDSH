@@ -26,6 +26,10 @@ const REQUIRED_ENV_NAMES = [
   'LANG',
   'LC_ALL',
   'TZ',
+  // Data-root discovery: governed plugins resolve the same install-scoped
+  // storage the host uses (settings/credentials/<DSH_HOME>/zdsh branch data),
+  // so community plugins keep their state inside the install directory too.
+  'DSH_HOME',
 ] as const
 
 /** Sensitive name shapes never handed to a sandboxed child. */

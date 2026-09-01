@@ -286,6 +286,36 @@ describe('ProcessSandbox environment filtering', () => {
     expect(sandbox.filterEnvironment()['PATH']).toBeUndefined()
   })
 
+  it('passes DSH_HOME through so plugins resolve the install-scoped storage root', () => {
+    const sandbox = new ProcessSandbox('p-dsh-home', baseConfig(), 'entry.js')
+    withSensitiveEnv(() => {
+      // Data-root discovery passthrough: DSH_HOME sits in the runtime-required
+      // set (sandbox/env.ts REQUIRED_ENV_NAMES) and survives derivation.
+      process.env.DSH_HOME = join(tmpdir(), 'f6-install', 'data')
+      try {
+        expect(sandbox.filterEnvironment()['DSH_HOME']).toBe(join(tmpdir(), 'f6-install', 'data'))
+      } finally {
+        delete process.env.DSH_HOME
+      }
+    })
+  })
+
+  it('still drops DSH_HOME when the config blacklist names it', () => {
+    const config = baseConfig({
+      environment: { whitelist: [], blacklist: ['DSH_HOME'], clear: false },
+    })
+    const sandbox = new ProcessSandbox('p-dsh-home-blacklist', config, 'entry.js')
+    withSensitiveEnv(() => {
+      process.env.DSH_HOME = join(tmpdir(), 'f6-install', 'data')
+      try {
+        // The blacklist always wins, even over a runtime-required name.
+        expect(sandbox.filterEnvironment()['DSH_HOME']).toBeUndefined()
+      } finally {
+        delete process.env.DSH_HOME
+      }
+    })
+  })
+
   it('does not leak caller-only environment variables into exec children', async () => {
     const sandbox = new ProcessSandbox('p-env-leak', baseConfig(), 'entry.js')
     await withSensitiveEnv(async () => {

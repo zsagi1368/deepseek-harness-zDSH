@@ -12,6 +12,7 @@ import {
   DSH_BRANCH_HOME_ENV,
   PluginPersistence,
   createDefaultPersistence,
+  resolveBranchStorageRoot,
 } from '../src/persistence/index.ts'
 import { DefaultPluginRegistry } from '../src/registry/registry.ts'
 import { BasePlugin } from '../src/base/base.ts'
@@ -35,6 +36,7 @@ async function populatedRegistry(): Promise<DefaultPluginRegistry> {
 afterEach(() => {
   vi.restoreAllMocks()
   Reflect.deleteProperty(process.env, DSH_BRANCH_HOME_ENV)
+  Reflect.deleteProperty(process.env, 'DSH_HOME')
 })
 
 describe('storage root resolution', () => {
@@ -49,6 +51,37 @@ describe('storage root resolution', () => {
     process.env[DSH_BRANCH_HOME_ENV] = branchHome
     const persistence = new PluginPersistence(deadRegistry)
     expect(persistence.storagePath).toBe(resolve(branchHome))
+  })
+
+  it('derives <DSH_HOME>/zdsh when only DSH_HOME is set (single-variable install layout)', () => {
+    const dshHome = join(tmpdir(), 'install-dir', 'data')
+    process.env.DSH_HOME = dshHome
+    expect(resolveBranchStorageRoot()).toBe(join(resolve(dshHome), 'zdsh'))
+    const persistence = new PluginPersistence(deadRegistry)
+    expect(persistence.storagePath).toBe(join(resolve(dshHome), 'zdsh'))
+  })
+
+  it('prefers DSH_BRANCH_HOME over the DSH_HOME derivation', () => {
+    process.env.DSH_HOME = join(tmpdir(), 'install-data')
+    process.env[DSH_BRANCH_HOME_ENV] = join(tmpdir(), 'branch-home')
+    expect(resolveBranchStorageRoot()).toBe(resolve(join(tmpdir(), 'branch-home')))
+  })
+
+  it('keeps the legacy ~/.dsh-zdsh default when neither variable is set', () => {
+    expect(resolveBranchStorageRoot()).toBe(join(homedir(), DSH_BRANCH_DIR_NAME))
+  })
+
+  it('ignores blank DSH_HOME and falls through to the homedir default', () => {
+    process.env.DSH_HOME = '   '
+    expect(resolveBranchStorageRoot()).toBe(join(homedir(), DSH_BRANCH_DIR_NAME))
+  })
+
+  it('skips a blank DSH_BRANCH_HOME down to the DSH_HOME derivation', () => {
+    // Blank override does not shadow the derived tier: <DSH_HOME>/zdsh wins.
+    const dshHome = join(tmpdir(), 'install-data-blank-branch')
+    process.env[DSH_BRANCH_HOME_ENV] = '   '
+    process.env.DSH_HOME = dshHome
+    expect(resolveBranchStorageRoot()).toBe(join(resolve(dshHome), 'zdsh'))
   })
 
   it('ignores blank env values and defaults to ~/.dsh-zdsh under the user home', () => {

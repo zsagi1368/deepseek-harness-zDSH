@@ -1,7 +1,7 @@
-import { mkdtemp, readdir, readFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { TaskLedger } from '../src/task-ledger.ts'
 
 async function tempLedgerPath(): Promise<string> {
@@ -105,5 +105,53 @@ describe('task ledger', () => {
     await ledger.update({ id, status: 'done' })
     expect(seen.length).toBeGreaterThanOrEqual(2)
     expect(seen.at(-1)).toBe(ledger.getSnapshot().revision)
+  })
+
+  describe('defaultFilePath derivation chain (stubbed process.env)', () => {
+    const ENV_KEYS = ['DSH_BRANCH_HOME', 'DSH_HOME', 'HOME', 'UserProfile'] as const
+    const savedEnv: Record<string, string | undefined> = {}
+
+    beforeEach(() => {
+      for (const key of ENV_KEYS) {
+        savedEnv[key] = process.env[key]
+        Reflect.deleteProperty(process.env, key)
+      }
+    })
+
+    afterEach(() => {
+      for (const key of ENV_KEYS) {
+        const value = savedEnv[key]
+        if (value === undefined) Reflect.deleteProperty(process.env, key)
+        else process.env[key] = value
+      }
+    })
+
+    it('writes <DSH_BRANCH_HOME>/workbench/tasks.json when DSH_BRANCH_HOME is set', async () => {
+      const branchHome = await mkdtemp(join(tmpdir(), 'wb-branch-home-'))
+      process.env['DSH_BRANCH_HOME'] = branchHome
+      const ledger = new TaskLedger()
+      await ledger.init()
+      const created = await ledger.create({ title: '派生落盘探针' })
+      expect(created.ok).toBe(true)
+
+      // Real on-disk assertion: the no-arg constructor must land in the
+      // branch home, not the legacy user-home default.
+      const target = join(branchHome, 'workbench', 'tasks.json')
+      expect((await stat(target)).isFile()).toBe(true)
+      expect((await readFile(target, 'utf8')).includes('派生落盘探针')).toBe(true)
+    })
+
+    it('falls back to the legacy <HOME>/.zdsh-workbench/tasks.json when both variables are unset', async () => {
+      const home = await mkdtemp(join(tmpdir(), 'wb-legacy-home-'))
+      process.env['HOME'] = home
+      const ledger = new TaskLedger()
+      await ledger.init()
+      const created = await ledger.create({ title: 'legacy 探针' })
+      expect(created.ok).toBe(true)
+
+      const target = join(home, '.zdsh-workbench', 'tasks.json')
+      expect((await stat(target)).isFile()).toBe(true)
+      expect((await readFile(target, 'utf8')).includes('legacy 探针')).toBe(true)
+    })
   })
 })
