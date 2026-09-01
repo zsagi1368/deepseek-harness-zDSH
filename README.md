@@ -96,39 +96,16 @@ pnpm dsh web
 
 The Web UI starts at `http://127.0.0.1:3080`. Navigate to **Settings → Plugins** for the governance tab.
 
-### Install to a custom directory
+### Custom data directory
 
-Set the `DSH_BRANCH_HOME` environment variable before first launch:
-
-```sh
-# Linux / macOS
-export DSH_BRANCH_HOME="$HOME/my-custom-zdsh"
-# Windows PowerShell
-$env:DSH_BRANCH_HOME = "D:\my-custom-zdsh"
-```
-
-All persistent data (memory, approvals, plugin state, presets) lives under this directory.
-
-### Uninstall
-
-```sh
-# 1. Remove the repository
-rm -rf deepseek-harness-zDSH
-
-# 2. Remove the data directory
-rm -rf ~/.dsh-zdsh        # or your custom DSH_BRANCH_HOME path
-
-# 3. Remove git credentials (optional)
-# Settings → SSH keys → remove the deploy key you added for this repo
-```
-
-No global npm packages are installed; everything runs from the repository checkout.
+The installer keeps all data inside the repository's `data/` directory: place the repository wherever you like and move or delete it as a whole — nothing spills outside. To redirect data, set `DSH_HOME` (common root for official and zDSH data; zDSH data lands under `<DSH_HOME>/zdsh` automatically). The legacy `DSH_BRANCH_HOME` variable remains supported and takes highest precedence as an explicit override.
 
 ### Environment variables
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `DSH_BRANCH_HOME` | Data root (memory / approvals / plugin state) | `~/.dsh-zdsh` |
+| `DSH_HOME` | Data home (official modules + zDSH governance data under `<DSH_HOME>/zdsh`) | `~/.dsh` |
+| `DSH_BRANCH_HOME` | Legacy override: zDSH governance data root (wins over the `DSH_HOME` derivation) | `~/.dsh-zdsh` |
 | `OPENAI_API_KEY` | OpenAI vision provider | — |
 | `ANTHROPIC_API_KEY` | Anthropic vision provider | — |
 | `GEMINI_API_KEY` | Gemini vision provider | — |
@@ -201,6 +178,46 @@ DeepSeek Harness is currently in _developer preview_ and is iterating rapidly. *
 ```sh
 npx @deepseek-ai/dsh web
 ```
+
+## Installation
+
+For a self-contained setup that keeps all data inside the repository directory, run the installer for your platform from a repository checkout:
+
+```sh
+# Windows (PowerShell 5.1+)
+.\install.cmd
+# macOS / Linux / WSL
+./scripts/install.sh
+```
+
+The installer checks the prerequisites (`Node.js ^22.19.0 || >=24` and `pnpm`), runs `pnpm install --frozen-lockfile` and `pnpm run build`, and generates:
+
+- `data/` — the data home (`DSH_HOME`). Official module data and zDSH governance data (plugin registry, approval ledger, and installed plugins under `data/zdsh/`) are both kept here.
+- `env.ps1` / `env.sh` — environment loaders that define `DSH_HOME`, `DSH_AGENTS_HOME`, and a `dsh` command pointing at the built CLI.
+
+Load the environment before use:
+
+```sh
+# PowerShell
+. .\env.ps1
+# bash
+source ./env.sh
+```
+
+Then run `dsh web` as usual.
+
+## Uninstall
+
+Run the uninstaller for your platform from a repository checkout:
+
+```sh
+# Windows (PowerShell 5.1+)
+.\uninstall.cmd
+# macOS / Linux / WSL
+./scripts/uninstall.sh
+```
+
+By default it removes every gitignored artifact inside the checkout (`node_modules`, build output, `data/`, `env.ps1` / `env.sh`), restoring a pristine checkout state. Additional options: `--purge` (PowerShell: `-Purge`) also deletes the whole repository directory afterwards; `--clean-legacy` (PowerShell: `-CleanLegacy`) also removes the legacy zDSH home directories (`~/.dsh-zdsh`, `~/.zdsh-workbench`, `~/.zdsh-plugin-center`). `~/.dsh` belongs to the official release and is only touched after explicit confirmation; the script never deletes `~/.agents` and only reports its presence.
 
 ## Community and support
 

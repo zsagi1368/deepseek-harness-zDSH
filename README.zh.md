@@ -105,39 +105,60 @@ pnpm dsh web
 
 Web UI 启动于 `http://127.0.0.1:3080`。前往 **Settings → Plugins** 查看治理标签页。
 
-### Install to a custom directory
+<a id="installation"></a>
 
-首次启动前设置 `DSH_BRANCH_HOME` 环境变量：
+## 安装
 
-```sh
-# Linux / macOS
-export DSH_BRANCH_HOME="$HOME/my-custom-zdsh"
-# Windows PowerShell
-$env:DSH_BRANCH_HOME = "D:\my-custom-zdsh"
-```
-
-所有持久化数据（记忆 / 审批 / 插件状态 / 预设）都存放在该目录下。
-
-### Uninstall
+如需自包含安装——所有数据都收拢在仓库目录内——可在仓库检出目录中运行对应平台的安装脚本：
 
 ```sh
-# 1. Remove the repository
-rm -rf deepseek-harness-zDSH
-
-# 2. Remove the data directory
-rm -rf ~/.dsh-zdsh        # or your custom DSH_BRANCH_HOME path
-
-# 3. Remove git credentials (optional)
-# Settings → SSH keys → remove the deploy key you added for this repo
+# Windows (PowerShell 5.1+)
+.\install.cmd
+# macOS / Linux / WSL
+./scripts/install.sh
 ```
 
-不安装任何全局 npm 包；一切均从仓库检出目录运行。
+安装脚本会检查前置条件（`Node.js ^22.19.0 || >=24` 与 `pnpm`），依次执行 `pnpm install --frozen-lockfile` 与 `pnpm run build`，并生成：
+
+- `data/` —— 数据主目录（`DSH_HOME`）。官方模块数据与 zDSH 治理数据（插件注册表、审批账本，以及 `data/zdsh/` 下的已装插件）都保存在这里。
+- `env.ps1` / `env.sh` —— 环境加载脚本，定义 `DSH_HOME`、`DSH_AGENTS_HOME`，以及指向已构建 CLI 的 `dsh` 命令。
+
+使用前先加载环境：
+
+```sh
+# PowerShell
+. .\env.ps1
+# bash
+source ./env.sh
+```
+
+之后照常运行 `dsh web` 即可。
+
+<a id="uninstall"></a>
+
+## 卸载
+
+在仓库检出目录中运行对应平台的卸载脚本：
+
+```sh
+# Windows (PowerShell 5.1+)
+.\uninstall.cmd
+# macOS / Linux / WSL
+./scripts/uninstall.sh
+```
+
+默认模式会移除检出版内所有被 gitignore 忽略的产物（`node_modules`、构建输出、`data/`、`env.ps1` / `env.sh`），恢复纯净检出版状态。附加选项：`--purge`（PowerShell 为 `-Purge`）会在清理之后连整个仓库目录一并删除；`--clean-legacy`（PowerShell 为 `-CleanLegacy`）会同时删除 zDSH 旧版主目录（`~/.dsh-zdsh`、`~/.zdsh-workbench`、`~/.zdsh-plugin-center`）。`~/.dsh` 属于官方版本数据，仅在显式确认后才会处理；本脚本从不删除 `~/.agents`，仅在存在时报告。
+
+### 自定义数据目录
+
+安装布局默认把全部数据收拢在仓库目录的 `data/` 内：把整个仓库目录放在任意位置、整体移动或删除即可，无外溢文件。高级用户可用环境变量重定向：`DSH_HOME` 指定官方与 zDSH 数据的共同根（zDSH 数据自动落于 `<DSH_HOME>/zdsh`）；旧变量 `DSH_BRANCH_HOME` 仍受支持且优先级最高（显式覆盖）。
 
 ### Environment variables
 
 | 变量 | 用途 | 默认值 |
 |---|---|---|
-| `DSH_BRANCH_HOME` | 数据根目录（记忆 / 审批 / 插件状态） | `~/.dsh-zdsh` |
+| `DSH_HOME` | 数据主目录（官方模块 + zDSH 治理数据，后者自动落于 `<DSH_HOME>/zdsh`） | `~/.dsh` |
+| `DSH_BRANCH_HOME` | 兼容覆盖：zDSH 治理数据根（优先级高于 `DSH_HOME` 派生） | `~/.dsh-zdsh` |
 | `OPENAI_API_KEY` | OpenAI 视觉提供商 | — |
 | `ANTHROPIC_API_KEY` | Anthropic 视觉提供商 | — |
 | `GEMINI_API_KEY` | Gemini 视觉提供商 | — |
