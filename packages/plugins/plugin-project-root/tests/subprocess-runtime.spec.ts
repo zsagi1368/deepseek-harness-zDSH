@@ -246,7 +246,7 @@ describe('subprocess runtime (M2b)', () => {
       id: 'fixtures/envprobe',
       capabilities: [{ type: 'tool', tool: { name: 'env_probe', description: 'probes env', schema: { type: 'object' } } }],
       sandbox: {
-        ...subprocessManifest('process').sandbox,
+        ...(subprocessManifest('process').sandbox as Record<string, unknown>),
         environment: { whitelist: ['MY_PROBE_VAR'], blacklist: [], clear: false },
       },
     })

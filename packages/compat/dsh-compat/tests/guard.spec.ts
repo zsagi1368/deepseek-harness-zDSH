@@ -24,8 +24,8 @@ describe('guardFeature', () => {
     const checks = [passCheck('check:x')]
     const verdict = await guardFeature('all-pass', { deps, check: checks, logger })
     expect(verdict).toEqual({ enabled: true, reason: 'ok', failures: [] })
-    expect(deps[0].run).toHaveBeenCalledTimes(1)
-    expect(checks[0].run).toHaveBeenCalledTimes(1)
+    expect(deps[0]!.run).toHaveBeenCalledTimes(1)
+    expect(checks[0]!.run).toHaveBeenCalledTimes(1)
     expect(warn).not.toHaveBeenCalled()
   })
 
@@ -139,7 +139,7 @@ describe('consoleCompatLogger', () => {
     try {
       const logger = consoleCompatLogger()
       logger.warn('w-msg', 1)
-      logger.info('i-msg', 2)
+      logger.info?.('i-msg', 2)
       expect(warn).toHaveBeenCalledWith('w-msg', 1)
       expect(info).toHaveBeenCalledWith('i-msg', 2)
     } finally {

@@ -610,7 +610,7 @@ describe('session row project chip', () => {
     runningSubagentCount: 0, completed: false, updatedAt: 0,
     cwd: 'G:/work/dsh/apps/cli', ...over,
   })
-  const renderRow = (over: { node?: SessionNode; showProject?: boolean } = {}) => render(
+  const renderRow = (over: { node?: Partial<SessionNode>; showProject?: boolean } = {}) => render(
     <SessionNodeItem
       node={node(over.node)} currentId={undefined} now={0} onOpen={vi.fn()}
       onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()}
@@ -630,7 +630,7 @@ describe('session row project chip', () => {
   })
 
   it('omits the chip when the host recorded no cwd or the row is a blank placeholder', () => {
-    renderRow({ showProject: true, node: { cwd: undefined } })
+    renderRow({ showProject: true, node: { cwd: undefined as any } })
     expect(screen.queryByText('cli')).toBeNull()
     renderRow({ showProject: true, node: { blank: true } })
     expect(screen.queryByTitle('G:/work/dsh/apps/cli')).toBeNull()

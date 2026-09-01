@@ -47,7 +47,6 @@ function recordingNext(requests: LlmCallConfig[]): () => Promise<LlmCallConfig> 
     const config: LlmCallConfig = {
       provider: 'main-provider',
       model: 'main-model',
-      messages: [],
     }
     requests.push(config)
     return Promise.resolve(config)
@@ -140,7 +139,6 @@ describe('plan slot routing', () => {
       const planShaped: LlmCallConfig = {
         provider: 'plan-provider',
         model: 'plan-model',
-        messages: [],
       }
       execRequests.push(planShaped)
       return Promise.resolve(planShaped)
