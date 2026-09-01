@@ -74,6 +74,11 @@ backup_user_local_files() {
   # files (.env, CLAUDE.local.md, mise.toml) and user-local directories
   # (.vscode, .claude, .idea, .DS_Store) outside the repository first.
   # List mirrors the user-local entries in .gitignore.
+  # -rL dereferences symlinks: tracked links like .claude/skills cannot be
+  # recreated inside the backup dir on MSYS (their relative target does not
+  # exist there), and Copy-Item on the PowerShell side dereferences too —
+  # keep both platforms aligned. Restoring a dereferenced copy must never
+  # clobber a git-tracked symlink (see RESTORE.txt warning below).
   local backup_dir='' name source
   for name in .env CLAUDE.local.md mise.toml .vscode .claude .idea .DS_Store; do
     source="$ROOT/$name"
@@ -82,12 +87,14 @@ backup_user_local_files() {
         backup_dir="${TMPDIR:-/tmp}/zdsh-uninstall-backup-$(date +%Y%m%d-%H%M%S)"
         mkdir -p -- "$backup_dir"
       fi
-      cp -R -- "$source" "$backup_dir/"
+      cp -rL -- "$source" "$backup_dir/"
       printf 'Restore by copying this item back to: %s\n' "$ROOT/$name" >> "$backup_dir/RESTORE.txt"
       echo "Backed up user-local file before cleaning: $name"
     fi
   done
   if [ -n "$backup_dir" ]; then
+    printf 'CAUTION: items that are git-tracked (e.g. the .claude/skills symlink) were\n' >> "$backup_dir/RESTORE.txt"
+    printf 'backed up dereferenced; restore only user-authored files, never over git-tracked paths.\n' >> "$backup_dir/RESTORE.txt"
     echo "Backup location: $backup_dir"
   fi
 }
