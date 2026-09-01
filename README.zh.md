@@ -46,6 +46,50 @@ pnpm dsh web
 
 `pnpm run build` 会准备仓库产物。`pnpm dsh web` 会直接使用这些已构建产物，不会重新构建。
 
+<a id="installation"></a>
+
+## 安装
+
+如需自包含安装——所有数据都收拢在仓库目录内——可在仓库检出目录中运行对应平台的安装脚本：
+
+```sh
+# Windows (PowerShell 5.1+)
+.\install.cmd
+# macOS / Linux / WSL
+./scripts/install.sh
+```
+
+安装脚本会检查前置条件（`Node.js ^22.19.0 || >=24` 与 `pnpm`），依次执行 `pnpm install --frozen-lockfile` 与 `pnpm run build`，并生成：
+
+- `data/` —— 数据主目录（`DSH_HOME`）。官方模块数据与 zDSH 治理数据（插件注册表、审批账本，以及 `data/zdsh/` 下的已装插件）都保存在这里。
+- `env.ps1` / `env.sh` —— 环境加载脚本，定义 `DSH_HOME`、`DSH_AGENTS_HOME`，以及指向已构建 CLI 的 `dsh` 命令。
+
+使用前先加载环境：
+
+```sh
+# PowerShell
+. .\env.ps1
+# bash
+source ./env.sh
+```
+
+之后照常运行 `dsh web` 即可。
+
+<a id="uninstall"></a>
+
+## 卸载
+
+在仓库检出目录中运行对应平台的卸载脚本：
+
+```sh
+# Windows (PowerShell 5.1+)
+.\uninstall.cmd
+# macOS / Linux / WSL
+./scripts/uninstall.sh
+```
+
+默认模式会移除检出版内所有被 gitignore 忽略的产物（`node_modules`、构建输出、`data/`、`env.ps1` / `env.sh`），恢复纯净检出版状态。附加选项：`--purge`（PowerShell 为 `-Purge`）会在清理之后连整个仓库目录一并删除；`--clean-legacy`（PowerShell 为 `-CleanLegacy`）会同时删除 zDSH 旧版主目录（`~/.dsh-zdsh`、`~/.zdsh-workbench`、`~/.zdsh-plugin-center`）。`~/.dsh` 属于官方版本数据，仅在显式确认后才会处理；本脚本从不删除 `~/.agents`，仅在存在时报告。
+
 ## 社区与支持
 
 - 通过 [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions) 提交反馈或 bug 报告。
