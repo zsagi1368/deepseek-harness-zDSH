@@ -39,10 +39,14 @@ function fixtureHome(registry: unknown, approvals?: unknown): string {
   const home = mkdtempSync(join(tmpdir(), 'gov-inv-'))
   homes.push(home)
   process.env.DSH_BRANCH_HOME = home
-  const data = join(home, 'data')
-  mkdirSync(data, { recursive: true })
-  writeFileSync(join(data, 'registry.json'), JSON.stringify(registry))
-  if (approvals !== undefined) writeFileSync(join(data, 'approvals.json'), JSON.stringify(approvals))
+  // registry.json lives at the storage root (PluginPersistence.save);
+  // approvals.json lives under data/ (host saveApprovals).
+  writeFileSync(join(home, 'registry.json'), JSON.stringify(registry))
+  if (approvals !== undefined) {
+    const data = join(home, 'data')
+    mkdirSync(data, { recursive: true })
+    writeFileSync(join(data, 'approvals.json'), JSON.stringify(approvals))
+  }
   return home
 }
 

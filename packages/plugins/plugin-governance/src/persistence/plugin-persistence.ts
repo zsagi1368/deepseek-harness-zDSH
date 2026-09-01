@@ -24,6 +24,34 @@ export const DSH_BRANCH_DIR_NAME = '.dsh-zdsh'
 export const DSH_BRANCH_HOME_ENV = 'DSH_BRANCH_HOME'
 
 /**
+ * 解析 zDSH 分支数据存储根目录（权威实现，全项目共享此优先级链）。
+ *
+ * 优先级（高 → 低）：
+ * 1. `DSH_BRANCH_HOME` 环境变量（兼容保留的显式覆盖入口）
+ * 2. `DSH_HOME` 环境变量派生：`<DSH_HOME>/zdsh` —— 单变量统一入口，设置一个
+ *    DSH_HOME 即可让官方数据与 zDSH 数据全部收拢到同一安装目录内
+ * 3. `~/.dsh-zdsh`（历史默认，行为与未引入 DSH_HOME 派生前完全一致）
+ *
+ * 镜像实现方（修改时同步）：plugin-governance/src/invariant.ts、
+ * plugin-project-root/src/invariant.ts（经本包导出复用）、
+ * packages/client/workbench/src/task-ledger.ts、独立仓 Workbench 与
+ * PluginCenter 的同名逻辑。
+ * @param env - 环境变量来源，默认 `process.env`（注入以便测试）。
+ * @returns 绝对存储根目录路径。
+ */
+export function resolveBranchStorageRoot(env: NodeJS.ProcessEnv = process.env): string {
+  const branchHome = env[DSH_BRANCH_HOME_ENV]
+  if (branchHome !== undefined && branchHome.trim().length > 0) {
+    return resolve(branchHome)
+  }
+  const dshHome = env.DSH_HOME
+  if (dshHome !== undefined && dshHome.trim().length > 0) {
+    return join(resolve(dshHome), 'zdsh')
+  }
+  return join(os.homedir(), DSH_BRANCH_DIR_NAME)
+}
+
+/**
  * 插件持久化配置
  */
 export interface PluginPersistenceConfig {
@@ -89,22 +117,17 @@ export class PluginPersistence {
    *
    * 优先级：
    * 1. 配置参数 storageRoot
-   * 2. 环境变量 DSH_BRANCH_HOME（覆盖优先级最高的环境入口）
-   * 3. 用户主目录下的 .dsh-zdsh
+   * 2. 环境变量 DSH_BRANCH_HOME（覆盖优先级最高的环境入口，兼容保留）
+   * 3. 环境变量 DSH_HOME 派生：$DSH_HOME/zdsh（单变量统一入口，官方数据与
+   *    zDSH 数据同根，整个安装目录自包含）
+   * 4. 用户主目录下的 .dsh-zdsh
    *
    * 与官方的 DSH_HOME 机制对应：
    * - 官方: DSH_HOME -> ~/.dsh
-   * - 我们: DSH_BRANCH_HOME -> ~/.dsh-zdsh
+   * - 我们: DSH_HOME -> <DSH_HOME>/zdsh（新）或 DSH_BRANCH_HOME -> ~/.dsh-zdsh（兼容）
    */
   private resolveDefaultStorageRoot(): string {
-    // 1. 优先使用环境变量
-    const envPath = process.env[DSH_BRANCH_HOME_ENV]
-    if (envPath && envPath.trim().length > 0) {
-      return resolve(envPath)
-    }
-
-    // 2. 默认使用用户主目录下的 .dsh-zdsh，与官方 ~/.dsh 平行、互不干扰
-    return join(os.homedir(), DSH_BRANCH_DIR_NAME)
+    return resolveBranchStorageRoot(process.env)
   }
 
   /**

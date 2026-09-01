@@ -9,7 +9,7 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantFailure, InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 
@@ -21,13 +21,17 @@ export const name = 'plugin-governance-invariant'
 export const inject = ['invariants']
 
 /**
- * Storage root agreed with PluginPersistence defaults: `DSH_BRANCH_HOME`
- * when set, else the governance package's own root under the home dir.
+ * Storage root agreed with PluginPersistence defaults. Mirror of
+ * `resolveBranchStorageRoot` from plugin-persistence.ts (kept inline because
+ * this companion entry is built standalone): `DSH_BRANCH_HOME` when set, else
+ * `<DSH_HOME>/zdsh` when DSH_HOME is set, else `~/.dsh-zdsh`.
  */
 function storageRoot(): string {
   const branchHome = process.env.DSH_BRANCH_HOME
-  const root = branchHome !== undefined && branchHome.trim().length > 0 ? branchHome : join(homedir(), '.dsh-zdsh')
-  return root
+  if (branchHome !== undefined && branchHome.trim().length > 0) return resolve(branchHome)
+  const dshHome = process.env.DSH_HOME
+  if (dshHome !== undefined && dshHome.trim().length > 0) return join(resolve(dshHome), 'zdsh')
+  return join(homedir(), '.dsh-zdsh')
 }
 
 interface PersistedApprovals {
@@ -45,8 +49,10 @@ function requiresDecision(permissionLevel: unknown, autoApprove: unknown): boole
 /** Sweep the persisted snapshot once and report every failing entry. */
 const install: InvariantInstaller = Object.assign((ctx: Context, fail: InvariantFailure) => {
   void ctx
-  const dataDir = join(storageRoot(), 'data')
-  const registryPath = join(dataDir, 'registry.json')
+  const root = storageRoot()
+  // registry.json lives at the storage root (PluginPersistence.save), the
+  // approvals ledger lives under data/ (host saveApprovals) — not both in data/.
+  const registryPath = join(root, 'registry.json')
   if (!existsSync(registryPath)) return
   let snapshots: unknown
   try {
@@ -59,7 +65,7 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
     : undefined
   if (!Array.isArray(entries)) return
   let approved: PersistedApprovals = {}
-  const approvalsPath = join(dataDir, 'approvals.json')
+  const approvalsPath = join(root, 'data', 'approvals.json')
   if (existsSync(approvalsPath)) {
     try {
       const parsed = JSON.parse(readFileSync(approvalsPath, 'utf8')) as unknown
