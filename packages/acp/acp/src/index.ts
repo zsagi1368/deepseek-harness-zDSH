@@ -16,6 +16,7 @@ import { realpath } from 'node:fs/promises'
 import { isAbsolute, resolve } from 'node:path'
 import { Readable, Writable } from 'node:stream'
 import Schema from '@deepseek-ai/schemastery'
+import { brandString } from '@deepseek-ai/dsh-brand'
 import { errorChain } from '@deepseek-ai/dsh-llm'
 import {
   agent as createAcpAgentApp,
@@ -46,7 +47,7 @@ import {
   type Stream,
 } from '@agentclientprotocol/sdk'
 import type { ModelSelection } from '@deepseek-ai/dsh-agent'
-import { SessionId } from '@deepseek-ai/dsh-session'
+import type { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 // The type import declaration-merges the approval waterfall answered below.
 import type {} from '@deepseek-ai/dsh-user-approval'
@@ -227,7 +228,7 @@ export async function apply(ctx: Context, config: AcpConfig): Promise<void> {
     async newSession(params: NewSessionRequest, signal: AbortSignal): Promise<NewSessionResponse> {
       assertOpen()
       validateWorkspaceParams(params)
-      const sessionId = SessionId(randomUUID())
+      const sessionId = brandString<SessionId>(randomUUID())
       // No preset composition: the ACP bundle keeps the model-facing rows in
       // the host plane, so this agent reads them from the global layer. A
       // deployment that configures a roster has to join one here first
@@ -269,7 +270,7 @@ export async function apply(ctx: Context, config: AcpConfig): Promise<void> {
     async resumeSession(params: ResumeSessionRequest, signal: AbortSignal): Promise<ResumeSessionResponse> {
       assertOpen()
       validateWorkspaceParams(params)
-      const sessionId = SessionId(params.sessionId)
+      const sessionId = brandString<SessionId>(params.sessionId)
       if (sessions.has(sessionId) || activating.has(sessionId) || ctx.sessions.get(sessionId) !== undefined) {
         throw invalidParams(`session is already active: ${sessionId}`)
       }
@@ -365,7 +366,7 @@ export async function apply(ctx: Context, config: AcpConfig): Promise<void> {
       signal: AbortSignal,
     ): Promise<SetSessionConfigOptionResponse> {
       assertOpen()
-      const record = requireSession(SessionId(params.sessionId))
+      const record = requireSession(brandString<SessionId>(params.sessionId))
       try {
         return { configOptions: await record.setConfig(params.configId, params.value, signal) }
       } catch (error: unknown) {
@@ -376,7 +377,7 @@ export async function apply(ctx: Context, config: AcpConfig): Promise<void> {
 
     async closeSession(params: CloseSessionRequest): Promise<CloseSessionResponse> {
       assertOpen()
-      const sessionId = SessionId(params.sessionId)
+      const sessionId = brandString<SessionId>(params.sessionId)
       const record = requireSession(sessionId)
       try {
         await record.close('ACP session closed')
@@ -390,12 +391,12 @@ export async function apply(ctx: Context, config: AcpConfig): Promise<void> {
 
     async prompt(params: PromptRequest, requestSignal: AbortSignal): Promise<PromptResponse> {
       assertOpen()
-      const record = requireSession(SessionId(params.sessionId))
+      const record = requireSession(brandString<SessionId>(params.sessionId))
       return record.prompt(params, imagePromptEnabled, requestSignal)
     },
 
     cancel(params: CancelNotification): Promise<void> {
-      sessions.get(SessionId(params.sessionId))?.cancel()
+      sessions.get(brandString<SessionId>(params.sessionId))?.cancel()
       return Promise.resolve()
     },
   }
