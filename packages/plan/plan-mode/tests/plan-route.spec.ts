@@ -10,6 +10,8 @@ import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import type { Session } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
+import { turnBoundaryProjectionDefinition } from '@deepseek-ai/dsh-agent-loop'
 import { agentEvents, type Agent } from '@deepseek-ai/dsh-agent'
 import ModelSlotRegistry, { MODEL_SLOT_PLAN } from '@deepseek-ai/dsh-model-slots'
 import type { LlmCallConfig } from '@deepseek-ai/dsh-llm'
@@ -28,6 +30,8 @@ async function harness(planSlotConfig?: RegistryConfig): Promise<{ ctx: Context;
   const ctx = new Context()
   await ctx.plugin(SessionStore)
   await ctx.plugin(SystemPrompt)
+  await ctx.plugin(SessionProjectionRegistry)
+  ctx.sessionProjections.register(turnBoundaryProjectionDefinition)
   await ctx.plugin(ToolRuntime)
   if (planSlotConfig !== undefined) await ctx.plugin(ModelSlotRegistry, planSlotConfig)
   await ctx.plugin(PlanModeController, PLAN_CONFIG)
