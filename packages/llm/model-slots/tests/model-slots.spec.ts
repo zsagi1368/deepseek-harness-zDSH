@@ -197,7 +197,7 @@ describe('durable dispatch audit records', () => {
       slots: { [MODEL_SLOT_TITLE]: { provider: 'aux-provider', model: 'aux-model' } },
     })
     registry.resolve(MODEL_SLOT_TITLE, { session })
-    const record = session.events.findLast(event => event.type === 'slots/dispatch')
+    const record = session.snapshotEvents().findLast(event => event.type === 'slots/dispatch')
     expect(record?.data).toEqual({
       slot: MODEL_SLOT_TITLE,
       provider: 'aux-provider',
@@ -208,7 +208,7 @@ describe('durable dispatch audit records', () => {
       session,
       mainRoute: { provider: 'main-provider', model: 'main-model' },
     })
-    const records = session.events.filter(event => event.type === 'slots/dispatch')
+    const records = session.snapshotEvents().filter(event => event.type === 'slots/dispatch')
     expect(records).toHaveLength(2)
     expect(records[1]?.data).toMatchObject({
       slot: MODEL_SLOT_COMPACTION_SUMMARIZE,
@@ -220,8 +220,8 @@ describe('durable dispatch audit records', () => {
     const { ctx, session } = await mountedSession()
     const registry = new ModelSlotRegistry(ctx, {})
     expect(registry.resolve(MODEL_SLOT_TITLE, { session })).toBeNull()
-    expect(session.events.some(event => event.type === 'slots/dispatch')).toBe(false)
+    expect(session.snapshotEvents().some(event => event.type === 'slots/dispatch')).toBe(false)
     expect(registry.resolve(MODEL_SLOT_TITLE, { mainRoute: { provider: 'p', model: 'm' } })).not.toBeNull()
-    expect(session.events.some(event => event.type === 'slots/dispatch')).toBe(false)
+    expect(session.snapshotEvents().some(event => event.type === 'slots/dispatch')).toBe(false)
   })
 })

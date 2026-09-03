@@ -40,15 +40,15 @@ export async function guardModelSlots(
         },
       },
       {
-        name: 'settings:installSettingsSection',
+        name: 'settings:register',
         run: async () => {
           try {
-            const { installSettingsSection } = await import('@deepseek-ai/dsh-settings')
-            return typeof installSettingsSection === 'function'
+            const { SettingsProvider } = await import('@deepseek-ai/dsh-settings')
+            return typeof SettingsProvider === 'function' && typeof SettingsProvider.prototype.register === 'function'
               ? null
-              : 'installSettingsSection not a function'
+              : 'register not a function'
           } catch {
-            return 'cannot import installSettingsSection'
+            return 'cannot import SettingsProvider'
           }
         },
       },

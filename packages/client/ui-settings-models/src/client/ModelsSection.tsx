@@ -19,7 +19,7 @@ import type { InjectFace, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-sl
 // Type-only: pulls this package's SlotMap merge (the two Models child slots).
 import type {} from './slot-contract.ts'
 import { CustomProviderCard } from './CustomProviderCard.tsx'
-import { SlotsBlock } from './SlotsBlock.tsx'
+import { SlotsBlock, type SlotsBlockProps } from './SlotsBlock.tsx'
 import { deriveKeyRef, MODEL_SLOTS_SETTINGS_NAMESPACE, protocolChoices, providerUsable } from './store.ts'
 import type { ModelsSettingsStore, ProviderRow } from './store.ts'
 import type { ModelsOperations } from './operations.ts'
@@ -205,6 +205,21 @@ export function ModelsSection(props: ModelsSectionProps): ReactNode {
 function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderSlot: ModelsRenderSlot }): ReactNode {
   const { controller, operations, schema, t } = injected
   const state = injected.useSnapshot(snapshot => snapshot)
+  // The slots block writes through the same Host settings write the
+  // operations face exposes, adapted to the wire shape the block reads. The
+  // client wire names no model-capability probe (see `SlotsBlockProps.api`),
+  // so the empty llm face defers to the runtime image gate, as before.
+  const slotsApi: SlotsBlockProps['api'] = {
+    settings: {
+      mutate: async (ns, ops, expectedRevision) => {
+        const written = await operations.writeSettings(ns, ops, expectedRevision)
+        return written.kind === 'written'
+          ? { ok: true as const, value: written.view }
+          : { ok: false as const, error: { message: written.message } }
+      },
+    },
+    llm: {},
+  }
   const [editing, setEditing] = useState<EditorTarget | undefined>(undefined)
   const [adding, setAdding] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<EditorTarget | undefined>(undefined)
@@ -543,7 +558,7 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
       <SlotsBlock
         namespace={state.namespaces.get(MODEL_SLOTS_SETTINGS_NAMESPACE)}
         providers={state.rows.map(row => ({ provider: row.entry.provider, displayName: row.entry.displayName }))}
-        api={api}
+        api={slotsApi}
         schema={schema}
         t={t}
         readOnly={!state.writable}

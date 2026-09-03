@@ -1174,7 +1174,7 @@ describe('agent loop', () => {
     await waitForIdle(ctx, agent)
 
     expect(executions).toBe(0)
-    expect(agent.session.events.some(e => e.type === 'tool/call')).toBe(false)
+    expect(agent.session.snapshotEvents().some(e => e.type === 'tool/call')).toBe(false)
     expect(errors).toHaveLength(1)
     expect(errors[0]).toBeInstanceOf(LlmError)
     expect(errors[0]?.code).toBe(TRUNCATED_TOOL_CALL_CODE)
@@ -1184,7 +1184,7 @@ describe('agent loop', () => {
     }])
     // Empty content still needs an assistant/message to carry usage; the anchor
     // is appended before the failure so replay consumers keep the boundary.
-    const assistantMessage = agent.session.events.find(e => e.type === 'assistant/message')
+    const assistantMessage = agent.session.snapshotEvents().find(e => e.type === 'assistant/message')
     expect(assistantMessage?.type === 'assistant/message' && assistantMessage.data).toEqual({
       turn: 1,
       step: 1,
@@ -1232,7 +1232,7 @@ describe('agent loop', () => {
     await waitForIdle(ctx, agent)
 
     expect(executions).toBe(0)
-    expect(agent.session.events.some(e => e.type === 'tool/call')).toBe(false)
+    expect(agent.session.snapshotEvents().some(e => e.type === 'tool/call')).toBe(false)
     expect(errors).toHaveLength(1)
     expect(errors[0]).toBeInstanceOf(LlmError)
     expect(errors[0]?.code).toBe(TRUNCATED_TOOL_CALL_CODE)
@@ -1240,7 +1240,7 @@ describe('agent loop', () => {
       kind: 'error',
       error: { code: TRUNCATED_TOOL_CALL_CODE, message: expect.stringContaining('output-token ceiling') as unknown },
     }])
-    const assistantMessage = agent.session.events.find(e => e.type === 'assistant/message')
+    const assistantMessage = agent.session.snapshotEvents().find(e => e.type === 'assistant/message')
     expect(assistantMessage?.type === 'assistant/message' && assistantMessage.data).toEqual({
       turn: 1,
       step: 1,
@@ -1280,7 +1280,7 @@ describe('agent loop', () => {
     send(agent, 'go')
     await waitForIdle(ctx, agent)
 
-    expect(agent.session.events.some(e => e.type === 'tool/call')).toBe(false)
+    expect(agent.session.snapshotEvents().some(e => e.type === 'tool/call')).toBe(false)
     expect(reasons).toEqual([{ kind: 'max-tokens' }])
     const assistant = agent.session.snapshotEvents().find(e => e.type === 'assistant/message')!
     expect(assistant.type === 'assistant/message' && assistant.data).toEqual({

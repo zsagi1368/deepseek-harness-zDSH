@@ -13,14 +13,14 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type Schema from '@deepseek-ai/schemastery'
 import type { Session } from '@deepseek-ai/dsh-session'
-import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
+import type { SettingsScope } from '@deepseek-ai/dsh-settings'
 import { MODEL_SLOT_COMPACTION_SUMMARIZE, MODEL_SLOT_IDS, MODEL_SLOT_PLAN, MODEL_SLOT_SOURCES, MODEL_SLOT_TITLE, MODEL_SLOT_VISION, SlotId } from './vocabulary.ts'
 import { guardModelSlots } from './compat.ts'
 
 export { MODEL_SLOT_COMPACTION_SUMMARIZE, MODEL_SLOT_IDS, MODEL_SLOT_PLAN, MODEL_SLOT_SOURCES, MODEL_SLOT_TITLE, MODEL_SLOT_VISION, SlotId }
 
 /** Settings namespace carrying the user-editable slot policy (composition below, user layer above). */
-export const MODEL_SLOTS_SETTINGS_NAMESPACE = settingsNamespace('llm-model-slots')
+export const MODEL_SLOTS_SETTINGS_NAMESPACE = 'llm-model-slots'
 
 /** One exact provider/model pair an auxiliary call dispatches to. */
 export interface ModelRoute {
@@ -228,8 +228,10 @@ export class ModelSlotRegistry extends Service {
   /** Slots owned by deployment configuration; programmatic registration may not override them. */
   private readonly pinned = new Set<SlotId>()
   private fallbackRoute: ModelRoute | undefined
-  /** Settings-scope source: composition base by default, replaced by the resolved scope once attached. */
-  private source: () => ModelSlotsConfig
+  /** Settings scope carrying the merged slot policy, or undefined when the settings service is absent. */
+  private settingsScope: SettingsScope<ModelSlotsConfig> | undefined
+  /** Raw config at construction time, used as fallback when no settings scope is attached. */
+  private readonly baseConfig: ModelSlotsConfig
 
   /**
    * Create the registry over validated deployment policy.
@@ -238,24 +240,31 @@ export class ModelSlotRegistry extends Service {
    */
   constructor(ctx: Context, config: ModelSlotsConfig = {}) {
     super(ctx, 'modelSlots')
+    this.baseConfig = config
     const resolved = resolveModelSlotsConfig(config)
     for (const [slot, route] of resolved.routes.entries()) {
       this.routes.set(slot, route)
       this.pinned.add(slot)
     }
     this.fallbackRoute = resolved.fallback
-    this.source = () => config
-    // Compat guard: the settings namespace is only installed when the feature is
-    // enabled; the service itself stays registered (degraded to no settings).
-    void guardModelSlots(ctx.logger).then((enabled) => {
-      if (!enabled) {
+    // Register the settings namespace.  The injection effect must be created
+    // synchronously on the service's active fiber (a later microtask would
+    // assert against an inactive fiber).  The compat guard resolves
+    // asynchronously; a disabled verdict skips registration inside the
+    // effect, and a context disposed before the verdict simply never installs
+    // the section — the service still runs on the raw config.
+    const guard = guardModelSlots(ctx.logger)
+    ctx.inject(['settings'], async (settingsCtx) => {
+      if (!(await guard)) {
         ctx.logger.warn('model-slots: disabled by compat guard (settings section skipped)')
         return
       }
-      installSettingsSection(ctx, MODEL_SLOTS_SETTINGS_NAMESPACE, MODEL_SLOTS_SETTINGS_SCHEMA, config, {
-        setSource: (current) => { this.source = current },
-        onChange: () => { this.rebuildFromSource() },
-      })
+      this.settingsScope = settingsCtx.settings.register(
+        MODEL_SLOTS_SETTINGS_NAMESPACE,
+        MODEL_SLOTS_SETTINGS_SCHEMA,
+        { base: config },
+      )
+      this.settingsScope.watch(() => { this.rebuildFromSource() })
     })
   }
 
@@ -264,7 +273,7 @@ export class ModelSlotRegistry extends Service {
     // Clear config-owned routes while preserving programmatic registrations.
     for (const slot of this.pinned) this.routes.delete(slot)
     this.pinned.clear()
-    const resolved = resolveModelSlotsConfig(this.source())
+    const resolved = resolveModelSlotsConfig(this.settingsScope?.get() ?? this.baseConfig)
     for (const [slot, route] of resolved.routes.entries()) {
       this.routes.set(slot, route)
       this.pinned.add(slot)

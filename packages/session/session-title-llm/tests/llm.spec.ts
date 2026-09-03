@@ -37,7 +37,6 @@ class CooperativeAdapter extends LlmAdapter {
     if (signal === undefined) throw new Error('expected title request signal')
     await new Promise<never>((_resolve, reject) => {
       const rejectAbort = (): void => {
-        // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- exercise exact AbortSignal.reason propagation
         reject(signal.reason)
       }
       if (signal.aborted) {
@@ -396,14 +395,14 @@ describe('auxiliary title-slot routing', () => {
 
     expect(result.model).toEqual({ provider: 'aux-route', model: 'aux-model' })
     expect(adapter.requests[0]).toMatchObject({ provider: 'aux-route', model: 'aux-model' })
-    const dispatch = providerRequest.session.events.findLast(event => event.type === 'slots/dispatch')
+    const dispatch = providerRequest.session.snapshotEvents().findLast(event => event.type === 'slots/dispatch')
     expect(dispatch?.data).toEqual({
       slot: MODEL_SLOT_TITLE,
       provider: 'aux-route',
       model: 'aux-model',
       source: 'slot',
     })
-    const titleRequest = providerRequest.session.events.findLast(event => event.type === 'session/title-llm-request')
+    const titleRequest = providerRequest.session.snapshotEvents().findLast(event => event.type === 'session/title-llm-request')
     expect(dispatch !== undefined && titleRequest !== undefined && dispatch.seq < titleRequest.seq).toBe(true)
   })
 
@@ -423,7 +422,7 @@ describe('auxiliary title-slot routing', () => {
 
     expect(result.model).toEqual({ provider: 'current-route', model: 'explicit-model' })
     expect(adapter.requests[0]).toMatchObject({ provider: 'current-route', model: 'explicit-model' })
-    expect(providerRequest.session.events.some(event => event.type === 'slots/dispatch')).toBe(false)
+    expect(providerRequest.session.snapshotEvents().some(event => event.type === 'slots/dispatch')).toBe(false)
   })
 
   it('records the logged route through the main-route tier when no deployment statement covers the slot', async () => {
@@ -440,7 +439,7 @@ describe('auxiliary title-slot routing', () => {
 
     expect(result.model).toEqual({ provider: 'current-route', model: 'current-model' })
     expect(adapter.requests[0]).toMatchObject({ provider: 'current-route', model: 'current-model' })
-    expect(routed.session.events.findLast(event => event.type === 'slots/dispatch')?.data).toEqual({
+    expect(routed.session.snapshotEvents().findLast(event => event.type === 'slots/dispatch')?.data).toEqual({
       slot: MODEL_SLOT_TITLE,
       provider: 'current-route',
       model: 'current-model',
@@ -454,6 +453,6 @@ describe('auxiliary title-slot routing', () => {
     await expect(generateSessionTitleWithLlm(ctx, resolveSessionTitleLlmConfig(CONFIG), unrouted, unrouted.messages, TITLE_PROVIDER))
       .rejects.toThrow(/no logged request route/)
     expect(adapter.requests).toEqual([])
-    expect(unrouted.session.events.some(event => event.type === 'session/title-llm-request')).toBe(false)
+    expect(unrouted.session.snapshotEvents().some(event => event.type === 'session/title-llm-request')).toBe(false)
   })
 })

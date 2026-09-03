@@ -12,28 +12,14 @@
 
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import type { SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
-import type { en } from './locales.ts'
+import type { SettingsNamespaceView, SettingsPathOpView } from '@deepseek-ai/dsh-api-remotes/client'
+import { SLOT_LABEL_KEYS, SOURCE_LABEL_KEYS, type en } from './locales.ts'
 import {
   deriveKeyRef, effectiveSlotViews, MODEL_SLOTS_SETTINGS_NAMESPACE, visionModelImageError,
 } from './store.ts'
-import type { ModelsWire, VisionModelProbe } from './store.ts'
+import type { VisionModelProbe } from './store.ts'
 import type { SettingsSchemaOperations } from './schema-operations.ts'
 import styles from './ModelsSection.module.css'
-
-/** Slot display label. */
-const SLOT_LABELS: Record<string, keyof typeof en> = {
-  title: 'slotTitle',
-  'compaction.summarize': 'slotCompaction',
-  vision: 'slotVision',
-}
-
-/** Source tier label. */
-const SOURCE_LABELS: Record<string, keyof typeof en> = {
-  slot: 'slotSourceExplicit',
-  'deployment-default': 'slotSourceDeploymentDefault',
-  'main-route': 'slotSourceMainRoute',
-}
 
 /** Replace the one `{ref}` placeholder in localized copy. */
 function refCopy(template: string, ref: string): string {
@@ -46,8 +32,27 @@ export interface SlotsBlockProps {
   namespace: SettingsNamespaceView | undefined
   /** Every configurable provider entry (for the vision editor's provider select). */
   providers: readonly { provider: string; displayName: string }[]
-  /** Wire faces the vision editor writes through. */
-  api: Pick<ModelsWire, 'settings' | 'llm'>
+  /**
+   * The wire faces the vision editor goes through, narrowed to what this block
+   * reads: the `settings/mutate` write and the optional model-capability
+   * probe (the upstream wire exposes no probe; an absent member defers to the
+   * runtime image gate — see `visionModelImageError`).
+   */
+  api: {
+    /** Apply path operations to one settings namespace. */
+    settings: {
+      mutate(
+        ns: string,
+        ops: SettingsPathOpView[],
+        expectedRevision: number | undefined,
+      ): Promise<
+        { readonly ok: true; readonly value: SettingsNamespaceView }
+        | { readonly ok: false; readonly error: { readonly message: string } }
+      >
+    }
+    /** Model-capability probe; every member is optional. */
+    llm: VisionModelProbe
+  }
   /** Settings schema and immutable path callbacks. */
   schema: SettingsSchemaOperations
   /** Section copy. */
@@ -192,12 +197,12 @@ export function SlotsBlock(props: SlotsBlockProps): ReactNode {
               const route = view.provider !== undefined && view.model !== undefined
                 ? `${view.provider}/${view.model}`
                 : t('slotUnset')
-              const sourceLabel = SOURCE_LABELS[view.source] ?? 'slotSourceMainRoute'
+              const sourceKey = SOURCE_LABEL_KEYS[view.source] ?? 'slotSourceMainRoute'
               return (
                 <li key={view.slot} className={styles['rowCard']}>
                   <div className={styles['rowHead']}>
                     <span className={styles['rowIdentity']}>
-                      <span className={styles['rowName']}>{t(SLOT_LABELS[view.slot] ?? 'slotTitle')}</span>
+                      <span className={styles['rowName']}>{t(SLOT_LABEL_KEYS[view.slot] ?? 'slotTitle')}</span>
                     </span>
                     <span className={styles['rowActions']}>
                       {view.slot === 'vision' && !readOnly
@@ -217,7 +222,7 @@ export function SlotsBlock(props: SlotsBlockProps): ReactNode {
                   </div>
                   <div className={styles['field']}>
                     <span className={styles['modelFieldLabel']}>{route}</span>
-                    <span className={styles['modelCatalogMeta']}>{t(sourceLabel)}</span>
+                    <span className={styles['modelCatalogMeta']}>{t(sourceKey)}</span>
                     {view.source === 'main-route' && view.provider === undefined
                       ? <span className={styles['modelCatalogMeta']}>{t('slotSourceMainRouteHint')}</span>
                       : null}

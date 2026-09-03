@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import Schema from '@deepseek-ai/schemastery'
 import type { SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
-import type { JsonValue } from '@deepseek-ai/dsh-session/types'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { SlotsBlock } from '../src/client/SlotsBlock.tsx'
 import { deriveKeyRef, MODEL_SLOTS_SETTINGS_NAMESPACE } from '../src/client/store.ts'
 import { en } from '../src/client/locales.ts'
@@ -222,4 +222,5 @@ describe('SlotsBlock vision editor', () => {
     mountBlock(namespace({}), { readOnly: true })
     expect(screen.queryByLabelText(en.visionEdit)).toBeNull()
   })
+
 })
