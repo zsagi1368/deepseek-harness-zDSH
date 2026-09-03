@@ -40,12 +40,22 @@ Cordis 服务（`ctx.modelSlots`），为所有辅助侧任务模型调用提供
 
 ## 目录
 
-- [模型体验](#model-experience)
 - [版本适配（compat 守卫）](#version-adaptation-compat-guard)
+- [模型体验](#model-experience)
 - [已知限制与遗留工作](#known-limitations-and-deferred-work)
 - [开发备注](#dev-note)
 
 -----
+
+<a id="version-adaptation-compat-guard"></a>
+## 版本适配（compat 守卫）
+
+本功能通过 `@deepseek-ai/dsh-compat` 的 `guardFeature` 对自己的注册做闸门控制（`src/compat.ts` 中的 `guardModelSlots`），在注册前探测它所依赖的对等符号：
+
+- `cordis:Service` —— `@deepseek-ai/cordis` 必须导出可调用的 `Service`。
+- `settings:SettingsProvider` —— `@deepseek-ai/dsh-settings` 必须导出 `SettingsProvider` 且其原型提供 `register`（alpha.4 起 `installSettingsSection` 已移除，设置小节经 `ctx.inject(['settings'])` 的 `settings.register()` 注册）。
+
+任一探测失败时，守卫记录一条警告并返回 `false`，本功能随之跳过注册而不是抛错。它永不抛错、永不破坏宿主树：部分加载或上游漂移的宿主只是不带本功能完成启动。
 
 <a id="model-experience"></a>
 ## Model Experience
@@ -55,16 +65,6 @@ Cordis 服务（`ctx.modelSlots`），为所有辅助侧任务模型调用提供
 #### KV Cache 效应
 
 解析本身不发送请求，也不改变上下文。所选路由决定一次辅助调用落入哪个 provider 缓存：稳定的按槽位声明让连续的辅助请求保持在同一条温热路由上；缺少声明时则跟随会话的主模型路由，共享其缓存行为。修改配置会把后续辅助调用重新指向新路由，并使先前路由持有的前缀复用失效；`slots/dispatch` 记录仅入日志，永不进入模型上下文。
-
-<a id="version-adaptation-compat-guard"></a>
-## 版本适配（compat 守卫）
-
-本功能通过 `@deepseek-ai/dsh-compat` 的 `guardFeature` 对自己的注册做闸门控制（`src/compat.ts` 中的 `guardModelSlots`），在注册前探测它所依赖的对等符号：
-
-- `cordis:Service` —— `@deepseek-ai/cordis` 必须导出可调用的 `Service`。
-- `settings:installSettingsSection` —— `@deepseek-ai/dsh-settings` 必须导出可调用的 `installSettingsSection`。
-
-任一探测失败时，守卫记录一条警告并返回 `false`，本功能随之跳过注册而不是抛错。它永不抛错、永不破坏宿主树：部分加载或上游漂移的宿主只是不带本功能完成启动。
 
 <a id="known-limitations-and-deferred-work"></a>
 ## 已知限制与遗留工作

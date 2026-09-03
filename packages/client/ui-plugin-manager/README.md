@@ -42,8 +42,9 @@ Rows are assembled only when queried; no fixed prompt text is injected and no se
 
 None: this package reads and writes no KV cache.
 
-<a id="known-limitations-and-deferred-work"></a>
 ## Known Limitations and Deferred Work
+
+<a id="known-limitations-and-deferred-work"></a>
 
 - The UI wiring for remote plugin install (npm source) is not implemented yet; the server side already has it.
 - The preset editor only supports save/load/delete, not visual orchestration.
@@ -59,5 +60,7 @@ This Dev Note is working context for maintainers: open design questions and dire
 #### Future: visual preset orchestration
 
 The preset editor intentionally ships save/load/delete only. A visual editor would need a schema-driven form for `PresetNameRequest`-style payloads; the governance host already exposes the full preset surface, so this is purely a client-side investment.
+
+**Runtime invariant:** No companion is published because the tab is a read-mostly projection of the governance Remote with actions validated by the host's own admission checks; there is no local durable state or background event stream to assert against.
 
 </details>

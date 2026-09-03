@@ -13,8 +13,10 @@
 export interface PanelDescriptor {
   /** Globally unique id; convention `provider:panel`. */
   id: string
-  /** Display title; i18n-aware callers pass a resolved string per locale change. */
-  title: string
+  /** Display title for third-party callers; built-ins pass `titleKey` instead. */
+  title?: string
+  /** Locale dictionary key rendered instead of `title` when set (built-ins); third parties keep `title`. */
+  titleKey?: import('./locales.ts').WorkbenchKey
   /** `+` menu ordering, ascending; lower comes first. Default 100. */
   order?: number
   /**
@@ -42,22 +44,38 @@ export interface RegisteredPanel extends PanelDescriptor {
 export interface CommandDescriptor {
   /** Globally unique id; convention `provider:command`. */
   id: string
-  /** Palette display title. */
-  title: string
+  /** Palette display title for third-party callers; built-ins pass `titleKey` instead. */
+  title?: string
+  /** Locale dictionary key rendered instead of `title` when set (built-ins). */
+  titleKey?: import('./locales.ts').WorkbenchKey
   run: () => void
 }
 
 /** The registry face other modules receive via injection. */
 export interface WorkbenchRegistryApi {
-  /** Register a panel type; returns its disposer. Duplicate ids throw. */
+  /**
+   * Register a panel type; duplicate ids throw.
+   * @param descriptor - panel id, display copy, ordering, and content component.
+   * @returns the registration's disposer.
+   */
   registerPanel(descriptor: PanelDescriptor): () => void
-  /** Current registration snapshot, ordered by `order` then registration sequence. */
+  /** Current registration snapshot, ordered by `order` then registration sequence.
+   * @returns the panel registrations, in display order. */
   getPanels(): readonly RegisteredPanel[]
-  /** Register a palette command; returns its disposer. Duplicate ids throw. */
+  /**
+   * Register a palette command; duplicate ids throw.
+   * @param descriptor - command id, display copy, and action.
+   * @returns the registration's disposer.
+   */
   registerCommand(descriptor: CommandDescriptor): () => void
-  /** Current command snapshot, ordered by registration sequence. */
+  /** Current command snapshot, ordered by registration sequence.
+   * @returns the command registrations, in registration order. */
   getCommands(): readonly CommandDescriptor[]
-  /** Subscribe to registration changes; returns an unsubscribe disposer. */
+  /**
+   * Subscribe to registration changes; the listener fires after each change.
+   * @param listener - callback invoked after every registration change.
+   * @returns the subscription's unsubscribe disposer.
+   */
   subscribe(listener: () => void): () => void
   /** Plugin version this registry serves; consumers gate new api on it. */
   readonly version: string

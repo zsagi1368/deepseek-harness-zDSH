@@ -81,8 +81,9 @@ File entity views are assembled on demand; no fixed prompt text is injected.
 
 None: layout and tab state live in the client session.
 
-<a id="known-limitations-and-deferred-work"></a>
 ## Known Limitations and Deferred Work
+
+<a id="known-limitations-and-deferred-work"></a>
 
 - Vendored as a standalone dock, not deeply integrated with the Fork main tree's side-chat/session scoping yet.
 - Depends on a host-side seam; degrades gracefully to an empty panel when unmounted.
@@ -98,5 +99,7 @@ This Dev Note is working context for maintainers: open design questions and dire
 #### Future: side-chat and session scoping
 
 The dock currently ships standalone. A future milestone ties the browse and side-chat panels into the Fork main tree's session scope, sharing one conversation model across dock and main panes.
+
+**Runtime invariant:** No companion is published because the dock is a stateless UI host over host-owned seams; layout and filesystem interactions are pinned by the package's own test suites, leaving no background stream or durable state to assert against.
 
 </details>

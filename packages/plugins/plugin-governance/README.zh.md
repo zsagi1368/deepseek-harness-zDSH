@@ -13,12 +13,22 @@ kind: "package-reference"
 
 ## 目录
 
-- [模型体验](#model-experience)
 - [版本适配（compat 守卫）](#version-adaptation-compat-guard)
 - [已知限制与后续工作](#known-limitations-and-deferred-work)
+- [模型体验](#model-experience)
 - [开发备注](#dev-note)
 
 -----
+
+<a id="version-adaptation-compat-guard"></a>
+## 版本适配（compat 守卫）
+
+沙箱通过 `@deepseek-ai/dsh-compat` 的 `guardFeature` 对自己的注册做闸门控制（`src/compat.ts` 中的 `guardGovernance`），在挂载前探测它所依赖的对等符号：
+
+- `cordis:Service` —— `@deepseek-ai/cordis` 必须导出可调用的 `Service`。
+- `governance:LoadGuard` —— `@deepseek-ai/dsh-plugin-governance` 必须导出可调用的 `LoadGuard`。
+
+任一探测失败时，守卫记录一条警告并返回 `false`，沙箱随之跳过注册而不是抛错。它永不抛错、永不破坏宿主树：部分加载或上游漂移的宿主只是不带沙箱完成启动。
 
 <a id="model-experience"></a>
 ## Model Experience
@@ -42,16 +52,6 @@ LoadGuard.preLoad(plugin, kernelVersion): LoadResult { allowed, failures }
 #### KV Cache effect
 
 无：持久化走 registry.json/approvals.json 快照，无 KV 参与。
-
-<a id="version-adaptation-compat-guard"></a>
-## 版本适配（compat 守卫）
-
-沙箱通过 `@deepseek-ai/dsh-compat` 的 `guardFeature` 对自己的注册做闸门控制（`src/compat.ts` 中的 `guardGovernance`），在挂载前探测它所依赖的对等符号：
-
-- `cordis:Service` —— `@deepseek-ai/cordis` 必须导出可调用的 `Service`。
-- `governance:LoadGuard` —— `@deepseek-ai/dsh-plugin-governance` 必须导出可调用的 `LoadGuard`。
-
-任一探测失败时，守卫记录一条警告并返回 `false`，沙箱随之跳过注册而不是抛错。它永不抛错、永不破坏宿主树：部分加载或上游漂移的宿主只是不带沙箱完成启动。
 
 <a id="known-limitations-and-deferred-work"></a>
 ## Known Limitations and Deferred Work

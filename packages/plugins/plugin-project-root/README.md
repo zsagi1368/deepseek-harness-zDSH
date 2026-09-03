@@ -16,6 +16,8 @@ Project-level plugin root for the DeepSeek Harness (S-43 M1 + M2a + M2b). Plugin
 - [Capabilities](#capabilities)
 - [Design basis](#design-basis)
 - [Compatibility guard](#compatibility-guard)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
 - [Dev Note](#dev-note)
 
 -----
@@ -51,6 +53,22 @@ if (!enabled) {
   // skip registration; do not throw
 }
 ```
+
+<a id="model-experience"></a>
+## Model Experience
+
+None, as the package is host-side discovery, clamping, gating, and mounting infrastructure; the project plugins it mounts own every model-facing registration they make.
+
+#### KV Cache effect
+
+None; the trust ledger and the mount pipeline send no provider request and enter no model context.
+
+## Known Limitations and Deferred Work
+
+<a id="known-limitations-and-deferred-work"></a>
+
+- **M3 milestones beyond session scope are unscoped** — richer roster projections, per-plugin resource accounting, and ledger migration tooling stay deferred until the S-45 settings milestone settles how operators edit trust decisions.
+- **Clamping is a fixed host boundary** — project plugins can never regain capabilities the host clamp removes; packages needing broader capability belong at the user plugin tier instead.
 
 <a id="dev-note"></a>
 ### Dev Note

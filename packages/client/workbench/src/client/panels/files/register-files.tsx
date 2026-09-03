@@ -5,6 +5,7 @@
  */
 import { useSyncExternalStore } from 'react'
 import type { WorkbenchRegistryApi } from '../../registry.ts'
+import { useWorkbenchT } from '../../shell/context.ts'
 import { createApiClient } from '../../api.ts'
 import { getWorkspaceRoot, setWorkspaceRoot } from '../../shell/workspace-root.ts'
 import { Explorer } from './Explorer.tsx'
@@ -53,7 +54,7 @@ export function registerFilesFeature(registry: WorkbenchRegistryApi): () => void
   const disposers = [
     registry.registerPanel({
       id: 'files:explorer',
-      title: '文件',
+      titleKey: 'filesTitle',
       order: 10,
       component: ({ openPanel }) => <Explorer model={model} onOpenFile={(path) => {
         selected.set(path)
@@ -62,11 +63,12 @@ export function registerFilesFeature(registry: WorkbenchRegistryApi): () => void
     }),
     registry.registerPanel({
       id: 'files:view',
-      title: '查看',
+      titleKey: 'filesViewGroup',
       order: 90,
       component: function FileViewPanel() {
+        const t = useWorkbenchT()
         const path = useSyncExternalStore(selected.subscribe, () => selected.get())
-        if (path === null) return <div className="zdsh-wb-empty">从「文件」面板选择一个文件。</div>
+        if (path === null) return <div className="zdsh-wb-empty">{t('filesPickFromPanel')}</div>
         return <FileView api={api} path={path} />
       },
     }),

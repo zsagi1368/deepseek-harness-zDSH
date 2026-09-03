@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ApiClient } from '../../api.ts'
+import { useWorkbenchT } from '../../shell/context.ts'
 
 interface StatusEntry {
   path: string
@@ -21,6 +22,7 @@ interface StatusResult {
  * actions (fetch/pull/push always preview before acting).
  */
 export function GitPanel(props: { api: ApiClient; root: string }): React.ReactNode {
+  const t = useWorkbenchT()
   const { api, root } = props
   const [status, setStatus] = useState<StatusResult | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -154,18 +156,18 @@ export function GitPanel(props: { api: ApiClient; root: string }): React.ReactNo
             ? ` ↑${String(status?.ahead ?? 0)} ↓${String(status?.behind ?? 0)}`
             : ''}
         </span>
-        <button className="zdsh-wb-iconbtn" title="刷新" onClick={() => void refresh()}>⟳</button>
+        <button className="zdsh-wb-iconbtn" title={t('gitRefresh')} onClick={() => void refresh()}>⟳</button>
         <span style={{ flex: 1 }} />
-        <button className="zdsh-wb-tab" disabled={busy} onClick={() => void network('fetch')}>fetch</button>
-        <button className="zdsh-wb-tab" disabled={busy} onClick={() => void network('pull')}>pull</button>
-        <button className="zdsh-wb-tab" disabled={busy} onClick={() => void network('push')}>push</button>
+        <button className="zdsh-wb-tab" disabled={busy} onClick={() => void network('fetch')}>{t('gitFetch')}</button>
+        <button className="zdsh-wb-tab" disabled={busy} onClick={() => void network('pull')}>{t('gitPull')}</button>
+        <button className="zdsh-wb-tab" disabled={busy} onClick={() => void network('push')}>{t('gitPush')}</button>
       </div>
 
       {error !== null ? <div className="zdsh-wb-orphan">{error}</div> : null}
-      {root === '' ? <div className="zdsh-wb-empty">先在「文件」面板设置工作区根目录</div> : null}
+      {root === '' ? <div className="zdsh-wb-empty">{t('gitNeedsRoot')}</div> : null}
 
       <textarea
-        placeholder="提交说明…（Ctrl/Cmd+Enter 提交）"
+        placeholder={t('commitPlaceholder')}
         value={message}
         onChange={(event) =>{  setMessage(event.target.value) }}
         onKeyDown={(event) => {
@@ -174,7 +176,7 @@ export function GitPanel(props: { api: ApiClient; root: string }): React.ReactNo
         style={{ width: '100%', boxSizing: 'border-box', height: 44, background: 'transparent', color: 'inherit', border: '1px solid var(--zdsh-wb-border)', borderRadius: 6, padding: 6, font: 'inherit' }}
       />
       <div style={{ textAlign: 'right', margin: '4px 0 8px' }}>
-        <button className="zdsh-wb-tab" disabled={busy || message.trim() === ''} onClick={() => void commit()}>✓ 提交</button>
+        <button className="zdsh-wb-tab" disabled={busy || message.trim() === ''} onClick={() => void commit()}>{t('commit')}</button>
       </div>
 
       {changes.map(entry => (
@@ -183,16 +185,16 @@ export function GitPanel(props: { api: ApiClient; root: string }): React.ReactNo
             className="zdsh-wb-menuitem"
             style={{ flex: 1, cursor: 'pointer' }}
             onClick={() => void showDiff(entry)}
-            title={selected?.path === entry.path ? '收起差异' : '查看差异'}
+            title={selected?.path === entry.path ? t('collapseDiff') : t('viewDiff')}
           >
             {selected?.path === entry.path ? '▼' : '▶'} {entry.untracked ? '?? ' : `${entry.x}${entry.y} `}
             {entry.path}
           </button>
           {entry.x === ' ' && entry.y !== ' ' && entry.y !== '?'
-            ? <button className="zdsh-wb-iconbtn" title="取消暂存" onClick={() => void unstage([entry.path])}>−</button>
+            ? <button className="zdsh-wb-iconbtn" title={t('unstage')} onClick={() => void unstage([entry.path])}>−</button>
             : null}
           {entry.x !== ' ' || entry.untracked
-            ? <button className="zdsh-wb-iconbtn" title="暂存" onClick={() => void stage([entry.path])}>+</button>
+            ? <button className="zdsh-wb-iconbtn" title={t('stage')} onClick={() => void stage([entry.path])}>+</button>
             : null}
         </div>
       ))}
@@ -220,7 +222,7 @@ export function GitPanel(props: { api: ApiClient; root: string }): React.ReactNo
             else setHistory(null)
           }}
         >
-          {history === null ? '历史 ▸' : '历史 ▾'}
+          {history === null ? t('historyShown') : t('historyHidden')}
         </button>
         {history?.map(commitItem => (
           <div key={commitItem.hash} className="zdsh-wb-menuitem" style={{ fontSize: 11, opacity: 0.85 }}>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { FsReadResult } from '../../../shared/fs-protocol.ts'
+import { useWorkbenchT } from '../../shell/context.ts'
 import { buildMediaUrl, getWorkspaceRoot } from '../../shell/workspace-root.ts'
 import { pickViewKind } from './view-kind.ts'
 
@@ -14,6 +15,7 @@ export function FileView(props: {
   path: string
 }): React.ReactNode {
   const { api, path } = props
+  const t = useWorkbenchT()
   const [state, setState] = useState<{ status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; result: FsReadResult }>({ status: 'loading' })
   const [draft, setDraft] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -48,7 +50,7 @@ export function FileView(props: {
     }
   }
 
-  if (state.status === 'loading') return <div style={{ opacity: 0.6 }}>加载中…</div>
+  if (state.status === 'loading') return <div style={{ opacity: 0.6 }}>{t('loading')}</div>
   if (state.status === 'error') return <div className="zdsh-wb-orphan">{state.message}</div>
 
   const result = state.result
@@ -60,7 +62,7 @@ export function FileView(props: {
       return (
         <div>
           <div style={{ fontWeight: 600, marginBottom: 4 }}>
-            {name} <span style={{ opacity: 0.6, fontSize: 11 }}>({result.size} 字节)</span>
+            {name} <span style={{ opacity: 0.6, fontSize: 11 }}>({result.size}{t('bytesSuffix')}</span>
           </div>
           <img src={media} alt={name} style={{ maxWidth: '100%', borderRadius: 6, border: '1px solid var(--zdsh-wb-border)' }} />
         </div>
@@ -71,7 +73,7 @@ export function FileView(props: {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
             <span style={{ flex: 1, fontSize: 12, opacity: 0.8 }}>{name}</span>
-            <a className="zdsh-wb-tab" href={buildMediaUrl(path, true)} download={name}>下载</a>
+            <a className="zdsh-wb-tab" href={buildMediaUrl(path, true)} download={name}>{t('download')}</a>
           </div>
           <iframe title={name} src={media} style={{ width: '100%', height: '68vh', border: '1px solid var(--zdsh-wb-border)', borderRadius: 6 }} />
         </div>
@@ -81,8 +83,8 @@ export function FileView(props: {
       <div>
         <div style={{ fontWeight: 600, marginBottom: 4 }}>{name}</div>
         <div className="zdsh-wb-orphan">
-          二进制文件（{result.size} 字节），暂无内嵌渲染器。
-          <a className="zdsh-wb-tab" href={media + '&download=1'} download={name}>下载文件</a>
+          {t('binaryFileBefore')}{result.size}{t('binaryFileAfter')}
+          <a className="zdsh-wb-tab" href={media + '&download=1'} download={name}>{t('downloadFile')}</a>
         </div>
       </div>
     )
@@ -111,9 +113,9 @@ export function FileView(props: {
           className="zdsh-wb-tab"
           disabled={!dirty || saving}
           onClick={() => void save()}
-          title="保存（Ctrl/Cmd+S）"
+          title={t('saveTitle')}
         >
-          {saving ? '保存中…' : dirty ? '保存 *' : '已保存'}
+          {saving ? t('saving') : dirty ? t('saveDirty') : t('saved')}
         </button>
       </div>
       <textarea
@@ -141,8 +143,8 @@ export function FileView(props: {
           resize: 'vertical',
         }}
       />
-      {result.truncated ? <div className="zdsh-wb-orphan">文件过大，只读显示前半部分。</div> : null}
-      {kind === 'markdown' ? <div style={{ fontSize: 11, opacity: 0.6 }}>Markdown 渲染视图将在打磨里程碑接入。</div> : null}
+      {result.truncated ? <div className="zdsh-wb-orphan">{t('fileTooLarge')}</div> : null}
+      {kind === 'markdown' ? <div style={{ fontSize: 11, opacity: 0.6 }}>{t('markdownPending')}</div> : null}
     </div>
   )
 }

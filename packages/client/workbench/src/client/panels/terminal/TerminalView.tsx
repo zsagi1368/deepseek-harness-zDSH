@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
+import { useWorkbenchT } from '../../shell/context.ts'
 import { XTERM_CSS } from '../../shell/xterm-css.ts'
 
 /**
@@ -27,6 +28,7 @@ type Phase =
   | { status: 'exited'; exitCode: number }
 
 export function TerminalView(props: { cwd?: string; termId: string }): React.ReactNode {
+  const t = useWorkbenchT()
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [phase, setPhase] = useState<Phase>({ status: 'connecting' })
   const cwdRef = useRef(props.cwd)
@@ -132,16 +134,16 @@ export function TerminalView(props: { cwd?: string; termId: string }): React.Rea
     <div>
       {phase.status === 'banner' ? (
         <div className="zdsh-wb-orphan">
-          <div>终端不可用（{phase.code}）</div>
+          <div>{t('terminalUnavailableBefore')}{phase.code}{t('terminalUnavailableAfter')}</div>
           <div>{phase.message}</div>
           <div style={{ marginTop: 6, fontFamily: 'ui-monospace, monospace', fontSize: 11 }}>
-            pnpm approve-builds --all &amp;&amp; pnpm rebuild node-pty
+            {t('terminalRepairCommand')}
           </div>
         </div>
       ) : null}
       <div ref={hostRef} style={{ minHeight: 320 }} />
       {phase.status === 'exited' ? (
-        <button className="zdsh-wb-tab" onClick={() =>{  setPhase({ status: 'connecting' }) }}>重新启动终端</button>
+        <button className="zdsh-wb-tab" onClick={() =>{  setPhase({ status: 'connecting' }) }}>{t('restartTerminal')}</button>
       ) : null}
     </div>
   )

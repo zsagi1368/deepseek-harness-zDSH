@@ -11,7 +11,7 @@ export function registerGitFeature(registry: WorkbenchRegistryApi): () => void {
   const api = createApiClient()
   return registry.registerPanel({
     id: 'git:panel',
-    title: 'Git',
+    titleKey: 'gitTitle',
     order: 20,
     component: function GitPanelHost() {
       return <GitPanel api={api} root={readRoot()} />

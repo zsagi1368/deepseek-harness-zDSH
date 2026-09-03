@@ -4,6 +4,7 @@
  */
 import { useState } from 'react'
 import type { WorkbenchRegistryApi } from '../../registry.ts'
+import { useWorkbenchT } from '../../shell/context.ts'
 import { getWorkspaceRoot } from '../../shell/workspace-root.ts'
 import { TerminalView } from './TerminalView.tsx'
 
@@ -12,9 +13,10 @@ const MAX_TERMINALS = 3
 export function registerTerminalFeature(registry: WorkbenchRegistryApi): () => void {
   return registry.registerPanel({
     id: 'term:main',
-    title: '终端',
+    titleKey: 'terminalTitle',
     order: 40,
     component: function TerminalPanel() {
+      const t = useWorkbenchT()
       const [terminals, setTerminals] = useState<Array<{ id: number }>>([{ id: 1 }])
       const [activeId, setActiveId] = useState(1)
       const [nonce, setNonce] = useState(0)
@@ -46,13 +48,13 @@ export function registerTerminalFeature(registry: WorkbenchRegistryApi): () => v
             {terminals.map(terminal => (
               <span key={terminal.id} style={{ display: 'inline-flex', alignItems: 'center' }}>
                 <button className="zdsh-wb-tab" aria-selected={terminal.id === active?.id} onClick={() =>{  setActiveId(terminal.id) }}>
-                  终端 {String(terminal.id)}
+                  {t('terminalTitle')} {String(terminal.id)}
                 </button>
                 <button className="zdsh-wb-iconbtn" style={{ fontSize: 9 }} onClick={() =>{  closeTerminal(terminal.id) }}>×</button>
               </span>
             ))}
             {terminals.length < MAX_TERMINALS ? (
-              <button className="zdsh-wb-iconbtn" title="新终端" onClick={addTerminal}>＋</button>
+              <button className="zdsh-wb-iconbtn" title={t('terminalNewTab')} onClick={addTerminal}>＋</button>
             ) : null}
           </div>
           {active !== undefined ? (

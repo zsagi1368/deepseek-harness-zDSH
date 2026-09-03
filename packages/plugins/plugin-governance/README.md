@@ -13,12 +13,22 @@ English | [中文](README.zh.md)
 
 ## Table of Contents
 
-- [Model Experience](#model-experience)
 - [Version adaptation (compat guard)](#version-adaptation-compat-guard)
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Model Experience](#model-experience)
 - [Dev Note](#dev-note)
 
 -----
+
+<a id="version-adaptation-compat-guard"></a>
+## Version adaptation (compat guard)
+
+The sandbox gates its own registration through `@deepseek-ai/dsh-compat`'s `guardFeature` (`guardGovernance` in `src/compat.ts`), probing the peer symbols it depends on before mounting:
+
+- `cordis:Service` — `@deepseek-ai/cordis` must export a callable `Service`.
+- `governance:LoadGuard` — `@deepseek-ai/dsh-plugin-governance` must export a callable `LoadGuard`.
+
+When any probe fails, the guard logs a warning and returns `false`, so the sandbox skips registration instead of throwing. It never throws and never breaks the host tree: a partially-loaded or upstream-drifted host simply boots without the sandbox.
 
 <a id="model-experience"></a>
 ## Model Experience
@@ -43,18 +53,9 @@ LoadGuard.preLoad(plugin, kernelVersion): LoadResult { allowed, failures }
 
 无：持久化走 registry.json/approvals.json 快照，无 KV 参与。
 
-<a id="version-adaptation-compat-guard"></a>
-## Version adaptation (compat guard)
-
-The sandbox gates its own registration through `@deepseek-ai/dsh-compat`'s `guardFeature` (`guardGovernance` in `src/compat.ts`), probing the peer symbols it depends on before mounting:
-
-- `cordis:Service` — `@deepseek-ai/cordis` must export a callable `Service`.
-- `governance:LoadGuard` — `@deepseek-ai/dsh-plugin-governance` must export a callable `LoadGuard`.
-
-When any probe fails, the guard logs a warning and returns `false`, so the sandbox skips registration instead of throwing. It never throws and never breaks the host tree: a partially-loaded or upstream-drifted host simply boots without the sandbox.
+## Known Limitations and Deferred Work
 
 <a id="known-limitations-and-deferred-work"></a>
-## Known Limitations and Deferred Work
 
 - LoadGuard 对弱畸形清单（空格 id、空能力表）采取容忍策略，硬性拦截面为版本兼容与沙箱形状校验。
 - 运行时资源限制依赖调用方执行守卫，不强制挂载。

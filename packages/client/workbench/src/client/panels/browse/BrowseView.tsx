@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useWorkbenchT } from '../../shell/context.ts'
 import { judgeUrl } from './url-guard.ts'
 
 interface BrowseTab {
@@ -15,6 +16,7 @@ interface BrowseTab {
  * embedding simply render blank; 在系统浏览器打开 is one click away.
  */
 export function BrowseView(): React.ReactNode {
+  const t = useWorkbenchT()
   const [tabs, setTabs] = useState<BrowseTab[]>([{ id: 1, stack: [], index: -1 }])
   const [activeId, setActiveId] = useState(1)
   const [draft, setDraft] = useState('')
@@ -71,18 +73,18 @@ export function BrowseView(): React.ReactNode {
             <button
               className="zdsh-wb-tab"
               aria-selected={tab.id === activeId}
-              title={tab.stack[tab.index] ?? '空白页'}
+              title={tab.stack[tab.index] ?? t('browseBlank')}
               onClick={() =>{  setActiveId(tab.id) }}
             >
               {tab.id === activeId ? '◉ ' : ''}
-              {tab.stack.length === 0 ? '新标签' : safeLabel(tab.stack[tab.index] ?? '')}
+              {tab.stack.length === 0 ? t('newTab') : safeLabel(tab.stack[tab.index] ?? '')}
             </button>
             <button className="zdsh-wb-iconbtn" style={{ fontSize: 10 }} onClick={() =>{  closeTab(tab.id) }}>×</button>
           </span>
         ))}
-        <button className="zdsh-wb-iconbtn" title="新建标签" onClick={addTab}>＋</button>
+        <button className="zdsh-wb-iconbtn" title={t('newTabTitle')} onClick={addTab}>＋</button>
         <span style={{ flex: 1 }} />
-        <span title="内容运行在不透明源沙箱 iframe 中" style={{ fontSize: 10, opacity: 0.7 }}>🛡 沙箱</span>
+        <span title={t('sandboxed')} style={{ fontSize: 10, opacity: 0.7 }}>🛡 {t('browseSandboxBadge')}</span>
       </div>
 
       <div style={{ display: 'flex', gap: 4, margin: '6px 0' }}>
@@ -90,16 +92,16 @@ export function BrowseView(): React.ReactNode {
         <button className="zdsh-wb-iconbtn" disabled={!canForward} onClick={() =>{  updateActive(tab => ({ ...tab, index: Math.min(tab.stack.length - 1, tab.index + 1) })) }}>▶</button>
         <input
           style={{ flex: 1, minWidth: 0 }}
-          placeholder="搜索或输入网址（http/https）"
+          placeholder={t('urlPlaceholder')}
           value={draft}
           onChange={(event) =>{  setDraft(event.target.value) }}
           onKeyDown={(event) => {
             if (event.key === 'Enter') navigate(draft)
           }}
         />
-        <button className="zdsh-wb-tab" onClick={() =>{  navigate(draft) }}>前往</button>
+        <button className="zdsh-wb-tab" onClick={() =>{  navigate(draft) }}>{t('go')}</button>
         {currentUrl !== null ? (
-          <button className="zdsh-wb-tab" title="在系统浏览器打开" onClick={() => window.open(currentUrl, '_blank')}>↗</button>
+          <button className="zdsh-wb-tab" title={t('openInSystemBrowser')} onClick={() => window.open(currentUrl, '_blank')}>↗</button>
         ) : null}
       </div>
 
@@ -107,7 +109,7 @@ export function BrowseView(): React.ReactNode {
 
       <div style={{ flex: 1, position: 'relative', minHeight: 300 }}>
         {currentUrl === null ? (
-          <div className="zdsh-wb-empty">输入网址开始浏览</div>
+          <div className="zdsh-wb-empty">{t('browseEmptyHint')}</div>
         ) : (
           <iframe
             key={`${String(active?.id)}:${currentUrl}`}

@@ -7,7 +7,7 @@ export function registerTasksFeature(registry: WorkbenchRegistryApi): () => void
   const api = createApiClient()
   return registry.registerPanel({
     id: 'tasks:board',
-    title: '任务',
+    titleKey: 'tasksTitle',
     order: 30,
     component: () => <TasksPanel api={api} />,
   })

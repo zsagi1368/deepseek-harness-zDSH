@@ -3,8 +3,11 @@
  * independent of any host-specific layout slot: it works identically on the
  * fork and on stock DSH, and teardown removes every node it created.
  */
+import { createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import type { WorkbenchRegistryApi } from '../registry.ts'
+import type { WorkbenchTranslate } from './context.ts'
+import { fallbackTranslate, WorkbenchLocaleContext } from './context.ts'
 import { DockRoot } from './DockRoot.tsx'
 import { PALETTE_TOGGLE_EVENT } from './events.ts'
 import { LayoutStore } from './layout-store.ts'
@@ -35,7 +38,11 @@ function attachPaletteHotkey(): () => void {
 
 export function mountDock(
   registry: WorkbenchRegistryApi,
-  options: { onPrefsChange?: (prefs: import('./prefs.ts').WorkbenchPrefs) => void } = {},
+  options: {
+    /** Active-locale translator bound by the plugin body; feeds the shell context. */
+    translate?: WorkbenchTranslate
+    onPrefsChange?: (prefs: import('./prefs.ts').WorkbenchPrefs) => void
+  } = {},
 ): MountedDock {
   const disposers: Array<() => void> = []
   const prefs = loadPrefs(window.localStorage)
@@ -65,12 +72,16 @@ export function mountDock(
 
   const root = createRoot(container)
   root.render(
-    <DockRoot
-      registry={registry}
-      store={store}
-      prefs={prefs}
-      {...(options.onPrefsChange === undefined ? {} : { onPrefsChange: options.onPrefsChange })}
-    />,
+    createElement(
+      WorkbenchLocaleContext.Provider,
+      { value: options.translate ?? fallbackTranslate },
+      createElement(DockRoot, {
+        registry,
+        store,
+        prefs,
+        ...(options.onPrefsChange === undefined ? {} : { onPrefsChange: options.onPrefsChange }),
+      }),
+    ),
   )
 
   return {

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { WorkbenchPrefs } from './prefs.ts'
+import { useWorkbenchT } from './context.ts'
 
 /**
  * Shell settings panel, opened from the dock's gear button. Self-contained
@@ -13,6 +14,7 @@ export function SettingsPanel(props: {
   onClose: () => void
 }): React.ReactNode {
   const { prefs, onChange, onClose } = props
+  const t = useWorkbenchT()
   const [error, setError] = useState<string | null>(null)
   const set = (patch: Partial<WorkbenchPrefs>): void => {
     try {
@@ -24,15 +26,15 @@ export function SettingsPanel(props: {
   }
 
   return (
-    <div className="zdsh-wb-plusmenu" style={{ top: 36, right: 6, left: 'auto', minWidth: 240 }} role="dialog" aria-label="workbench settings">
-      <div style={{ padding: '6px 10px', fontWeight: 600 }}>工作台设置</div>
+    <div className="zdsh-wb-plusmenu" style={{ top: 36, right: 6, left: 'auto', minWidth: 240 }} role="dialog" aria-label={t('settingsAria')}>
+      <div style={{ padding: '6px 10px', fontWeight: 600 }}>{t('settingsTitle')}</div>
       <label className="zdsh-wb-menuitem" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
         <input
           type="checkbox"
           checked={prefs.startCollapsed}
           onChange={(event) =>{  set({ startCollapsed: event.target.checked }) }}
         />
-        启动时折叠侧栏
+        {t('prefStartCollapsed')}
       </label>
       <label className="zdsh-wb-menuitem" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
         <input
@@ -40,10 +42,10 @@ export function SettingsPanel(props: {
           checked={prefs.paletteHotkey}
           onChange={(event) =>{  set({ paletteHotkey: event.target.checked }) }}
         />
-        启用 Ctrl/Cmd+Shift+P 热键
+        {t('prefPaletteHotkey')}
       </label>
       {error !== null ? <div className="zdsh-wb-orphan">{error}</div> : null}
-      <button className="zdsh-wb-menuitem" onClick={onClose}>完成</button>
+      <button className="zdsh-wb-menuitem" onClick={onClose}>{t('done')}</button>
     </div>
   )
 }

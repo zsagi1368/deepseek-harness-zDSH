@@ -16,6 +16,8 @@ DeepSeek Harness 的项目级插件根（S-43 M1 + M2a + M2b）。插件从 `<pr
 - [能力](#capabilities)
 - [设计依据](#design-basis)
 - [兼容守卫](#compatibility-guard)
+- [模型体验](#model-experience)
+- [已知限制与延后工作](#known-limitations-and-deferred-work)
 - [开发备注](#dev-note)
 
 -----
@@ -51,6 +53,22 @@ if (!enabled) {
   // skip registration; do not throw
 }
 ```
+
+<a id="model-experience"></a>
+## 模型体验
+
+无。本包是宿主侧的发现、钳制、门控与挂载基础设施；它所挂载的项目插件自身拥有它们所做的每一个模型侧注册。
+
+#### KV Cache 效应
+
+无；信任 ledger 与挂载流水线不发送任何 provider 请求，也不进入任何模型上下文。
+
+## 已知限制与延后工作
+
+<a id="known-limitations-and-deferred-work"></a>
+
+- **会话作用域之外的 M3 里程碑尚未定界** —— 更丰富的名册投影、按插件资源核算、ledger 迁移工具，均延后至 S-45 设置里程碑确定操作者如何编辑信任决策之后。
+- **钳制是固定的宿主边界** —— 项目插件永远无法重新获得宿主钳制移除的能力；需要更宽能力的包应属于用户插件层。
 
 <a id="dev-note"></a>
 ### 开发备注

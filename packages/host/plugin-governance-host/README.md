@@ -43,8 +43,9 @@ pluginGovernance.install({ source }): GovernanceAcknowledgement
 
 无：注册表镜像与审批账本经耐久快照/台账落盘，不依赖 KV 缓存。
 
-<a id="known-limitations-and-deferred-work"></a>
 ## Known Limitations and Deferred Work
+
+<a id="known-limitations-and-deferred-work"></a>
 
 - Loader 镜像仅覆盖已挂载条目；安装目录清理为 best-effort。
 - npm 来源仅接受精确版本（无范围解析）。
@@ -60,5 +61,7 @@ This Dev Note is working context for maintainers: open design questions and dire
 #### Future: range resolution for npm sources
 
 The npm admission path intentionally accepts exact versions only. Range resolution would need a resolved-lock story before admission so that a re-install cannot silently upgrade a governed plugin; until that lands, exact pins keep the admission ledger reproducible.
+
+**Runtime invariant:** No companion is published because every state change flows through one Remote method that validates its arguments at the entry and returns a closed result union; there is no background event stream or cross-service relation to assert against.
 
 </details>

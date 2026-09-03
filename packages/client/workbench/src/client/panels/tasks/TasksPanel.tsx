@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ApiClient } from '../../api.ts'
+import { useWorkbenchT } from '../../shell/context.ts'
 import type { TaskSnapshot, TaskStatus } from '../../../shared/task-protocol.ts'
 import { TASK_STATUSES } from '../../../shared/task-protocol.ts'
 
-const COLUMN_TITLES: Record<TaskStatus, string> = { todo: '待办', doing: '进行中', done: '已完成' }
+const COLUMN_KEYS = { todo: 'columnTodo', doing: 'columnInProgress', done: 'columnDone' } as const satisfies Record<TaskStatus, import('../../locales.ts').WorkbenchKey>
 
 /**
  * The task center panel: a three-column kanban over the host-authoritative
@@ -12,6 +13,7 @@ const COLUMN_TITLES: Record<TaskStatus, string> = { todo: '待办', doing: '进�
  */
 export function TasksPanel(props: { api: ApiClient }): React.ReactNode {
   const { api } = props
+  const t = useWorkbenchT()
   const [snapshot, setSnapshot] = useState<TaskSnapshot | null>(null)
   const [draft, setDraft] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -69,7 +71,7 @@ export function TasksPanel(props: { api: ApiClient }): React.ReactNode {
       <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
         <input
           style={{ flex: 1, minWidth: 0 }}
-          placeholder="新任务标题…（Enter 添加）"
+          placeholder={t('newTaskPlaceholder')}
           value={draft}
           onChange={(event) =>{  setDraft(event.target.value) }}
           onKeyDown={(event) => {
@@ -83,7 +85,7 @@ export function TasksPanel(props: { api: ApiClient }): React.ReactNode {
         {TASK_STATUSES.map(status => (
           <div key={status} style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 600, fontSize: 12, opacity: 0.8, marginBottom: 4 }}>
-              {COLUMN_TITLES[status]} · {snapshot?.tasks.filter(task => task.status === status).length ?? 0}
+              {t(COLUMN_KEYS[status])} · {snapshot?.tasks.filter(task => task.status === status).length ?? 0}
             </div>
             {(snapshot?.tasks ?? []).filter(task => task.status === status).map(task => (
               <div key={task.id} className="zdsh-wb-menuitem" style={{ border: '1px solid var(--zdsh-wb-border)', borderRadius: 6, marginBottom: 4, padding: '4px 6px' }}>
@@ -92,7 +94,7 @@ export function TasksPanel(props: { api: ApiClient }): React.ReactNode {
                   <button className="zdsh-wb-iconbtn" style={{ fontSize: 10 }} title="←" onClick={() => void move(task.id, status, -1)}>←</button>
                   <button className="zdsh-wb-iconbtn" style={{ fontSize: 10 }} title="→" onClick={() => void move(task.id, status, 1)}>→</button>
                   <span style={{ flex: 1 }} />
-                  <button className="zdsh-wb-iconbtn" style={{ fontSize: 10 }} title="删除" onClick={() => void mutate('tasks.delete', { id: task.id })}>✕</button>
+                  <button className="zdsh-wb-iconbtn" style={{ fontSize: 10 }} title={t('deleteTask')} onClick={() => void mutate('tasks.delete', { id: task.id })}>✕</button>
                 </div>
               </div>
             ))}
