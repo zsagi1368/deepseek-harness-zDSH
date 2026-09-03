@@ -36,6 +36,7 @@ const NO_MODEL_EXPERIENCE_SECTION: Readonly<Record<string, string>> = {
   'packages/util/launch-environment': 'The package only resolves host environment values; model-facing consumers own any rendered use.',
   'packages/util/workspace-path': 'The package only formats Workspace paths for browser UI; it never constructs model input.',
   'packages/util/values': 'The package only validates, snapshots, compares, freezes, or rejects caller-owned values; consumers own every model-facing use.',
+  'packages/compat/dsh-compat': 'The package is a version-adaptive probing shim; it constructs no model input, and the features it guards own every model-facing registration.',
 }
 
 /**
@@ -60,7 +61,9 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/util/time': { kind: 'indirect', reason: 'Pure zone validation; the consumer that records a canonical zone owns the model-visible line derived from it.' },
   'packages/core/agent-default-model': { kind: 'indirect', reason: 'The service supplies a ModelSelection; request assembly and adapters own the model-visible request.' },
   'packages/llm/deepseek-llm-api-extensions': { kind: 'indirect', reason: 'The registry contributes model-hidden provider fields; dsh-llm-deepseek owns their wire placement.' },
+  'packages/llm/model-slots': { kind: 'indirect', reason: 'The registry only selects the provider/model pair auxiliary requests use; request assembly and the provider adapters own everything the model sees.' },
   'packages/preset/agent-presets': { kind: 'indirect', reason: 'The mount installs a preset\'s own plugins, which own every model-facing registration it makes visible.' },
+  'packages/plugins/plugin-project-root': { kind: 'none', reason: 'Host-side discovery, clamping, and mounting; the mounted plugins own every model-facing registration they make.' },
   'packages/typert/registry': { kind: 'none', reason: 'Runtime type registry; consumers (cordis_inspect, wire faces, gates) own any model-visible projection of registry contents.' },
   'packages/typert/loader': { kind: 'none', reason: 'Loader integration only registers generated artifacts; consumers own any model-visible projection.' },
   'packages/e2b/e2b': { kind: 'none', reason: 'The shared remote-runtime owner registers no model context; provider adapters and consumers own rendered effects.' },

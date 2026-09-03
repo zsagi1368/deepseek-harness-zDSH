@@ -549,7 +549,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 'plan/mode': { active: boolean }
 ```
 
-来源：[`packages/plan/plan-mode/src/index.ts:46`](../packages/plan/plan-mode/src/index.ts)
+来源：[`packages/plan/plan-mode/src/index.ts:51`](../packages/plan/plan-mode/src/index.ts)
 
 ### `request/*`
 
@@ -688,7 +688,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 
 类型：[SessionTitleLlmRequestEventData](subsystems/session-title.zh.md)
 
-来源：[`packages/session/session-title-llm/src/index.ts:45`](../packages/session/session-title-llm/src/index.ts)
+来源：[`packages/session/session-title-llm/src/index.ts:46`](../packages/session/session-title-llm/src/index.ts)
 
 ### `session-log-deepseek/*`
 
@@ -707,6 +707,19 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 ```
 
 来源：[`packages/session/session-log-deepseek/src/types.ts:57`](../packages/session/session-log-deepseek/src/types.ts)
+
+### `slots/*`
+
+<a id="slotsdispatch--log-only"></a>
+
+#### `slots/dispatch` — log-only
+
+```ts persistence-catalog
+/** Log-only pre-dispatch record naming the auxiliary route one slot dispatch will use. */
+'slots/dispatch': ModelSlotDispatchEventData
+```
+
+来源：[`packages/llm/model-slots/src/index.ts:51`](../packages/llm/model-slots/src/index.ts)
 
 ### `step/*`
 

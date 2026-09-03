@@ -47,6 +47,16 @@ flowchart LR
   svc_directoryPickerController["ctx.directoryPickerController<br/>Host directory-picking Remote controller"]
   svc_invariants["ctx.invariants<br/>Package-owned invariant registry"]
   pkg_scope["scope"]
+  pkg_model_slots["model-slots"]
+  svc_modelSlots["ctx.modelSlots<br/>Auxiliary-model slot routing"]
+  pkg_plan_mode["plan-mode"]
+  pkg_session_title_llm["session-title-llm"]
+  pkg_plugin_governance["plugin-governance"]
+  svc_pluginGovernance["ctx.pluginGovernance<br/>Plugin governance gateway"]
+  pkg_plugin_governance_host["plugin-governance-host"]
+  pkg_ui_plugin_manager["ui-plugin-manager"]
+  pkg_plugin_project_root["plugin-project-root"]
+  svc_projectPluginLayer["ctx.projectPluginLayer<br/>Project plugin layer mount"]
   pkg_typert_registry["typert-registry"]
   svc_typert["ctx.typert<br/>Runtime type registry"]
   pkg_typert_loader["typert-loader"]
@@ -102,7 +112,6 @@ flowchart LR
   pkg_tool_todo["tool-todo"]
   pkg_user_questions["user-questions"]
   svc_userQuestions["ctx.userQuestions<br/>Human question/answer seam"]
-  pkg_plan_mode["plan-mode"]
   svc_planMode["ctx.planMode<br/>Plan collaboration state"]
   pkg_agent_presets["agent-presets"]
   svc_agentPresets["ctx.agentPresets<br/>Per-session agent composition"]
@@ -272,9 +281,13 @@ flowchart LR
   pkg_lsp --> svc_lsp
   pkg_lsp_stdio --> svc_lsp
   pkg_message_feedback --> svc_messageFeedback
+  pkg_model_slots --> svc_modelSlots
   pkg_permission_presets --> svc_permissionPresets
   pkg_plan_mode --> svc_planMode
+  pkg_plugin_governance --> svc_pluginGovernance
+  pkg_plugin_governance_host --> svc_pluginGovernance
   pkg_plugin_package_inventory_deepseek --> svc_deepseekLlmApiExtensions
+  pkg_plugin_project_root --> svc_projectPluginLayer
   pkg_pwsh_local --> svc_shell
   pkg_sandbox --> svc_sandbox
   pkg_sandbox_local --> svc_sandbox
@@ -376,6 +389,9 @@ flowchart LR
   svc_llm --> pkg_agent_loop
   svc_llm --> pkg_compaction_basic
   svc_lsp --> pkg_tool_lsp
+  svc_modelSlots --> pkg_plan_mode
+  svc_modelSlots --> pkg_session_title_llm
+  svc_pluginGovernance --> pkg_ui_plugin_manager
   svc_sandbox --> pkg_bash_sandbox
   svc_sandbox --> pkg_terminal_bash
   svc_sandboxPolicy --> pkg_bash_sandbox
@@ -479,6 +495,9 @@ flowchart LR
 | `ctx.workspaceController` | `core` | [`api-workspace-controller`](../packages/api/workspace-controller) | - | - | - | Owns Workspace commands and reconnect-safe Workspace state delivery through the generated Remote namespace. |
 | `ctx.directoryPickerController` | `core` | [`api-workspace-controller`](../packages/api/workspace-controller) | - | - | - | Carries the picking seam onto the wire: capability gating, cancellation, and the seam-coded failures a browser directory flow discriminates on. |
 | `ctx.invariants` | `core` | [`invariants`](../packages/runtime-diagnostics/invariants) | - | [`session`](../packages/core/session), [`agent`](../packages/core/agent), [`scope`](../packages/core/scope), [`agent-loop`](../packages/core/agent-loop) | - | Companion subpaths register owner-local checks; the service owns selection, uniqueness, child fibers, and package-attributed failures. |
+| `ctx.modelSlots` | `core` | [`model-slots`](../packages/llm/model-slots) | - | [`plan-mode`](../packages/plan/plan-mode), [`session-title-llm`](../packages/session/session-title-llm) | - | Owns the deployment-level auxiliary dispatch routes and the durable slots/dispatch audit record; consumers resolve per auxiliary call and keep the conversation main-model route untouched. |
+| `ctx.pluginGovernance` | `seam` | [`plugin-governance`](../packages/plugins/plugin-governance) | [`plugin-governance-host`](../packages/host/plugin-governance-host) | `ui-plugin-manager` | - | The kernel owns registry mirror, guards, and persistence; the host plane projects the typed Remote, and the browser plugin-manager tab consumes the roster and lifecycle actions. |
+| `ctx.projectPluginLayer` | `core` | [`plugin-project-root`](../packages/plugins/plugin-project-root) | - | - | - | Discovers, clamps, gates, and mounts project-root plugins post-boot as one isolated Cordis layer; RunGuard routes every project tool call through the owning root. |
 | `ctx.typert` | `core` | [`typert-registry`](../packages/typert/registry) | - | [`typert-loader`](../packages/typert/loader), [`api-gateway`](../packages/api/gateway) | - | Plugins register live zod contributions directly or through dsh-typert-loader; the API gateway consumes invocation descriptors and providers, while other runtime consumers query schemas and reflection metadata at their own edges. |
 | `ctx.typertGateway` | `core` | [`api-gateway`](../packages/api/gateway) | - | - | - | Associates generated Remote descriptors with live Cordis services, resolves registered identities, and exposes unary calls through the shared Connection RPC carrier. |
 | `ctx.sessionPersistence` | `seam` | [`session-persistence`](../packages/session/session-persistence) | [`session-persistence-jsonl`](../packages/session/session-persistence-jsonl) | [`agent-loop`](../packages/core/agent-loop), [`tool-bash`](../packages/shell/tool-bash), [`hooks-claude-code`](../packages/hooks/hooks-claude-code), [`hooks-codex`](../packages/hooks/hooks-codex), [`session-query`](../packages/session-query/session-query), [`session-query-sqlite`](../packages/session-query/session-query-sqlite), [`message-feedback`](../packages/feedback/message-feedback) | - | The JSONL backend persists the SessionEvent vocabulary as one artifact per Session. |

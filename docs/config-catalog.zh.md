@@ -33,7 +33,7 @@ export interface AcpConfig {
 
 依赖：`Stream`（`@agentclientprotocol/sdk`）
 
-来源：[`packages/acp/acp/src/index.ts:75`](../packages/acp/acp/src/index.ts)
+来源：[`packages/acp/acp/src/index.ts:101`](../packages/acp/acp/src/index.ts)
 
 <a id="deepseek-aidsh-agent-default-model"></a>
 
@@ -357,6 +357,49 @@ export interface Config {
 ```
 
 来源：[`packages/client/hmr/src/index.ts:31`](../packages/client/hmr/src/index.ts)
+
+<a id="deepseek-aidsh-client-workbench"></a>
+
+## `@deepseek-ai/dsh-client-workbench`
+
+需要：`webServer`
+
+```ts config-catalog
+/** Deployment options for the host half (cordis plugin row `config`). */
+export interface WorkbenchHostConfig {
+  /**
+   * Additional trusted authorities (`host` or `host:port`) allowed past the
+   * Host fence when DSH serves beyond loopback. Must mirror the deployment's
+   * own trusted-host posture; entries are validated loudly at load time.
+   */
+  trustedHosts?: string[]
+  /** Text read cap per `fs.read`. Clamped hard at 8 MiB. */
+  readLimitBytes?: number
+  /** Request-body byte cap (also bounds writes). */
+  writeBodyLimitBytes?: number
+  /** Directory listing row bound per level. */
+  listLimit?: number
+  /** Search result bound before truncation. */
+  searchLimit?: number
+  /** Watcher batch window in milliseconds. */
+  watchDebounceMs?: number
+  /** Terminals one session may hold open at once. */
+  terminalsPerSession?: number
+  /** How long a disconnected terminal survives awaiting a reconnect (ms). */
+  reconnectGraceMs?: number
+  /**
+   * Workspace clamp: when non-empty, every request-declared `cwd` must lie
+   * inside one of these directories (first match wins per request). Empty
+   * means unrestricted — acceptable only because the trust fence limits the
+   * API to the user's own machine and page origin; deployments that expose
+   * the port beyond loopback SHOULD set this. The branch-integration build
+   * derives it from the live session automatically.
+   */
+  allowedRoots?: string[]
+}
+```
+
+来源：[`packages/client/workbench/src/index.ts:28`](../packages/client/workbench/src/index.ts)
 
 <a id="deepseek-aidsh-code-runtime-worker-thread"></a>
 
@@ -1503,6 +1546,32 @@ export interface Config {
 
 来源：[`packages/feedback/message-feedback/src/index.ts:50`](../packages/feedback/message-feedback/src/index.ts)
 
+<a id="deepseek-aidsh-model-slots"></a>
+
+## `@deepseek-ai/dsh-model-slots`
+
+```ts config-catalog
+/** Deployment-level slot policy supplied as plugin configuration or direct construction. */
+export interface ModelSlotsConfig {
+  /** Explicit route per built-in slot id; a present entry pins that slot. */
+  readonly slots?: Readonly<Record<string, ModelSlotRouteConfig>>
+  /** Deployment default applied when a slot has no explicit entry. */
+  readonly fallback?: ModelSlotRouteConfig
+}
+
+/** One configured route entry; `provider` and `model` are a required pair. */
+export interface ModelSlotRouteConfig {
+  /** Registered LLM provider route. */
+  readonly provider: string
+  /** Provider model id. */
+  readonly model: string
+  /** Derived credential reference (`deriveKeyRef(provider)`), stored for audit; never a literal key. */
+  readonly apiKeyEnv?: string
+}
+```
+
+来源：[`packages/llm/model-slots/src/index.ts:89`](../packages/llm/model-slots/src/index.ts)
+
 <a id="deepseek-aidsh-permission-presets"></a>
 
 ## `@deepseek-ai/dsh-permission-presets`
@@ -1580,7 +1649,33 @@ export interface PlanModeConfig {
 }
 ```
 
-来源：[`packages/plan/plan-mode/src/index.ts:63`](../packages/plan/plan-mode/src/index.ts)
+来源：[`packages/plan/plan-mode/src/index.ts:68`](../packages/plan/plan-mode/src/index.ts)
+
+<a id="deepseek-aidsh-plugin-governance-host"></a>
+
+## `@deepseek-ai/dsh-plugin-governance-host`
+
+```ts config-catalog
+/** Deployment configuration of the governance service. */
+export interface Config {
+  /**
+   * Persistence root for the registry snapshot, approvals ledger, presets,
+   * and npm-installed plugin trees; defaults to the governance package's own
+   * root (`~/.dsh-zdsh`, overridden by `DSH_BRANCH_HOME`, or derived as
+   * `<DSH_HOME>/zdsh` when only `DSH_HOME` is set — see resolveBranchStorageRoot).
+   */
+  storageRoot?: string
+  /**
+   * HTTPS origin of the npm registry `npm:` install sources resolve against;
+   * defaults to https://registry.npmjs.org. Mirrors behind a firewall point
+   * this at their proxy — every request and redirect hop is pinned to this
+   * single origin.
+   */
+  registryUrl?: string
+}
+```
+
+来源：[`packages/host/plugin-governance-host/src/index.ts:153`](../packages/host/plugin-governance-host/src/index.ts)
 
 <a id="deepseek-aidsh-plugin-package-inventory-deepseek"></a>
 
@@ -3362,6 +3457,7 @@ export interface Config {
 - `@deepseek-ai/dsh-client-ui-model-selection`（[`packages/client/ui-model-selection/src/index.ts`](../packages/client/ui-model-selection/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-permission-presets`（[`packages/client/ui-permission-presets/src/index.ts`](../packages/client/ui-permission-presets/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-plan`（[`packages/client/ui-plan/src/index.ts`](../packages/client/ui-plan/src/index.ts)）
+- `@deepseek-ai/dsh-client-ui-plugin-manager`（[`packages/client/ui-plugin-manager/src/index.ts`](../packages/client/ui-plugin-manager/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-reference`（[`packages/client/ui-reference/src/index.ts`](../packages/client/ui-reference/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-renderer`（[`packages/client/ui-renderer/src/index.ts`](../packages/client/ui-renderer/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-schedule`（[`packages/client/ui-schedule/src/index.ts`](../packages/client/ui-schedule/src/index.ts)）
@@ -3450,6 +3546,7 @@ export interface Config {
 - `@deepseek-ai/dsh-client-ui-slots`（[`packages/client/ui-slots/src/index.ts`](../packages/client/ui-slots/src/index.ts)）
 - `@deepseek-ai/dsh-client-web`（[`packages/client/web/src/index.ts`](../packages/client/web/src/index.ts)）
 - `@deepseek-ai/dsh-cmdline`（[`packages/boot/cmdline/src/index.ts`](../packages/boot/cmdline/src/index.ts)）
+- `@deepseek-ai/dsh-compat`（[`packages/compat/dsh-compat/src/index.ts`](../packages/compat/dsh-compat/src/index.ts)）
 - `@deepseek-ai/dsh-deque`（[`packages/util/deque/src/index.ts`](../packages/util/deque/src/index.ts)）
 - `@deepseek-ai/dsh-experimental-agent-team-profile`（[`packages/experimental/agent-team-profile/src/index.ts`](../packages/experimental/agent-team-profile/src/index.ts)）
 - `@deepseek-ai/dsh-experimental-agent-team-web-profile`（[`packages/experimental/agent-team-web-profile/src/index.ts`](../packages/experimental/agent-team-web-profile/src/index.ts)）
@@ -3462,6 +3559,8 @@ export interface Config {
 - `@deepseek-ai/dsh-loader-smoke`（[`packages/test-support/loader-smoke/src/index.ts`](../packages/test-support/loader-smoke/src/index.ts)）
 - `@deepseek-ai/dsh-native-command`（[`packages/util/native-command/src/index.ts`](../packages/util/native-command/src/index.ts)）
 - `@deepseek-ai/dsh-output-retention`（[`packages/util/output-retention/src/index.ts`](../packages/util/output-retention/src/index.ts)）
+- `@deepseek-ai/dsh-plugin-governance`（[`packages/plugins/plugin-governance/src/index.ts`](../packages/plugins/plugin-governance/src/index.ts)）
+- `@deepseek-ai/dsh-plugin-project-root`（[`packages/plugins/plugin-project-root/src/index.ts`](../packages/plugins/plugin-project-root/src/index.ts)）
 - `@deepseek-ai/dsh-sandbox-windows-acl`（[`packages/sandbox/sandbox-windows-acl/src/index.ts`](../packages/sandbox/sandbox-windows-acl/src/index.ts)）
 - `@deepseek-ai/dsh-scope`（[`packages/core/scope/src/index.ts`](../packages/core/scope/src/index.ts)）
 - `@deepseek-ai/dsh-sdk-client`（[`packages/sdk/client/src/index.ts`](../packages/sdk/client/src/index.ts)）

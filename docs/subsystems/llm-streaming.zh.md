@@ -376,6 +376,18 @@ declare class BlockAssembler {
    */
   push(chunk: StreamChunk): void;
   /**
+   * The tool-call blocks a max-tokens finish could not safely execute, in
+   * stream order; empty for every other finish kind. A call is unsafe when it
+   * never received a `block-end` close or its arguments do not parse as JSON —
+   * either way it cannot be executed. Closed blocks with parseable arguments
+   * are complete calls, so they are excluded even though max-token truncation
+   * still drops them from {@link blocks}: an agent loop ends such a turn
+   * cleanly instead of reporting a truncation error.
+   * @returns the unsafe tool-call blocks in stream order, or an empty array
+   *   when the finish kind is not `max-tokens`.
+   */
+  truncatedToolCalls(): ContentBlock[];
+  /**
    * Assemble all blocks seen so far, in stream order.
    * @returns one block per seen index, except that max-token truncation drops
    *   tool calls that cannot be executed safely; an open block assembles from

@@ -49,6 +49,16 @@ flowchart LR
   svc_directoryPickerController["ctx.directoryPickerController<br/>Host directory-picking Remote controller"]
   svc_invariants["ctx.invariants<br/>Package-owned invariant registry"]
   pkg_scope["scope"]
+  pkg_model_slots["model-slots"]
+  svc_modelSlots["ctx.modelSlots<br/>Auxiliary-model slot routing"]
+  pkg_plan_mode["plan-mode"]
+  pkg_session_title_llm["session-title-llm"]
+  pkg_plugin_governance["plugin-governance"]
+  svc_pluginGovernance["ctx.pluginGovernance<br/>Plugin governance gateway"]
+  pkg_plugin_governance_host["plugin-governance-host"]
+  pkg_ui_plugin_manager["ui-plugin-manager"]
+  pkg_plugin_project_root["plugin-project-root"]
+  svc_projectPluginLayer["ctx.projectPluginLayer<br/>Project plugin layer mount"]
   pkg_typert_registry["typert-registry"]
   svc_typert["ctx.typert<br/>Runtime type registry"]
   pkg_typert_loader["typert-loader"]
@@ -104,7 +114,6 @@ flowchart LR
   pkg_tool_todo["tool-todo"]
   pkg_user_questions["user-questions"]
   svc_userQuestions["ctx.userQuestions<br/>Human question/answer seam"]
-  pkg_plan_mode["plan-mode"]
   svc_planMode["ctx.planMode<br/>Plan collaboration state"]
   pkg_agent_presets["agent-presets"]
   svc_agentPresets["ctx.agentPresets<br/>Per-session agent composition"]
@@ -274,9 +283,13 @@ flowchart LR
   pkg_lsp --> svc_lsp
   pkg_lsp_stdio --> svc_lsp
   pkg_message_feedback --> svc_messageFeedback
+  pkg_model_slots --> svc_modelSlots
   pkg_permission_presets --> svc_permissionPresets
   pkg_plan_mode --> svc_planMode
+  pkg_plugin_governance --> svc_pluginGovernance
+  pkg_plugin_governance_host --> svc_pluginGovernance
   pkg_plugin_package_inventory_deepseek --> svc_deepseekLlmApiExtensions
+  pkg_plugin_project_root --> svc_projectPluginLayer
   pkg_pwsh_local --> svc_shell
   pkg_sandbox --> svc_sandbox
   pkg_sandbox_local --> svc_sandbox
@@ -378,6 +391,9 @@ flowchart LR
   svc_llm --> pkg_agent_loop
   svc_llm --> pkg_compaction_basic
   svc_lsp --> pkg_tool_lsp
+  svc_modelSlots --> pkg_plan_mode
+  svc_modelSlots --> pkg_session_title_llm
+  svc_pluginGovernance --> pkg_ui_plugin_manager
   svc_sandbox --> pkg_bash_sandbox
   svc_sandbox --> pkg_terminal_bash
   svc_sandboxPolicy --> pkg_bash_sandbox
@@ -481,6 +497,9 @@ flowchart LR
 | `ctx.workspaceController` | `core` | [`api-workspace-controller`](../packages/api/workspace-controller) | - | - | - | 通过生成的 Remote namespace 负责 Workspace 命令和可在重连后收敛的 Workspace 状态投递。 |
 | `ctx.directoryPickerController` | `core` | [`api-workspace-controller`](../packages/api/workspace-controller) | - | - | - | 把选目录 seam 送上线：能力门禁、取消传播，以及浏览器目录流程用于分支判断的 seam 错误码。 |
 | `ctx.invariants` | `core` | [`invariants`](../packages/runtime-diagnostics/invariants) | - | [`session`](../packages/core/session), [`agent`](../packages/core/agent), [`scope`](../packages/core/scope), [`agent-loop`](../packages/core/agent-loop) | - | 配套子路径注册所属包本地的检查；该服务负责选择、唯一性、子 fiber，以及标明所属包的失败。 |
+| `ctx.modelSlots` | `core` | [`model-slots`](../packages/llm/model-slots) | - | [`plan-mode`](../packages/plan/plan-mode), [`session-title-llm`](../packages/session/session-title-llm) | - | 持有部署级的辅助派发路由与持久的 slots/dispatch 审计记录；消费方按每次辅助调用解析路由，且不触碰会话主模型路由。 |
+| `ctx.pluginGovernance` | `seam` | [`plugin-governance`](../packages/plugins/plugin-governance) | [`plugin-governance-host`](../packages/host/plugin-governance-host) | `ui-plugin-manager` | - | 内核持有注册表镜像、守卫与持久化；宿主平面投射类型化 Remote，浏览器 plugin-manager 标签页消费名册与生命周期操作。 |
+| `ctx.projectPluginLayer` | `core` | [`plugin-project-root`](../packages/plugins/plugin-project-root) | - | - | - | 启动后发现、钳制、守卫并挂载项目根插件，构成一个隔离的 Cordis 层；RunGuard 把每个项目工具调用路由到所属根。 |
 | `ctx.typert` | `core` | [`typert-registry`](../packages/typert/registry) | - | [`typert-loader`](../packages/typert/loader), [`api-gateway`](../packages/api/gateway) | - | 插件直接或通过 dsh-typert-loader 注册实时 zod 贡献；API 网关消费调用描述符和提供方，其他运行时消费方则在各自边界查询 schema 与反射元数据。 |
 | `ctx.typertGateway` | `core` | [`api-gateway`](../packages/api/gateway) | - | - | - | 将生成的 Remote 描述符与实时 Cordis 服务关联，解析已注册的身份，并通过共享的 Connection RPC 载体提供一元调用。 |
 | `ctx.sessionPersistence` | `seam` | [`session-persistence`](../packages/session/session-persistence) | [`session-persistence-jsonl`](../packages/session/session-persistence-jsonl) | [`agent-loop`](../packages/core/agent-loop), [`tool-bash`](../packages/shell/tool-bash), [`hooks-claude-code`](../packages/hooks/hooks-claude-code), [`hooks-codex`](../packages/hooks/hooks-codex), [`session-query`](../packages/session-query/session-query), [`session-query-sqlite`](../packages/session-query/session-query-sqlite), [`message-feedback`](../packages/feedback/message-feedback) | - | JSONL backend 把 SessionEvent 词汇持久化为每个 Session 一份产物。 |
