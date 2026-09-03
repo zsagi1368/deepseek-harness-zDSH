@@ -147,6 +147,11 @@
       "@deepseek-ai/dsh-host-frontend-static": ["./packages/host/frontend-static/src"],
       "@deepseek-ai/dsh-host-plugin-inventory": ["./packages/host/plugin-inventory/src"],
       "@deepseek-ai/dsh-host-plugin-inventory/types": ["./packages/host/plugin-inventory/src/types.ts"],
+      // Client code reads governance vocabulary directly from the host
+      // package's `./types` seam; without this source alias the subpath
+      // resolves to built lib/ output, the artifact-plane leak the explicit
+      // aliases exist to avoid (same seam as dsh-host-plugin-inventory/types).
+      "@deepseek-ai/dsh-plugin-governance-host/types": ["./packages/host/plugin-governance-host/src/types.ts"],
       "@deepseek-ai/dsh-client-ui-slots": ["./packages/client/ui-slots/src"],
       "@deepseek-ai/dsh-client-ui-attachment": ["./packages/client/ui-attachment/src"],
       "@deepseek-ai/dsh-client-ui-primitives": ["./packages/client/ui-primitives/src"],
@@ -307,7 +312,6 @@
       "@deepseek-ai/dsh-lsp-stdio": ["./packages/lsp/lsp-stdio/src"],
       "@deepseek-ai/dsh-mcp-client": ["./packages/mcp/mcp-client/src"],
       "@deepseek-ai/dsh-message-feedback": ["./packages/feedback/message-feedback/src"],
-      "@deepseek-ai/dsh-message-feedback/invariant": ["./packages/feedback/message-feedback/src/invariant.ts"],
       "@deepseek-ai/dsh-model-slots": ["./packages/llm/model-slots/src"],
       "@deepseek-ai/dsh-model-slots/invariant": ["./packages/llm/model-slots/src/invariant.ts"],
       "@deepseek-ai/dsh-native-command": ["./packages/util/native-command/src"],
@@ -320,7 +324,6 @@
       "@deepseek-ai/dsh-plugin-governance": ["./packages/plugins/plugin-governance/src"],
       "@deepseek-ai/dsh-plugin-governance/invariant": ["./packages/plugins/plugin-governance/src/invariant.ts"],
       "@deepseek-ai/dsh-plugin-governance-host": ["./packages/host/plugin-governance-host/src"],
-      "@deepseek-ai/dsh-plugin-governance-host/invariant": ["./packages/host/plugin-governance-host/src/invariant.ts"],
       "@deepseek-ai/dsh-plugin-package-inventory-deepseek": ["./packages/llm/plugin-package-inventory-deepseek/src"],
       "@deepseek-ai/dsh-plugin-project-root": ["./packages/plugins/plugin-project-root/src"],
       "@deepseek-ai/dsh-plugin-project-root/invariant": ["./packages/plugins/plugin-project-root/src/invariant.ts"],
