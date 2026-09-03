@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-plugin-governance",
   "description": "Plugin governance system for the DeepSeek Harness: spec, registry, guards, sandboxes, Cordis adapter, and branch-local persistence",
-  "version": "0.1.1-rc.2-zDSH20260824a",
+  "version": "0.1.2-alpha.4",
   "publishConfig": {
     "access": "public"
   },
