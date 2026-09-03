@@ -28,8 +28,7 @@ import type { ZodType } from 'zod'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { LlmCallConfig } from '@deepseek-ai/dsh-llm'
-import { MODEL_SLOT_PLAN } from '@deepseek-ai/dsh-model-slots'
-import type { ModelRoute } from '@deepseek-ai/dsh-model-slots'
+import type { ModelRoute, SlotId } from '@deepseek-ai/dsh-model-slots'
 import type { Session, UserMessage } from '@deepseek-ai/dsh-session'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { UserQuestionError } from '@deepseek-ai/dsh-user-questions'
@@ -38,6 +37,10 @@ import type {} from '@deepseek-ai/dsh-session-projection'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import type { PlanProjection, PlanUnitState } from './types.ts'
 export type * from './types.ts'
+
+/** Plan slot id: restates dsh-model-slots' MODEL_SLOT_PLAN ('plan') under its
+ * SlotId brand without a runtime import of the optional peer. */
+const MODEL_SLOT_PLAN = 'plan' as SlotId
 
 declare module '@deepseek-ai/dsh-session/types' {
   interface SessionEventMap {
@@ -243,6 +246,11 @@ export class PlanModeController extends Service {
       }
       const slots = ctx.get('modelSlots')
       if (slots === undefined) return config
+      // The slot id is a branded string whose vocabulary is owned by
+      // dsh-model-slots (MODEL_SLOT_PLAN). The value import of an optional
+      // dependency is forbidden at module scope
+      // (verify-optional-dependency-imports), so the stable wire-level constant
+      // is restated here under its owner's brand.
       const resolution = slots.resolve(MODEL_SLOT_PLAN, {
         mainRoute: { provider: config.provider, model: config.model },
         session: agent.session,

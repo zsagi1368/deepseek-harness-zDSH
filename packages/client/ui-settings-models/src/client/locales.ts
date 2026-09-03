@@ -258,3 +258,17 @@ export const zh: { [Key in keyof typeof en]: string } = {
   visionSaved: '视觉槽位已保存。',
   visionUnset: '清除视觉槽位',
 }
+
+/** Slot id to locale key; falls back to slotTitle. */
+export const SLOT_LABEL_KEYS: Record<string, keyof typeof en> = {
+  title: 'slotTitle',
+  'compaction.summarize': 'slotCompaction',
+  vision: 'slotVision',
+}
+
+/** Source tier to locale key; falls back to slotSourceMainRoute. */
+export const SOURCE_LABEL_KEYS: Record<string, keyof typeof en> = {
+  slot: 'slotSourceExplicit',
+  'deployment-default': 'slotSourceDeploymentDefault',
+  'main-route': 'slotSourceMainRoute',
+}

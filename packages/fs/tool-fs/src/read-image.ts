@@ -187,6 +187,7 @@ export type ImageRouteDecision =
  * @param exec - the tool-execution context supplying the calling agent.
  * @param requestedPath - the raw, not-yet-resolved path rendered in refusal messages.
  * @param privacy - the vision privacy posture; defaults to the conservative local-first policy.
+ * @returns the routing decision: `native` when the resolved model declares image input, otherwise the vision-slot digestion route.
  */
 export async function assertImageCapableRoute(
   ctx: Context,

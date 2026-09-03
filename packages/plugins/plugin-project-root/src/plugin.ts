@@ -117,7 +117,12 @@ declare module '@deepseek-ai/cordis' {
 /** Loader entry id prefix for project plugins (the double-id space marker). */
 const PROJECT_ENTRY_PREFIX = 'project-plugin-'
 
-/** A deterministic loader entry id for one root × plugin pair. */
+/**
+ * A deterministic loader entry id for one root × plugin pair.
+ * @param projectRoot - the raw project root path.
+ * @param manifestId - the canonical plugin id from the manifest.
+ * @returns the stable double-space entry id for the pair.
+ */
 export function projectEntryId(projectRoot: string, manifestId: string): string {
   const rootHash = createHash('sha256').update(resolve(projectRoot)).digest('hex').slice(0, 8)
   const safeId = manifestId.replace(/[^A-Za-z0-9_.-]/g, '-')

@@ -43,9 +43,6 @@
     },
     {
       "path": "../../compat/dsh-compat"
-    },
-    {
-      "path": "../../runtime-diagnostics/invariants"
     }
   ]
 }

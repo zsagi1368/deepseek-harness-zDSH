@@ -46,7 +46,10 @@ export interface ProjectTrusts {
   roots: Record<string, ProjectRootTrust>
 }
 
-/** Empty ledger — the fail-closed default for missing/corrupt files. */
+/**
+ * Empty ledger — the fail-closed default for missing/corrupt files.
+ * @returns an empty v1 ledger with no trusted roots.
+ */
 export function emptyProjectTrusts(): ProjectTrusts {
   return { version: 1, roots: {} }
 }
@@ -54,6 +57,8 @@ export function emptyProjectTrusts(): ProjectTrusts {
 /**
  * Case-fold a project root key (Windows paths are case-insensitive), matching
  * the preset-root merge convention.
+ * @param projectRoot - the raw project root path.
+ * @returns the canonical (resolved, case-folded on Windows) root key.
  */
 export function projectRootKey(projectRoot: string): string {
   const resolved = resolve(projectRoot)
@@ -64,13 +69,18 @@ export function projectRootKey(projectRoot: string): string {
  * Resolve the persistence data directory used for the ledger, delegating to
  * the authoritative `resolveBranchStorageRoot` chain (`DSH_BRANCH_HOME` →
  * `<DSH_HOME>/zdsh` → `~/.dsh-zdsh`), then `data/`.
+ * @param env - the environment used to resolve the storage root; defaults to `process.env`.
  * @returns the absolute data directory path.
  */
 export function projectTrustsDataDir(env: NodeJS.ProcessEnv = process.env): string {
   return join(resolveBranchStorageRoot(env), 'data')
 }
 
-/** The ledger file path under `dataDir`. */
+/**
+ * The ledger file path under `dataDir`.
+ * @param dataDir - the absolute data directory.
+ * @returns the full ledger file path.
+ */
 export function projectTrustsPath(dataDir: string): string {
   return join(dataDir, PROJECT_TRUSTS_FILENAME)
 }

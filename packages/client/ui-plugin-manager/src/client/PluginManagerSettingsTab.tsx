@@ -4,7 +4,7 @@ import type {
   GovernanceRosterSnapshot,
   GovernedPluginSummary,
   PresetApplicationReport,
-} from '@deepseek-ai/dsh-api-remotes/client'
+} from '@deepseek-ai/dsh-plugin-governance-host/types'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { PluginManagerLocaleKey } from './locales.ts'
 import css from './PluginManagerSettingsTab.module.css'

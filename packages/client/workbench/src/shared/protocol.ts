@@ -13,7 +13,7 @@ export const WORKBENCH_ROUTE_PREFIX = '/workbench'
  * Plugin version. MUST equal the package.json "version"; the manifest
  * client spec guards that two-way sync.
  */
-export const WORKBENCH_VERSION = '0.1.1-rc.2-zDSH20260824a'
+export const WORKBENCH_VERSION = '0.1.2-alpha.4'
 
 /** Answer shape of GET/POST `/workbench/api/ping` — the liveness probe used by mount e2e. */
 export interface PingResult {

@@ -18,12 +18,6 @@ import type { ClientRemote } from '@deepseek-ai/dsh-api-gateway/client'
 
 export type { ClientRemote } from '@deepseek-ai/dsh-api-gateway/client'
 export type { PluginInventorySnapshot } from '@deepseek-ai/dsh-host-plugin-inventory/types'
-export type {
-  GovernanceHealthReport,
-  GovernanceRosterSnapshot,
-  GovernedPluginSummary,
-  PresetApplicationReport,
-} from '@deepseek-ai/dsh-plugin-governance-host/types'
 export type {} from '@deepseek-ai/dsh-agent-presets/remote'
 export type {} from '@deepseek-ai/dsh-commands/remote'
 export type {} from '@deepseek-ai/dsh-api-settings-controller/remote'

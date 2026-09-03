@@ -2,9 +2,6 @@
   "files": [],
   "references": [
     {
-      "path": "../../runtime-diagnostics/invariants"
-    },
-    {
       "path": "../../compat/dsh-compat"
     },
     {

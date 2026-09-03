@@ -12,7 +12,7 @@ import type { PluginManagerSettingsTabProps } from '../src/client/PluginManagerS
 import type {
   GovernanceRosterSnapshot,
   GovernedPluginSummary,
-} from '@deepseek-ai/dsh-api-remotes/client'
+} from '@deepseek-ai/dsh-plugin-governance-host/types'
 import { en } from '../src/client/locales.ts'
 
 afterEach(cleanup)
