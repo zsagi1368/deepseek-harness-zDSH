@@ -214,7 +214,7 @@ describe('plan mode routes plan requests through the plan slot', () => {
       textResponse('Executing the approved plan.'),
     ])
     const ctx = await slotHarness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('it-plan-slot'), { provider: 'mock', model: 'mock' })
+    const agent = await ctx.agentLoop.create(SessionId('it-plan-slot'), { provider: 'mock', model: 'mock' })
 
     // Plan mode on (idle → committed): the drafting request routes to the slot.
     ctx.planMode.set(agent, true)

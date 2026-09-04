@@ -1184,7 +1184,7 @@ describe('agent loop', () => {
         return [{ type: 'text', text: 'should not run' }]
       },
     }))
-    const agent = ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
+    const agent = await ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
 
     const reasons: TurnEndReason[] = []
     const errors: LlmError[] = []
@@ -1242,7 +1242,7 @@ describe('agent loop', () => {
         return [{ type: 'text', text: 'should not run' }]
       },
     }))
-    const agent = ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
+    const agent = await ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
 
     const reasons: TurnEndReason[] = []
     const errors: LlmError[] = []
