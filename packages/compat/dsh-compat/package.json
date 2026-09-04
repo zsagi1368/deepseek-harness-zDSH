@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-compat",
   "description": "Version-adaptive shim framework for fork/upstream drift in the DeepSeek Harness",
-  "version": "0.1.2-alpha.4",
+  "version": "0.1.2-rc.1",
   "type": "module",
   "publishConfig": {
     "access": "public"

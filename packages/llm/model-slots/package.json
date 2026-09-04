@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-model-slots",
   "description": "Unified auxiliary-model slot registry for the DeepSeek Harness: named side-task routes resolved ahead of every auxiliary LLM dispatch with durable audit records",
-  "version": "0.1.2-alpha.4",
+  "version": "0.1.2-rc.1",
   "publishConfig": {
     "access": "public"
   },
