@@ -24,11 +24,13 @@ describe('THIRD_PARTY_NOTICES.md', () => {
   // already runs in the test lane, so the check costs no extra CI process.
   // Pre-commit regenerates the file whenever a manifest is staged, so reaching
   // this assertion means the notices were committed without that hook.
+  // render() walks the whole pnpm store (1290+ packages) and takes longer
+  // than vitest's 5s default; the freshness assertion itself is unaffected.
   it('matches what the generator produces from the current manifests', () => {
     const generated = render()
     expect(generated).toContain('It depends on the third-party software listed below.')
     expect(readFileSync(resolve(root, 'THIRD_PARTY_NOTICES.md'), 'utf8'), 'stale notices — run `pnpm run gen-third-party-notices`').toBe(generated)
-  })
+  }, 30000)
 })
 
 /** Build the (manifests, names) pair `tierExternalDeps` consumes. */
@@ -109,6 +111,24 @@ describe('virtualManifest', () => {
       writeFileSync(join(manifestDir, 'package.json'), JSON.stringify({ name, version, license: 'Apache-2.0' }))
 
       expect(virtualManifest(store, name)).toMatchObject({ name, version, license: 'Apache-2.0' })
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('selects the requested version when the store retains historical copies', () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-notices-version-'))
+    try {
+      const name = '@scope/pkg'
+      const store = join(root, 'store')
+      for (const version of ['1.0.0', '2.0.0']) {
+        const manifestDir = join(store, `${name.replace('/', '+')}@${version}`, 'node_modules', name)
+        mkdirSync(manifestDir, { recursive: true })
+        writeFileSync(join(manifestDir, 'package.json'), JSON.stringify({ name, version, license: 'MIT' }))
+      }
+
+      expect(virtualManifest(store, name, '2.0.0')).toMatchObject({ name, version: '2.0.0' })
+      expect(virtualManifest(store, name, '3.0.0')).toBeUndefined()
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
@@ -339,7 +359,6 @@ describe('manifestPatterns', () => {
       'tools/*/package.json',
       'native/landlock-run/package.json',
       'native/landlock-run/packages/*/package.json',
-      'examples/*/package.json',
     ])
   })
 })

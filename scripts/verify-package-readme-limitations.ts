@@ -16,7 +16,8 @@ const CANONICAL = '## Known Limitations and Deferred Work'
 
 /** Packages audited as having no limitations section, keyed by repo-relative directory. */
 const NO_LIMITATIONS: Readonly<Record<string, string>> = {
-  'packages/util/brand': 'Type-only nominal-branding primitive with no runtime behavior or deferred work.',
+  'packages/util/brand': 'Stateless nominal-string and canonical-key helpers have no deferred work.',
+  'packages/compat/dsh-compat': 'The shim is a frozen zero-dependency probing layer with a closed ProbeReason taxonomy; its design constraints and deliberate scope freeze are recorded in the README Dev Note.',
 }
 
 /** A heading that reads as a limitations section — canonical or drifted. */

@@ -6,8 +6,9 @@
  * @module @deepseek-ai/dsh-llm/assembler
  */
 
-import { CallId } from './brand.ts'
-import { assertNever } from './never.ts'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import { assertNever } from '@deepseek-ai/dsh-util-values'
+import type { ToolCallId } from './brand.ts'
 import { createMessage } from './message.ts'
 import type { Message, MessageSource } from './message.ts'
 import type { ContentBlock, FinishReason, ReplayEnvelope, StreamChunk, TokenUsage } from './types.ts'
@@ -15,7 +16,7 @@ import type { ContentBlock, FinishReason, ReplayEnvelope, StreamChunk, TokenUsag
 interface PartialBlock {
   blockType: string
   text: string
-  toolCallId?: CallId
+  toolCallId?: ToolCallId
   toolCallName?: string
   toolCallArguments: string
   /** Set by `block-end` — authoritative, and freezes the partial. */
@@ -111,7 +112,7 @@ export class BlockAssembler {
       case 'reasoning': return { type: 'reasoning', text: partial.text }
       case 'tool-call': return {
         type: 'tool-call',
-        id: partial.toolCallId ?? CallId(`call-${index}`),
+        id: partial.toolCallId ?? brandString<ToolCallId>(`call-${index}`),
         name: partial.toolCallName ?? '',
         arguments: partial.toolCallArguments,
       }
@@ -146,6 +147,42 @@ export class BlockAssembler {
         ? envelope
         : { response: envelope.response, blocks: envelope.blocks.filter((_, position) => kept[position]) },
     }
+  }
+
+  /**
+   * The tool-call blocks a max-tokens finish could not safely execute, in
+   * stream order; empty for every other finish kind. A call is unsafe when it
+   * never received a `block-end` close or its arguments do not parse as JSON —
+   * either way it cannot be executed. Closed blocks with parseable arguments
+   * are complete calls, so they are excluded even though max-token truncation
+   * still drops them from {@link blocks}: an agent loop ends such a turn
+   * cleanly instead of reporting a truncation error.
+   * @returns the unsafe tool-call blocks in stream order, or an empty array
+   *   when the finish kind is not `max-tokens`.
+   */
+  truncatedToolCalls(): ContentBlock[] {
+    if (this.finish.kind !== 'max-tokens') return []
+    const unsafe: ContentBlock[] = []
+    for (const index of this.order) {
+      const partial = this.mustGet(index)
+      const block = partial.block
+      if (block === undefined) {
+        // Never closed by block-end: the arguments stream was cut off mid-way.
+        if (partial.blockType === 'tool-call') {
+          unsafe.push(this.assemble(partial, index))
+        }
+        continue
+      }
+      if (block.type !== 'tool-call') {
+        continue
+      }
+      try {
+        JSON.parse(block.arguments)
+      } catch {
+        unsafe.push(block) // closed, but the arguments are not valid JSON
+      }
+    }
+    return unsafe
   }
 
   /**

@@ -39,6 +39,17 @@ export const QUOTA_EXCEEDED_CODE = 'QUOTA'
 export const EMPTY_RESPONSE_CODE = 'EMPTY_RESPONSE'
 
 /**
+ * Canonical provider-neutral code for a response the output-token ceiling cut
+ * short while a tool call was being produced. The truncated call cannot be
+ * executed safely (its arguments may be incomplete JSON), and silently ending
+ * the turn would leave the model's intent with no observable outcome, so the
+ * agent loop surfaces this explicit failure instead. Deliberately outside the
+ * default retryable set — repeating at the same ceiling truncates the same way;
+ * the caller must raise the limit or continue manually.
+ */
+export const TRUNCATED_TOOL_CALL_CODE = 'TRUNCATED_TOOL_CALL'
+
+/**
  * Canonical provider-neutral code for a credential that was supplied but
  * cannot be used — malformed rather than absent. Distinct from
  * `MISSING_CREDENTIAL` because the fix differs: correct the stored value

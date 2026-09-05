@@ -1,8 +1,9 @@
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
-import LlmRuntime, { createUserMessage, CallId, isAgentLoopRequest, LlmAdapter  } from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { createUserMessage, ToolCallId, isAgentLoopRequest, LlmAdapter  } from '@deepseek-ai/dsh-llm'
 import type { FinishReason, GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import ModelSlotRegistry, { MODEL_SLOT_TITLE } from '@deepseek-ai/dsh-model-slots'
 import { SessionTitleProviderId } from '@deepseek-ai/dsh-session-title'
 import type { SessionTitleProviderRequest } from '@deepseek-ai/dsh-session-title'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
@@ -36,7 +37,6 @@ class CooperativeAdapter extends LlmAdapter {
     if (signal === undefined) throw new Error('expected title request signal')
     await new Promise<never>((_resolve, reject) => {
       const rejectAbort = (): void => {
-        // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- exercise exact AbortSignal.reason propagation
         reject(signal.reason)
       }
       if (signal.aborted) {
@@ -126,7 +126,7 @@ describe('generateSessionTitleWithLlm', () => {
     const providerRequest = request(ctx)
     let requestWasLoggedAtDispatch = false
     const adapter = new RecordingAdapter(SCRIPT, () => {
-      requestWasLoggedAtDispatch = providerRequest.session.events
+      requestWasLoggedAtDispatch = providerRequest.session.snapshotEvents()
         .some(event => event.type === 'session/title-llm-request')
     })
     ctx.llm.registerAdapter(['current-route'], adapter)
@@ -162,7 +162,7 @@ describe('generateSessionTitleWithLlm', () => {
     const prompt = options.messages[0]?.content[0]
     expect(prompt?.type === 'text' && prompt.text).toContain('first prompt')
     expect(prompt?.type === 'text' && prompt.text).toContain('第二个问题')
-    expect(providerRequest.session.events.findLast(event => event.type === 'session/title-llm-request')?.data)
+    expect(providerRequest.session.snapshotEvents().findLast(event => event.type === 'session/title-llm-request')?.data)
       .toEqual({
         titleProvider: TITLE_PROVIDER,
         messageSeqs: providerRequest.messages.map(message => message.seq),
@@ -193,7 +193,7 @@ describe('generateSessionTitleWithLlm', () => {
     await expect(generateSessionTitleWithLlm(ctx, config, oversized, [selected], TITLE_PROVIDER))
       .rejects.toThrow(/input.*bytes.*maxInputBytes/i)
     expect(adapter.requests).toEqual([])
-    expect(oversized.session.events.some(event => event.type === 'session/title-llm-request')).toBe(false)
+    expect(oversized.session.snapshotEvents().some(event => event.type === 'session/title-llm-request')).toBe(false)
 
     const withinLimit = resolveSessionTitleLlmConfig({ ...config, maxInputBytes: 1_000 })
     const within = request(ctx)
@@ -261,7 +261,7 @@ describe('generateSessionTitleWithLlm', () => {
       providerRequest.messages,
       TITLE_PROVIDER,
     )).rejects.toMatchObject({ message, code })
-    expect(providerRequest.session.events.some(event => event.type === 'session/title-llm-request')).toBe(true)
+    expect(providerRequest.session.snapshotEvents().some(event => event.type === 'session/title-llm-request')).toBe(true)
   })
 
   it.each([
@@ -283,7 +283,7 @@ describe('generateSessionTitleWithLlm', () => {
   it('rejects tool-call blocks and a successful response with no text', async () => {
     const toolScript: StreamChunk[] = [
       { type: 'block-start', index: 0, blockType: 'tool-call' },
-      { type: 'tool-call-delta', index: 0, id: CallId('title-tool'), name: 'unexpected', argumentsDelta: '{}' },
+      { type: 'tool-call-delta', index: 0, id: ToolCallId('title-tool'), name: 'unexpected', argumentsDelta: '{}' },
       { type: 'finish', reason: { kind: 'stop' } },
     ]
     const tool = await withScript(toolScript)
@@ -361,5 +361,98 @@ describe('generateSessionTitleWithLlm', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('auxiliary title-slot routing', () => {
+  async function withSlots(config: ConstructorParameters<typeof ModelSlotRegistry>[1]): Promise<{
+    ctx: Context
+    adapter: RecordingAdapter
+  }> {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(LlmRuntime)
+    await ctx.plugin(ModelSlotRegistry, config)
+    const adapter = new RecordingAdapter(SCRIPT)
+    ctx.llm.registerAdapter(['current-route'], adapter)
+    ctx.llm.registerAdapter(['aux-route'], adapter)
+    return { ctx, adapter }
+  }
+
+  it('dispatches to the title-slot route ahead of the logged request route', async () => {
+    const { ctx, adapter } = await withSlots({
+      slots: { [MODEL_SLOT_TITLE]: { provider: 'aux-route', model: 'aux-model' } },
+    })
+    const providerRequest = request(ctx)
+
+    const result = await generateSessionTitleWithLlm(
+      ctx,
+      resolveSessionTitleLlmConfig(CONFIG),
+      providerRequest,
+      providerRequest.messages,
+      TITLE_PROVIDER,
+    )
+
+    expect(result.model).toEqual({ provider: 'aux-route', model: 'aux-model' })
+    expect(adapter.requests[0]).toMatchObject({ provider: 'aux-route', model: 'aux-model' })
+    const dispatch = providerRequest.session.snapshotEvents().findLast(event => event.type === 'slots/dispatch')
+    expect(dispatch?.data).toEqual({
+      slot: MODEL_SLOT_TITLE,
+      provider: 'aux-route',
+      model: 'aux-model',
+      source: 'slot',
+    })
+    const titleRequest = providerRequest.session.snapshotEvents().findLast(event => event.type === 'session/title-llm-request')
+    expect(dispatch !== undefined && titleRequest !== undefined && dispatch.seq < titleRequest.seq).toBe(true)
+  })
+
+  it('keeps the direct provider/model configuration ahead of the mounted title slot', async () => {
+    const { ctx, adapter } = await withSlots({
+      slots: { [MODEL_SLOT_TITLE]: { provider: 'aux-route', model: 'aux-model' } },
+    })
+    const providerRequest = request(ctx)
+
+    const result = await generateSessionTitleWithLlm(
+      ctx,
+      resolveSessionTitleLlmConfig({ ...CONFIG, provider: 'current-route', model: 'explicit-model' }),
+      providerRequest,
+      providerRequest.messages,
+      TITLE_PROVIDER,
+    )
+
+    expect(result.model).toEqual({ provider: 'current-route', model: 'explicit-model' })
+    expect(adapter.requests[0]).toMatchObject({ provider: 'current-route', model: 'explicit-model' })
+    expect(providerRequest.session.snapshotEvents().some(event => event.type === 'slots/dispatch')).toBe(false)
+  })
+
+  it('records the logged route through the main-route tier when no deployment statement covers the slot', async () => {
+    const { ctx, adapter } = await withSlots({})
+    const routed = request(ctx)
+
+    const result = await generateSessionTitleWithLlm(
+      ctx,
+      resolveSessionTitleLlmConfig(CONFIG),
+      routed,
+      routed.messages,
+      TITLE_PROVIDER,
+    )
+
+    expect(result.model).toEqual({ provider: 'current-route', model: 'current-model' })
+    expect(adapter.requests[0]).toMatchObject({ provider: 'current-route', model: 'current-model' })
+    expect(routed.session.snapshotEvents().findLast(event => event.type === 'slots/dispatch')?.data).toEqual({
+      slot: MODEL_SLOT_TITLE,
+      provider: 'current-route',
+      model: 'current-model',
+      source: 'main-route',
+    })
+  })
+
+  it('preserves the legacy absent-route failure when no registry mounts', async () => {
+    const { ctx, adapter } = await withScript(SCRIPT)
+    const unrouted = requestWithoutRoute(ctx)
+    await expect(generateSessionTitleWithLlm(ctx, resolveSessionTitleLlmConfig(CONFIG), unrouted, unrouted.messages, TITLE_PROVIDER))
+      .rejects.toThrow(/no logged request route/)
+    expect(adapter.requests).toEqual([])
+    expect(unrouted.session.snapshotEvents().some(event => event.type === 'session/title-llm-request')).toBe(false)
   })
 })
