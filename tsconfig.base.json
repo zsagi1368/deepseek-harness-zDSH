@@ -152,6 +152,12 @@
       // resolves to built lib/ output, the artifact-plane leak the explicit
       // aliases exist to avoid (same seam as dsh-host-plugin-inventory/types).
       "@deepseek-ai/dsh-plugin-governance-host/types": ["./packages/host/plugin-governance-host/src/types.ts"],
+      // The project-root package's `./src/*` export is how its README documents
+      // the compat guard (`guardProjectRoot`, not re-exported from the bare
+      // entry). Doc fences compile from the repository root, where no workspace
+      // link exists, so the subpath needs an explicit source alias here — the
+      // same seam as dsh-plugin-governance-host/types.
+      "@deepseek-ai/dsh-plugin-project-root/src/compat.ts": ["./packages/plugins/plugin-project-root/src/compat.ts"],
       "@deepseek-ai/dsh-client-ui-slots": ["./packages/client/ui-slots/src"],
       "@deepseek-ai/dsh-client-ui-attachment": ["./packages/client/ui-attachment/src"],
       "@deepseek-ai/dsh-client-ui-primitives": ["./packages/client/ui-primitives/src"],

@@ -32,6 +32,8 @@ kind: "package-reference"
 - `import-threw` —— 动态 import 本身抛错（模块求值异常等）。
 
 ```ts
+import { probeSymbol } from '@deepseek-ai/dsh-compat'
+
 const result = await probeSymbol('node:fs', 'readFile', (v: unknown) => typeof v === 'function')
 // present === true, value is the readFile function
 ```
@@ -41,6 +43,8 @@ const result = await probeSymbol('node:fs', 'readFile', (v: unknown) => typeof v
 `memberOf<T>(namespace, symbol)` 同步读取已加载模块命名空间的导出形状（非动态 import），用于静态别名场景。返回符号值或 `undefined`。
 
 ```ts
+import { memberOf } from '@deepseek-ai/dsh-compat'
+
 const value = memberOf({ answer: 42 }, 'answer')
 // value === 42
 ```
@@ -50,6 +54,8 @@ const value = memberOf({ answer: 42 }, 'answer')
 `versionOf(packageName)` 从宿主侧读取已安装包的 `version` 字段；任何失败都返回 `undefined` 而不是抛错。用于区分版本档位（如官方 `0.1.2-alpha.1` 与 zDSH `0.1.1-rc.2`）。
 
 ```ts
+import { versionOf } from '@deepseek-ai/dsh-compat'
+
 const version = await versionOf('@deepseek-ai/dsh-llm')
 // version === '0.1.1-rc.2'
 ```
@@ -83,6 +89,8 @@ if (!verdict.enabled) {
 `getCompatRoster()` 返回进程级审计名册的只读快照：对每个被守卫的功能 id，记录 `{ enabled, reason, checkedAt }`。修改快照不会影响后续检查。
 
 ```ts
+import { getCompatRoster } from '@deepseek-ai/dsh-compat'
+
 const roster = getCompatRoster()
 const entry = roster.get('dsh-model-slots')
 // entry?.enabled, entry?.reason, entry?.checkedAt

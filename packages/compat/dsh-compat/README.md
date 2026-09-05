@@ -32,6 +32,8 @@ Version-adaptive shim framework for fork/upstream drift in the DeepSeek Harness.
 - `import-threw` — the dynamic import itself threw (module evaluation error, etc.).
 
 ```ts
+import { probeSymbol } from '@deepseek-ai/dsh-compat'
+
 const result = await probeSymbol('node:fs', 'readFile', (v: unknown) => typeof v === 'function')
 // present === true, value is the readFile function
 ```
@@ -41,6 +43,8 @@ const result = await probeSymbol('node:fs', 'readFile', (v: unknown) => typeof v
 `memberOf<T>(namespace, symbol)` reads an already-loaded module namespace synchronously (no dynamic import), for static-alias scenarios. Returns the symbol value or `undefined`.
 
 ```ts
+import { memberOf } from '@deepseek-ai/dsh-compat'
+
 const value = memberOf({ answer: 42 }, 'answer')
 // value === 42
 ```
@@ -50,6 +54,8 @@ const value = memberOf({ answer: 42 }, 'answer')
 `versionOf(packageName)` reads the `version` field of an installed package from the host side; returns `undefined` instead of throwing on any failure. Used to distinguish version tiers (e.g. official `0.1.2-alpha.1` vs zDSH `0.1.1-rc.2`).
 
 ```ts
+import { versionOf } from '@deepseek-ai/dsh-compat'
+
 const version = await versionOf('@deepseek-ai/dsh-llm')
 // version === '0.1.1-rc.2'
 ```
@@ -83,6 +89,8 @@ if (!verdict.enabled) {
 `getCompatRoster()` returns a read-only snapshot of the process-level audit roster: for every guarded feature id, `{ enabled, reason, checkedAt }`. Mutating the snapshot does not affect future checks.
 
 ```ts
+import { getCompatRoster } from '@deepseek-ai/dsh-compat'
+
 const roster = getCompatRoster()
 const entry = roster.get('dsh-model-slots')
 // entry?.enabled, entry?.reason, entry?.checkedAt
