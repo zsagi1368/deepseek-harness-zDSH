@@ -26,7 +26,16 @@ import {
   type Profile,
 } from '../src/index.ts'
 
-const tmp = (): string => mkdtempSync(join(tmpdir(), 'dsh-profile-'))
+const tempRoots: string[] = []
+afterAll(() => {
+  for (const root of tempRoots.splice(0)) rmSync(root, { recursive: true, force: true })
+})
+
+const tmp = (): string => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-profile-'))
+  tempRoots.push(dir)
+  return dir
+}
 
 /** Stage a fake installed app: package.json with deps and a node_modules holding bundles. */
 function stageInstallation(
