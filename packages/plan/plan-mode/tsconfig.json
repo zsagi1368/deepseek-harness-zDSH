@@ -27,6 +27,9 @@
       "path": "../../core/system-prompt"
     },
     {
+      "path": "../../llm/model-slots"
+    },
+    {
       "path": "../../interaction/user-questions"
     },
     {

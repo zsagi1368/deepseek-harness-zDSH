@@ -24,16 +24,22 @@
       "path": "../../../vendor/hmr"
     },
     {
-      "path": "../../runtime-diagnostics/invariants"
+      "path": "../../core/system-prompt"
     },
     {
-      "path": "../../core/system-prompt"
+      "path": "../../compat/dsh-compat"
+    },
+    {
+      "path": "../../util/atomic-write"
     },
     {
       "path": "../../util/launch-environment"
     },
     {
       "path": "../../util/home-paths"
+    },
+    {
+      "path": "../../util/package-manifest"
     }
   ]
 }
