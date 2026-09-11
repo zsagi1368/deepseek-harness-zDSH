@@ -84,6 +84,18 @@ zDSH 在官方 harness 之上加入版本自适应特性；每个特性都会探
 
 参见 [CONTRIBUTING.md](CONTRIBUTING.zh.md)。面向 agent：请遵循 [AGENTS.md](AGENTS.md)。请先阅读[开发指南](docs/development.zh.md)与[架构文档](docs/architecture.zh.md)。
 
+## 引用
+
+```bibtex
+@misc{deepseek-harness2026,
+  title={DeepSeek Harness: Everything is a Plugin},
+  author={DeepSeek-AI},
+  year={2026},
+  publisher={GitHub},
+  howpublished={\url{https://github.com/deepseek-ai/deepseek-harness}},
+}
+```
+
 ## 许可证
 
 [MIT](LICENSE)。第三方依赖及其许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

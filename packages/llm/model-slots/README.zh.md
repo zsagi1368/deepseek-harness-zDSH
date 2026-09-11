@@ -9,34 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-Cordis 服务（`ctx.modelSlots`），为所有辅助侧任务模型调用提供统一的路由词汇。部署方按内置槽位逐一指明精确的 `provider`/`model` 路由——当前为 `title`（会话标题生成）与 `compaction.summarize`（上下文压缩摘要）——而不是每个消费方各自发明一套配置键与回退方言。
-
-```yaml
-- id: model-slots
-  name: '@deepseek-ai/dsh-model-slots'
-  config:
-    slots:
-      title:
-        provider: deepseek-official
-        model: deepseek-v4-flash
-    fallback:
-      provider: deepseek-official
-      model: deepseek-v4-flash
-```
-
-`slots.<id>` 固定一个槽位的路由；`fallback` 是部署级默认值，作用于没有自身条目的任何槽位。每个取值都必须是完整且非空的配对，因此只配置一半的槽位不会解析出意外目标。槽位 id 在加载时对照内置词汇校验，像 `tittel:` 这样的笔误会导致启动失败，而不是被静默忽略。
-
-消费方在派发辅助请求之前调用 `resolve(slot, input)`。解析优先级固定：
-
-1. 槽位自身的显式声明（`source: 'slot'`），
-2. 部署默认（`source: 'deployment-default'`），
-3. 调用方传入的会话主模型路由 `mainRoute`（`source: 'main-route'`），
-
-当没有任何层级能给出路由时，`resolve()` 返回 `null`。每次带 `session` 汇的成功解析都会在调用方派发之前追加持久化的仅日志事件 `slots/dispatch`，携带 `{ slot, provider, model, source }`，使每一次辅助调用都能归因到它实际使用的确切路由——包括所配置的便宜槽位不可用而由主模型承接的情形。
-
-单独发布的 `./invariant` 伴生插件对每条持久的 `slots/dispatch` 记录按封闭的槽位词汇与解析层级进行校验，覆盖注册时已加载的会话以及其后追加的记录。
-
-通过 `register(slot, route)` 进行的程序化注册服务于测试与未来的进程内接线。它不允许覆盖由配置固定的槽位，拒绝重复的存活注册，并返回一个尊重后续重注册的移除用 disposer。
+Cordis 服务（`ctx.modelSlots`），为所有辅助侧任务模型调用提供统一的路由词汇。部署方按内置槽位（`title`、`compaction.summarize`）逐一指明精确的 `provider`/`model` 路由并配以 `fallback` 默认；每个取值必须是完整配对，词汇之外的槽位 id 会在启动时失败。`resolve(slot, input)` 依次取槽位、部署默认或调用方主模型路由中第一个可用项，无一可用时返回 `null`。每次带 `session` 汇的成功解析都会追加一条持久的仅日志事件 `slots/dispatch`，把该次调用归因到它实际使用的路由。
 
 ## 目录
 

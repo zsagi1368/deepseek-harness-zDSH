@@ -35,6 +35,7 @@ function validateDispatch(event: SessionEvent<'slots/dispatch'>, fail: Invariant
 
 /** Validate every dispatch record already present in one loaded session. */
 function validateSession(session: Session, fail: InvariantFailure): void {
+  // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
   for (const event of session.snapshotEvents()) {
     if (event.type === 'slots/dispatch') validateDispatch(event, fail)
   }

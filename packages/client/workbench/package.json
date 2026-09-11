@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-client-workbench",
   "description": "IDE-grade dock workspace for the DSH web face: files / editor / terminal / git / tasks / browse panels behind one registry service other plugins can extend. Vendored from zDSH Workbench (clean-room independent development).",
-  "version": "0.1.3-alpha.1",
+  "version": "0.1.5-rc.2",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -34,7 +34,6 @@
     "lib/types/**/*.d.ts"
   ],
   "dependencies": {
-    "@xterm/xterm": "^5.5.0",
     "node-pty": "1.2.0-beta.15",
     "ws": "^8.21.0"
   },
@@ -52,6 +51,7 @@
     "@types/react": "~18.3.1",
     "@types/react-dom": "~18.3.1",
     "@types/ws": "^8.18.1",
+    "@xterm/xterm": "^5.5.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

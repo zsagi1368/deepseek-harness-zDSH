@@ -307,10 +307,71 @@ async function mountDeepSeekCard(overrides: Parameters<typeof scriptedFace>[0] =
 }
 
 describe('ModelsSection', () => {
+  it('hides both add actions when their settings namespaces are absent', async () => {
+    const scripted = scriptedFace()
+    scripted.face.settings.describe.mockResolvedValue(remoteOk({ writable: true, hasDocument: false, namespaces: [] }))
+    await mountFace(scripted)
+    expect(screen.queryByRole('button', { name: en.add })).toBeNull()
+    expect(screen.queryByRole('button', { name: en.customAdd })).toBeNull()
+  })
+
+  it('offers only providers whose settings namespace can open an editor', async () => {
+    const scripted = scriptedFace()
+    scripted.face.settings.describe.mockResolvedValue(remoteOk({
+      writable: true, hasDocument: false,
+      namespaces: wireNamespaces().filter(view => view.ns !== 'llm-pi-ai'),
+    }))
+    await mountFace(scripted)
+    expect(screen.queryByRole('button', { name: en.customAdd })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: en.add }))
+    expect(screen.queryByRole('option', { name: 'anthropic' })).toBeNull()
+    expect(screen.getByRole('option', { name: 'plain' })).toBeTruthy()
+  })
+
+  it('shows a catalog diagnostic while keeping the provider editable', async () => {
+    const scripted = scriptedFace()
+    const failure = 'llm-pi-ai: provider "openai" model "111" needs an api'
+    scripted.face.llm.listConfigurableProviders.mockResolvedValue(remoteOk([
+      { provider: 'openai', displayName: 'openai', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'openai'], error: failure },
+    ]))
+    await mountFace(scripted)
+    expect(screen.getByRole('alert').textContent).toBe(failure)
+    fireEvent.click(screen.getByRole('button', { name: openaiCopy(en.editProvider) }))
+    expect(await screen.findByLabelText(en.keyInput)).toBeTruthy()
+    expect(screen.getByRole('button', { name: en.add })).toBeTruthy()
+    expect(screen.getByRole('button', { name: en.customAdd })).toBeTruthy()
+  })
+
   it('renders nothing before the slot injects its dependencies', () => {
     const uninjected = {} as ModelsSectionProps
     render(<ModelsSection {...uninjected} />)
     expect(document.body.textContent).toBe('')
+  })
+
+  it('shows a configuration diagnostic inside the first-run setup card', async () => {
+    const scripted = scriptedFace()
+    const failure = 'The provider configuration needs repair'
+    scripted.face.llm.listProviders.mockResolvedValue(remoteOk([
+      { id: 'deepseek-official', name: 'DeepSeek' },
+    ]))
+    scripted.face.llm.listConfigurableProviders.mockResolvedValue(remoteOk([
+      { provider: 'deepseek-official', displayName: 'DeepSeek', settingsNs: 'llm-deepseek', settingsPath: [], error: failure },
+    ]))
+    scripted.face.credentials.describe.mockResolvedValue(remoteOk({
+      DEEPSEEK_API_KEY: { configured: false, writable: true },
+    }))
+    await mountFace(scripted)
+
+    // zDSH renders the provider rows and the S-45 auxiliary slots in one
+    // section, so the page carries several list items; the whole-slots block
+    // still lists its main-route rows even with no slots namespace. The
+    // first-run setup card is the list item that holds the credential field —
+    // scope to it rather than assume it is the page's only list item.
+    const card = screen.getByLabelText(en.keyInput).closest('li')
+    expect(card).not.toBeNull()
+    expect(within(card as HTMLElement).getByRole('alert').textContent).toBe(failure)
+    expect(within(card as HTMLElement).getByLabelText(en.keyInput)).toBeTruthy()
+    expect(within(card as HTMLElement).queryByRole('button', { name: deepSeekCopy(en.editProvider) })).toBeNull()
   })
 
   it('dispatches the provider-card seat per rendered row, keyed by the owning namespace', async () => {
