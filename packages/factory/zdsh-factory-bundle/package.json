@@ -6,6 +6,6 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "dsh-webstack-verticals": "git+https://github.com/zsagi1368/dsh-webstack.git#6e31341044598a19f78fe0cff886bc9b4ab7dfb2"
+    "dsh-webstack-verticals": "git+https://github.com/zsagi1368/dsh-webstack.git#43732b7f7532f6fd1bdc9b5563786d0cbac7290e"
   }
 }

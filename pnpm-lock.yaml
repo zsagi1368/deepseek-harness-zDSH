@@ -6027,8 +6027,8 @@ importers:
   packages/factory/zdsh-factory-bundle:
     dependencies:
       dsh-webstack-verticals:
-        specifier: git+https://github.com/zsagi1368/dsh-webstack.git#6e31341044598a19f78fe0cff886bc9b4ab7dfb2
-        version: dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/6e31341044598a19f78fe0cff886bc9b4ab7dfb2
+        specifier: git+https://github.com/zsagi1368/dsh-webstack.git#43732b7f7532f6fd1bdc9b5563786d0cbac7290e
+        version: dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/43732b7f7532f6fd1bdc9b5563786d0cbac7290e
 
   packages/feedback/command-feedback:
     dependencies:
@@ -15510,8 +15510,8 @@ packages:
     resolution: {integrity: sha512-uBq4egWHTcTt33a72vpSG0z3HnPuIl6NqYcTrKEg2azoEyl2hpW0zqlxysq2pK9HlDIHyHyakeYaYnSAwd8bow==}
     engines: {node: '>=12'}
 
-  dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/6e31341044598a19f78fe0cff886bc9b4ab7dfb2:
-    resolution: {gitHosted: true, integrity: sha512-EqTP3/qfccLeBdojmNA8mlQfLXCPSG62SRrwigRgtdO3kvX64xjcWOjuoJoO5rfLAzpsNo8+2sbWmm5vYO+96w==, tarball: https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/6e31341044598a19f78fe0cff886bc9b4ab7dfb2}
+  dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/43732b7f7532f6fd1bdc9b5563786d0cbac7290e:
+    resolution: {gitHosted: true, integrity: sha512-/WHhnLiux0XI8XruJz3pOOvLvca/4q3l+MLjPD4Z025GlMHDLleLcxlmBF/IncQ9b5/IAhbc2hMyVJ1BPLG5vw==, tarball: https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/43732b7f7532f6fd1bdc9b5563786d0cbac7290e}
     version: 0.0.0
     engines: {node: '>=22.19.0'}
 
@@ -22170,7 +22170,7 @@ snapshots:
 
   dotenv@16.6.1: {}
 
-  dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/6e31341044598a19f78fe0cff886bc9b4ab7dfb2: {}
+  dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/43732b7f7532f6fd1bdc9b5563786d0cbac7290e: {}
 
   dts-resolver@3.0.0(oxc-resolver@11.20.0):
     optionalDependencies:

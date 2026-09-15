@@ -24,12 +24,19 @@
  *  - M1 lifecycle: disabled → still disabled on restart → uninstall (tombstone) →
  *    a later boot never resurrects → explicit reinstall brings it back and the
  *    node_modules artifact was never touched by governance.
+ *  - P4 (TC-B2-S1b): the manifest's service `factory` is re-pinned to a
+ *    prebuilt-inclusive tree, so a real `import()` of that exit (the verticals
+ *    `lib/index.js` pure-library barrel) must resolve AND hand back the
+ *    `XVerticalChannel` shape — this settles the F8/U-1 loading-semantics doubt
+ *    (a service factory pointing at a library re-export) with evidence, not
+ *    argument. It asserts only the import + export contract, not a full
+ *    governance-boot instantiation.
  */
 
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context, Service } from '@deepseek-ai/cordis'
 import PluginGovernanceGateway, { type PluginGovernanceId } from '../../../host/plugin-governance-host/src/index.ts'
@@ -166,5 +173,58 @@ describe('Gate-M M1 pilot lifecycle — disable → restart → uninstall → no
     const reinstalled = await boot3.gateway.install({ source: PILOT_ABS_SOURCE })
     expect(reinstalled.ok).toBe(true)
     expect(boot3.gateway.list().plugins.some(p => p.pluginId === gid(PILOT_ID))).toBe(true)
+  })
+})
+
+describe('Gate-P P4 — real import() of the factory service exit (F8/U-1 loading-semantics probe)', () => {
+  it('dynamically imports the verticals service factory module and asserts the XVerticalChannel shape', async () => {
+    // The exit under probe is the installed artifact's OWN manifest declaration —
+    // read the service `factory` path back from its package.json so this test can
+    // never drift from what governance would actually load (mirrors reading the
+    // seed above rather than hard-coding a relative path).
+    const manifest = JSON.parse(readFileSync(join(PILOT_ABS_SOURCE, 'package.json'), 'utf8')) as {
+      dsh?: { capabilities?: Array<{ service?: { factory?: string } }> }
+    }
+    const factoryRel = manifest.dsh?.capabilities
+      ?.map(cap => cap.service?.factory)
+      .find((factory): factory is string => typeof factory === 'string' && factory.length > 0)
+    if (factoryRel === undefined) {
+      throw new Error('the installed verticals manifest declares no service factory path')
+    }
+    const factoryAbs = resolve(PILOT_ABS_SOURCE, factoryRel)
+
+    // F8/U-1 前置事实：service factory 指向 lib/ 纯库产物，必须先物理落盘。旧
+    // pin（6e31341）树只有 src/ 而无 lib/，装载契约在磁盘层即不成立；re-pin
+    // 43732b7（prebuilt-inclusive 树）后 lib/index.js 才存在。断言文件存在把
+    // "pin 未含 lib" 这一回归锁死为红灯，而不是让下面的 import 抛出难懂的错。
+    expect(
+      existsSync(factoryAbs),
+      `Gate-P P4: verticals service factory '${factoryRel}' is absent under ${PILOT_ABS_SOURCE} — the pinned tree is not prebuilt-inclusive`,
+    ).toBe(true)
+
+    // 装载语义实证：真 import() 一次 factory 出口（纯库 re-export barrel），
+    // 销 F8/U-1——不是纸面推断，是把 dsh manifest 里那条 factory 路径交给
+    // Node ESM 装载器实际跑一遍。
+    const mod = (await import(pathToFileURL(factoryAbs).href)) as Record<string, unknown>
+    const VerticalChannelCtor = mod.XVerticalChannel
+    expect(
+      typeof VerticalChannelCtor,
+      'Gate-P P4: factory module import() resolved but exports no XVerticalChannel constructor',
+    ).toBe('function')
+
+    // 形状断言：new 出 VerticalChannel 契约（稳定 id + 确定性 canHandle + run），
+    // 与 framework.ts 的 VerticalChannel 接口逐面对齐（本地结构镜像，零跨包依赖）。
+    const channel = new (VerticalChannelCtor as new () => {
+      id: string
+      canHandle: unknown
+      run: unknown
+    })()
+    expect(channel.id).toBe('x-vertical')
+    expect(typeof channel.canHandle).toBe('function')
+    expect(typeof channel.run).toBe('function')
+    // 确定性判定（纯函数、不触网）：x.com 限域须出手，佐证导出的确是活实现。
+    expect(
+      (channel.canHandle as (hints: unknown) => boolean)({ hard: [], soft: [], siteFilter: 'x.com' }),
+    ).toBe(true)
   })
 })

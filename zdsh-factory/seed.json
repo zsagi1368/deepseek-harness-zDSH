@@ -18,7 +18,7 @@
       "id": "core/webstack-verticals",
       "package": "dsh-webstack-verticals",
       "version": "0.2.0",
-      "pin": "6e31341044598a19f78fe0cff886bc9b4ab7dfb2",
+      "pin": "43732b7f7532f6fd1bdc9b5563786d0cbac7290e",
       "source": "local:packages/factory/zdsh-factory-bundle/node_modules/dsh-webstack-verticals/packages/verticals",
       "integrity": null,
       "enabledAtBoot": false,
