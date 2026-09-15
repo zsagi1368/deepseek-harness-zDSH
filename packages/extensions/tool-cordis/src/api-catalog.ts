@@ -4580,7 +4580,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GovernedPluginSummary',
-    declaration: 'export interface GovernedPluginSummary {\n    readonly pluginId: PluginGovernanceId;\n    readonly displayName: string;\n    readonly version: string;\n    readonly status: PluginGovernanceStatus;\n    readonly source: \'loader-mirror\' | \'native\' | \'project\';\n    readonly projectRoot?: string;\n    readonly approvalRequired: boolean;\n    readonly approved: boolean;\n    readonly warnings: readonly string[];\n}',
+    declaration: 'export interface GovernedPluginSummary {\n    readonly pluginId: PluginGovernanceId;\n    readonly displayName: string;\n    readonly version: string;\n    readonly status: PluginGovernanceStatus;\n    readonly source: \'loader-mirror\' | \'native\' | \'project\';\n    readonly projectRoot?: string;\n    readonly provenance?: \'preinstall\';\n    readonly approvalRequired: boolean;\n    readonly approved: boolean;\n    readonly warnings: readonly string[];\n}',
   },
   {
     name: 'GovernedSandboxView',

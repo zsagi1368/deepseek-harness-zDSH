@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generatedAt": "2026-09-15T08:52:24Z",
-  "$comment": "zDSH 出厂预装清单（seed manifest）。schema 冻结见 DESIGN-intake-tech.md §1.1（B4 案）。[DESIGN-D1] 两态 source 约定：每个 entry 的 source ∈ { \"local:<仓内解析路径>\", \"npm:<name>@<ver>\" }；integrity 语义随 source 两态——local: 态本战役留 null（工件由 pnpm 供应链落盘：git pin + lockfile 内容寻址承载同等供应链强度，不重复发明目录树哈希），npm: 态必填 sha512（复用既有 install/registry-source.ts tarball 校验面）。generatedAt 由 seed 填充时写入 ISO-8601。〔TC-B1-1.3c 首发：已灌 webstack-verticals 试点单件；Gate-P 探针见 packages/factory/tests/〕entries 增项须配 Gate-P 探针。本文件为根级数据文件、非 workspace 包，不触 pnpm-workspace.yaml。",
+  "$comment": "zDSH 出厂预装清单（seed manifest）。schema 冻结见 DESIGN-intake-tech.md §1.1（B4 案）。[DESIGN-D1] 两态 source 约定：每个 entry 的 source ∈ { \"local:<仓内解析路径>\", \"npm:<name>@<ver>\" }；integrity 语义随 source 两态——local: 态本战役留 null（工件由 pnpm 供应链落盘：git pin + lockfile 内容寻址承载同等供应链强度，不重复发明目录树哈希），npm: 态必填 sha512（复用既有 install/registry-source.ts tarball 校验面）。generatedAt 由 seed 填充时写入 ISO-8601。〔TC-B1-1.3c 首发：已灌 webstack-verticals 试点单件；Gate-P 探针见 packages/factory/zdsh-factory-bundle/tests/gate-p.spec.ts〕entries 增项须配 Gate-P 探针。本文件为根级数据文件、非 workspace 包，不触 pnpm-workspace.yaml。",
   "entryFields": {
     "id": "治理规范 id（namespace/name，normalizePluginId 同空间）",
     "package": "npm 包名（解析锚）",

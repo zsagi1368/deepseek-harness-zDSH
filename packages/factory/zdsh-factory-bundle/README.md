@@ -1,6 +1,6 @@
 ---
 description: "Private factory artifact bundle: pins the git URL + commit for every zDSH factory-seeded plugin so one pnpm install lands each artifact in the workspace closure for the governance preinstall executor."
-kind: "package-library"
+kind: "package-reference"
 ---
 
 # @deepseek-ai/zdsh-factory-bundle
@@ -10,6 +10,15 @@ English | [中文](README.zh.md)
 ## Summary
 
 Declare, as git URL + full commit pins, every plugin the zDSH factory seeds at first boot. The governance `SeedPreinstaller` admits each pinned artifact in place through the existing `install({ source: 'local:<dir>' })` channel; this package never moves, copies, or deletes the artifacts. Its only consumer is the factory preinstall pass, and its smallest entry point is one `dependencies` row. Batch 1.3 pilots a single artifact, `dsh-webstack-verticals`.
+
+## Table of Contents
+
+- [Use this package](#use-this-package)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Dev Note](#dev-note)
+
+-----
 
 ## Use this package
 
