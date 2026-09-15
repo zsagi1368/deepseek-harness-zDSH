@@ -180,3 +180,36 @@ export interface PresetNameRequest {
   /** Preset name; a safe file stem of at most 64 filename characters. */
   readonly name: string
 }
+
+/** Outcome of the preinstall executor for one seed entry (§1.4). */
+export type PreinstallStatus = 'installed' | 'skipped' | 'failed'
+
+/**
+ * One line of the durable preinstall result ledger (§1.4), also the wire
+ * projection returned by `preinstallReport`. `status` is the executor's last
+ * recorded verdict for the entry; `reason` carries a failure explanation;
+ * `userUninstalled` is the tombstone that stops a later boot re-installing a
+ * plugin the operator removed.
+ */
+export interface PreinstallEntryResult {
+  readonly status: PreinstallStatus
+  /** Correction-oriented failure reason; absent or `null` on success/skip. */
+  readonly reason?: string | null
+  /** Epoch milliseconds of the transition this record reflects. */
+  readonly at: number
+  /**
+   * Tombstone: the operator uninstalled this preinstalled entry, so later
+   * passes must not resurrect it. Absent or `false` means no tombstone.
+   */
+  readonly userUninstalled?: boolean
+}
+
+/**
+ * Whole preinstall ledger as surfaced to clients (§1.4). Consumed by the
+ * plugin-center discovery-install hub. `ranAt` is the epoch of the most recent
+ * pass, `null` when no pass has ever recorded a run in this storage area.
+ */
+export interface PreinstallReport {
+  readonly ranAt: number | null
+  readonly entries: Readonly<Record<string, PreinstallEntryResult>>
+}

@@ -7,7 +7,8 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync, type Stats } from 'node:fs'
-import { dirname, join, resolve, sep } from 'node:path'
+import { basename, dirname, join, resolve, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { Context, Service, type Fiber, type FiberState } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/cordis-plugin-loader'
@@ -40,6 +41,7 @@ import {
   type NpmSpec,
 } from './install/registry-source.ts'
 import { TarExtractionError, extractNpmPackageTarball } from './install/tarball.ts'
+import { SeedPreinstaller } from './preinstall/preinstaller.ts'
 import type {
   DisablePluginRequest,
   GovernedCapabilityView,
@@ -55,6 +57,7 @@ import type {
   PluginGovernanceId,
   PluginGovernanceStatus,
   PluginIdRequest,
+  PreinstallReport,
   PresetApplicationReport,
   PresetNameRequest,
 } from './types.ts'
@@ -165,6 +168,15 @@ export interface Config {
    * single origin.
    */
   registryUrl?: string
+  /**
+   * Absolute path to the factory seed manifest (`zdsh-factory/seed.json`) the
+   * preinstall pass consumes. When unset the executor falls back to the
+   * `DSH_FACTORY_SEED` environment variable, then to the nearest ancestor of
+   * this package holding `zdsh-factory/seed.json`. A seed file that is not
+   * present makes the whole pass a no-op, so non-factory deployments and test
+   * trees are never disturbed (DESIGN-intake-tech.md §1.2).
+   */
+  seedPath?: string
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -201,6 +213,12 @@ export class PluginGovernanceGateway extends TypertRemoteService {
   static Config: z<Config> = z.object({
     storageRoot: z.string(),
     registryUrl: z.string(),
+    // New optional field, declared with schemastery's `.default` idiom (its
+    // `Schema` has no `.optional`), matching the interface's optional `seedPath`
+    // without "fixing" the pre-existing required-vs-optional drift on
+    // storageRoot/registryUrl (out of scope, DESIGN-intake-tech.md §1.2). An
+    // empty string means "not provided": the resolver then applies env / default.
+    seedPath: z.string().default(''),
   })
 
   private readonly registry: PluginRegistry
@@ -226,6 +244,8 @@ export class PluginGovernanceGateway extends TypertRemoteService {
   private readonly projectSources = new Map<PluginGovernanceId, { projectRoot: string; runtimeTier: string }>()
   /** In-flight Loader sync; concurrent triggers reuse one pass. */
   private syncing: Promise<void> | null = null
+  /** Factory seed preinstall executor (DESIGN-intake-tech.md §1.2). */
+  private readonly preinstaller: SeedPreinstaller
 
   /**
    * @param ctx - owning Host context.
@@ -254,6 +274,23 @@ export class PluginGovernanceGateway extends TypertRemoteService {
       ...(config.storageRoot === undefined ? {} : { storageRoot: config.storageRoot }),
       autoSave: false,
     })
+    // Wire the factory preinstall executor over this service's own admission
+    // channel. Paths resolve once here: the seed comes from config / env /
+    // repo-root default, and the durable result ledger shares the approvals /
+    // installed-sources data directory (§1.4).
+    const seedPath = resolveSeedPath(config.seedPath, process.env)
+    this.preinstaller = new SeedPreinstaller({
+      seedPath,
+      resultsPath: join(this.persistence.dataDir, 'preinstall-results.json'),
+      repoRoot: deriveRepoRoot(seedPath),
+      host: {
+        now: () => Date.now(),
+        warn: message => this.warn(message),
+        isRegistered: id => this.registry.get(canonicalId(id)) !== null,
+        install: request => this.install(request),
+        activate: id => this.enable({ pluginId: canonicalId(id) }),
+      },
+    })
     // Read the persisted decision snapshot up front (R1-17): every sync pass
     // re-applies it to matching plugins once they register, whether they were
     // injected directly or arrive later through the Loader mirror.
@@ -265,9 +302,17 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     this.persistence.ensureDirectories()
     this.loadApprovals()
     this.loadInstalledSources()
+    // P2 (TEST-b0-baseline §3-A): re-register storage-only installs from the
+    // provenance ledger BEFORE the Loader mirror, so `uninstall`/`get` reach
+    // them again after a restart and `restorePersistedDecisions` (the tail of
+    // the sync below) re-applies their operator enable/disable decisions.
+    await this.rebuildInstalledRoster()
     // Await the first mirror pass (L2: no async micro-window between service
     // ready and populated roster). Subsequent syncs remain lazy via list().
     await this.syncMountedPlugins()
+    // Fire-and-forget the factory preinstall pass so a broken or absent seed
+    // never delays or aborts boot (R-1.1.4); tests await the settle seam.
+    void this.preinstaller.runPass()
     this.ctx.effect(() => () => {
       void this.registry.dispose()
     }, 'plugin-governance.registryDispose')
@@ -516,6 +561,16 @@ export class PluginGovernanceGateway extends TypertRemoteService {
         this.warn(['failed to remove the installed files of', String(pluginId) + ':', describe(cause)].join(' '))
       }
     }
+    // If this was a factory-preinstalled entry, drop a durable `userUninstalled`
+    // tombstone so the next boot's preinstall pass never resurrects it (§1.2).
+    // Awaited for determinism, but best-effort: a tombstone write failure never
+    // fails the uninstall receipt — the plugin is unregistered either way and
+    // the preinstall pass is idempotent against a missing tombstone row.
+    try {
+      await this.preinstaller.recordUninstall(String(pluginId))
+    } catch (cause) {
+      this.warn(`failed to record uninstall tombstone for ${String(pluginId)}: ${describe(cause)}`)
+    }
     return succeeded(Object.freeze({ acknowledged: true }))
   }
 
@@ -728,6 +783,30 @@ export class PluginGovernanceGateway extends TypertRemoteService {
       return failed('persistence-failed', `preset ${JSON.stringify(request.name)} could not be deleted: ${describe(cause)}`)
     }
     return succeeded(Object.freeze({ acknowledged: true }))
+  }
+
+  /**
+   * Read the durable factory preinstall result ledger (§1.4): one row per seed
+   * entry recording whether it installed, was skipped, or failed, plus the
+   * `userUninstalled` tombstone. The plugin-center discovery-install hub
+   * consumes this alongside the catalog. A read-only, synchronous projection
+   * of the on-disk ledger — it triggers no install work and never fails; an
+   * absent ledger reports an empty result set.
+   * @returns the point-in-time preinstall report.
+   */
+  @Remote('preinstallReport')
+  preinstallReport(): PreinstallReport {
+    return this.preinstaller.report()
+  }
+
+  /**
+   * Await the in-flight or last factory preinstall pass to settle. Test seam
+   * mirroring {@link syncMountedPlugins}: boot calls the pass fire-and-forget,
+   * so a caller that needs the durable outcome calls this to join it.
+   * @returns when the current pass has committed or decided to write nothing.
+   */
+  settlePreinstall(): Promise<void> {
+    return this.preinstaller.runPass()
   }
 
   /**
@@ -1014,6 +1093,46 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     return join(this.persistence.storagePath, 'installed', namespace, name)
   }
 
+  /**
+   * P2 fix (TEST-b0-baseline §3-A): after a restart the in-memory governed
+   * registry is empty, yet the installed-sources provenance ledger survives,
+   * so a storage-only `npm:` install becomes unreachable — `uninstall`/`get`
+   * return `plugin-not-found` and its extracted tree is orphaned on disk.
+   * Re-register each such entry from its recorded tree, reusing the exact
+   * manifest construction and fail-closed admission gate the original install
+   * ran, but WITHOUT rewriting any durable ledger (registry.json already
+   * carries the row, and persistence.save at the next mutation refreshes it).
+   *
+   * Fail-soft and user-data-preserving: a tree that has vanished or no longer
+   * parses is skipped with a warning and its ledger row is left intact — the
+   * standing discipline that runtime user ledgers are never script-deleted.
+   */
+  private async rebuildInstalledRoster(): Promise<void> {
+    for (const [pluginId, source] of [...this.installedSources]) {
+      // A loader mirror, a live native registration, or a rebuilt sibling
+      // already owns the id — never double-register.
+      if (this.registry.get(pluginId) !== null) continue
+      const manifest = manifestFromLocalSource(source.dir)
+      if (!manifest.ok) {
+        this.warn(`failed to rebuild roster entry for ${String(pluginId)} from storage: ${manifest.error.message}`)
+        continue
+      }
+      const plugin: GovernedPlugin = { manifest: manifest.value, install: () => {}, uninstall: () => {} }
+      const registration = await this.registry.register(plugin)
+      if (!registration.success) {
+        const reasons = (registration.errors ?? []).map(error => `${error.path}: ${error.message}`).join('; ')
+        this.warn(`failed to rebuild roster entry for ${String(pluginId)}: ${reasons || 'unknown validation failure'}`)
+        continue
+      }
+      // Re-apply the same server-side gate install applied: without a stored
+      // approval decision a permission-posture plugin comes back disabled, so a
+      // restart never silently re-enables code the operator had not approved.
+      if (requiresAdmission(plugin) && !this.approvals.has(pluginId)) {
+        await this.registry.disable(pluginId, 'rebuilt from storage without a recorded admission decision')
+      }
+    }
+  }
+
   /** Hydrate the installed-source ledger once at init. */
   private loadInstalledSources(): void {
     if (!existsSync(this.installedSourcesPath)) return
@@ -1136,11 +1255,56 @@ export class PluginGovernanceGateway extends TypertRemoteService {
   }
 }
 
+/**
+ * Yield `dir` and each of its ancestors up to the filesystem root, so a
+ * nearest-ancestor search can locate the repository by its `zdsh-factory` dir.
+ */
+function* ancestorDirs(start: string): Generator<string> {
+  let dir = resolve(start)
+  for (;;) {
+    yield dir
+    const parent = dirname(dir)
+    if (parent === dir) return
+    dir = parent
+  }
+}
+
+/**
+ * Resolve which seed file the preinstall pass consumes: an explicit config
+ * path wins, then the `DSH_FACTORY_SEED` environment override, then the
+ * nearest ancestor of this module holding `zdsh-factory/seed.json`; falling
+ * all the way through, return the conventional repo-root location anyway (a
+ * path that does not exist simply makes the pass a zero-action no-op, so this
+ * never aborts boot — DESIGN-intake-tech.md §1.2).
+ */
+function resolveSeedPath(configSeedPath: string | undefined, env: NodeJS.ProcessEnv): string {
+  if (typeof configSeedPath === 'string' && configSeedPath.trim().length > 0) return resolve(configSeedPath)
+  const fromEnv = env['DSH_FACTORY_SEED']
+  if (typeof fromEnv === 'string' && fromEnv.trim().length > 0) return resolve(fromEnv)
+  const here = dirname(fileURLToPath(import.meta.url))
+  for (const dir of ancestorDirs(here)) {
+    const candidate = join(dir, 'zdsh-factory', 'seed.json')
+    if (existsSync(candidate)) return candidate
+  }
+  // Not found on disk: fall back to `packages/host/<pkg>/{src,lib}` → repo root.
+  return join(resolve(here, '..', '..', '..', '..'), 'zdsh-factory', 'seed.json')
+}
+
+/**
+ * The repository root a relative `local:` seed path resolves against. The seed
+ * normally lives at `<root>/zdsh-factory/seed.json`; for a custom path that
+ * sits elsewhere, fall back to the seed's own directory.
+ */
+function deriveRepoRoot(seedPath: string): string {
+  const seedDir = dirname(resolve(seedPath))
+  if (basename(seedDir) === 'zdsh-factory') return dirname(seedDir)
+  return seedDir
+}
+
 /** Canonical not-found message for one plugin id. */
 function noSuchPlugin(pluginId: PluginGovernanceId): string {
   return `no registered plugin ${JSON.stringify(String(pluginId))}`
 }
-
 /**
  * Deny-all sandbox defaults behind a manifest built from a plain package.json:
  * until the plugin's own `dsh.sandbox` section declares otherwise it gets no
