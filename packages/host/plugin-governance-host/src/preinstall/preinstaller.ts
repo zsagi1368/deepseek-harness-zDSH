@@ -18,10 +18,24 @@
  * wait is widened past file-work because an `npm:` install holds it across a
  * registry round trip.
  *
- * Runtime *mounting* (`ctx.loader.create` of the admitted artifact, §1.2 step
- * 4) is intentionally not performed here: no boot importer resolves the
- * governance storage area at this HEAD (Q1-F2 / TEST-b0 §2.2), so this batch
- * stops at admission + roster + ledger. That deferral is recorded, not hidden.
+ * Runtime *mounting* (§1.2 step 4, DESIGN-intake-tech.md §9.3) rides this
+ * same pass: an admitted entry that declares `enabledAtBoot: true` has each
+ * service factory exit of its OWN admitted manifest handed to the host's
+ * generic `mount` channel (`ctx.loader.create` of the fileURL, entry id
+ * `factory/<pluginId>`). The channel body is generic data — no plugin name
+ * or per-id branch exists here (M2) — and per-item fail-open: a rejecting
+ * mount (e.g. cordis `invalid plugin` for a library-only barrel) settles a
+ * queryable `mount` sub-structure on the ledger row (§9.4) without aborting
+ * the pass or touching sibling entries.
+ *
+ * ISOLATION CONTRACT, DECOUPLING DECLARATION (§9.4 bullet 4, verbatim
+ * boundary): this mount path rides the raw cordis `ctx.loader.create`
+ * channel and NOT the plugin-governance PreLoad five-check chain, so the
+ * per-item fail-open here is NOT the SymbolIsolationCheck (DESIGN §2) — a
+ * mounted artifact gains no symbol-isolation protection from this channel.
+ * A "governed mount" that wraps create into the governance guard chain is
+ * explicitly out of scope for this campaign (§9.7, batch 4.2+ separate
+ * ruling).
  * @module @deepseek-ai/dsh-plugin-governance-host/src/preinstall/preinstaller
  */
 
@@ -33,6 +47,7 @@ import type {
   GovernanceAcknowledgement,
   GovernanceResult,
   PreinstallEntryResult,
+  PreinstallMountResult,
   PreinstallReport,
 } from '../types.ts'
 import { parseSeedManifest, seedEntryContractIssue, type SeedEntry } from './seed.ts'
@@ -73,6 +88,23 @@ export interface SeedPreinstallerHost {
    * instead of failing an admission that already landed.
    */
   recordProvenance(pluginId: string, spec: string, version: string): void
+  /**
+   * Mount one admitted factory exit of one preinstalled artifact
+   * (DESIGN-intake-tech.md §9.3 step 4). Convention: the implementation
+   * forwards to `ctx.loader.create({ name: moduleUrl,
+   * id: 'factory/<pluginId>', disabled: !enabled })` and awaits settle —
+   * resolving when the entry is loaded, rejecting when the module is not a
+   * valid cordis plugin (its `invalid plugin` throw, a missing factory file)
+   * or its `apply` throws during start.
+   */
+  mount(pluginId: string, moduleUrl: string, enabled: boolean): Promise<void>
+  /**
+   * Resolve the file-URL exits one admitted artifact declares
+   * (`dsh.capabilities[].service.factory` of its own installed manifest,
+   * M-F2/M-F5). Returns `[]` when the artifact declares no service factory
+   * — that entry then has no loadable exit and is not created (§9.3).
+   */
+  resolveFactoryUrls(pluginId: string): string[]
 }
 
 /** Construction inputs the gateway resolves once (paths + host ops). */
@@ -104,6 +136,11 @@ function sameRow(a: PreinstallEntryResult, b: PreinstallEntryResult): boolean {
     && (a.reason ?? null) === (b.reason ?? null)
     && a.at === b.at
     && (a.userUninstalled === true) === (b.userUninstalled === true)
+    // The mount dimension compares its verdict, not its stamp: a re-run that
+    // resolves to the same status+reason keeps the prior `mount.at` (§9.4
+    // restart byte-identity), so churn here would mean a real transition.
+    && (a.mount?.status ?? null) === (b.mount?.status ?? null)
+    && (a.mount?.reason ?? null) === (b.mount?.reason ?? null)
 }
 
 /**
@@ -238,7 +275,14 @@ export class SeedPreinstaller {
       // channel carries its factory row (the npm: form's registry row is
       // already written by the install channel itself, dir included).
       if (entry.source.startsWith('local:')) this.requestProvenance(entry, id)
-      const changed = this.writeRow(ledger, id, { status: 'installed' }, existing)
+      // Step 4 (§9.3): boot-enabled entries additionally take the generic
+      // mount channel; a `enabledAtBoot: false` entry is never created and
+      // records the `skipped` mount dimension (§9.4) so Gate-P can tell
+      // "declared off" apart from "tried and failed" at a glance.
+      const mount = entry.enabledAtBoot
+        ? await this.mountEntry(id)
+        : { status: 'skipped' as const, reason: 'not mounted: the seed entry declares enabledAtBoot=false' }
+      const changed = this.writeRow(ledger, id, { status: 'installed', mount }, existing)
       // Activation posture is best-effort and never changes the ledger row
       // (activation is not admission): boot-enabled entries enable, and a
       // factory-off entry (`enabledAtBoot: false`, §1.1) takes the
@@ -250,6 +294,35 @@ export class SeedPreinstaller {
       return changed
     }
     return this.writeRow(ledger, id, { status: 'failed', reason: outcome.reason }, existing)
+  }
+
+  /**
+   * Drive the generic mount channel (§9.3) for one admitted, boot-enabled
+   * entry: resolve the factory exits from the artifact's OWN admitted
+   * manifest, then mount each and await settle. Fail-open per item (§9.4):
+   * the first rejecting mount settles the row's `mount` dimension as
+   * `failed` with that cause — the pass continues, siblings are untouched,
+   * nothing is thrown into boot. Zero plugin knowledge: every input is data
+   * (seed read-back + manifest factory paths, M2).
+   */
+  private async mountEntry(id: string): Promise<Omit<PreinstallMountResult, 'at'>> {
+    let urls: string[]
+    try {
+      urls = this.host.resolveFactoryUrls(id)
+    } catch (cause) {
+      return { status: 'failed', reason: `factory resolution failed: ${cause instanceof Error ? cause.message : String(cause)}` }
+    }
+    if (urls.length === 0) {
+      return { status: 'skipped', reason: 'the admitted manifest declares no service factory path' }
+    }
+    for (const url of urls) {
+      try {
+        await this.host.mount(id, url, true)
+      } catch (cause) {
+        return { status: 'failed', reason: `${url}: ${cause instanceof Error ? cause.message : String(cause)}` }
+      }
+    }
+    return { status: 'mounted' }
   }
 
   /** Run the install action; a thrown host error is a fail-open `failed`. */
@@ -289,10 +362,26 @@ export class SeedPreinstaller {
     outcome: Omit<PreinstallEntryResult, 'at'>,
     prior: PreinstallEntryResult | undefined,
   ): boolean {
-    const next: PreinstallEntryResult = {
-      ...outcome,
-      at: prior !== undefined && prior.status === outcome.status ? prior.at : this.host.now(),
+    const at = prior !== undefined && prior.status === outcome.status ? prior.at : this.host.now()
+    if (outcome.mount !== undefined) {
+      // Same stamp-preserving discipline as the row-level `at`: the mount
+      // timestamp refreshes only on a real mount-dimension transition, so a
+      // restart that resolves to the same verdict keeps the ledger bytes.
+      const priorMount = prior?.mount
+      const unchanged = priorMount !== undefined
+        && priorMount.status === outcome.mount.status
+        && (priorMount.reason ?? null) === (outcome.mount.reason ?? null)
+      const mountAt = unchanged && typeof priorMount.at === 'number' ? priorMount.at : this.host.now()
+      const next: PreinstallEntryResult = {
+        ...outcome,
+        mount: { ...outcome.mount, at: mountAt },
+        at,
+      }
+      if (prior !== undefined && sameRow(prior, next)) return false
+      ledger.entries[id] = next
+      return true
     }
+    const next: PreinstallEntryResult = { ...outcome, at }
     if (prior !== undefined && sameRow(prior, next)) return false
     ledger.entries[id] = next
     return true

@@ -7,8 +7,8 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync, type Stats } from 'node:fs'
-import { basename, dirname, join, resolve, sep } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { Context, Service, type Fiber, type FiberState } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/cordis-plugin-loader'
@@ -103,6 +103,14 @@ interface MountedEntry {
 
 interface LoaderLike {
   entries?: () => Iterable<MountedEntry>
+  /**
+   * The Loader's mount face (§9.3): creates one entry in the live tree.
+   * The governance host only ever calls this with `name` = the file URL of
+   * an admitted factory exit (M-F4) and `id` = `factory/<pluginId>`; the
+   * cordis Loader returns a promise that settles when the entry is loaded
+   * (or rejects on `invalid plugin` / a throwing apply).
+   */
+  create?: (options: { name: string; id?: string; disabled?: boolean | null }) => Promise<unknown>
 }
 
 /** Minimal structural view of one project plugin provenance record. */
@@ -263,6 +271,8 @@ export class PluginGovernanceGateway extends TypertRemoteService {
   private readonly projectSources = new Map<PluginGovernanceId, { projectRoot: string; runtimeTier: string }>()
   /** In-flight Loader sync; concurrent triggers reuse one pass. */
   private syncing: Promise<void> | null = null
+  /** Repository root the `local:` seed paths resolve against (§9.3). */
+  private readonly repoRoot: string
   /** Factory seed preinstall executor (DESIGN-intake-tech.md §1.2). */
   private readonly preinstaller: SeedPreinstaller
 
@@ -298,10 +308,11 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     // repo-root default, and the durable result ledger shares the approvals /
     // installed-sources data directory (§1.4).
     const seedPath = resolveSeedPath(config.seedPath, process.env)
+    this.repoRoot = deriveRepoRoot(seedPath)
     this.preinstaller = new SeedPreinstaller({
       seedPath,
       resultsPath: join(this.persistence.dataDir, 'preinstall-results.json'),
-      repoRoot: deriveRepoRoot(seedPath),
+      repoRoot: this.repoRoot,
       host: {
         now: () => Date.now(),
         warn: message => this.warn(message),
@@ -321,6 +332,21 @@ export class PluginGovernanceGateway extends TypertRemoteService {
           if (this.installedSources.has(pluginId)) return
           this.installedSources.set(pluginId, { kind: 'preinstall', spec, version, installedAt: Date.now() })
           this.saveInstalledSources()
+        },
+        // ── generic mount channel (§9.3) ─────────────────────────────────
+        // Both hooks are pure data plumbing: paths come from the seed
+        // read-back plus the ADMITTED artifact's own manifest, and the mount
+        // body holds no plugin name and no per-id branch (M2). Fail-open on
+        // a rejecting create is the executor's job (§9.4), so both sides
+        // surface errors by throwing, never by swallowing them here.
+        resolveFactoryUrls: id => this.factoryModuleUrls(canonicalId(id)),
+        mount: async (pluginId, moduleUrl, enabled) => {
+          const loader = this.resolveMountLoader()
+          if (loader === undefined) throw new Error('no Loader service with a create channel is mounted on this context')
+          // await settle: the cordis create resolves when the entry is
+          // loaded and rejects with `invalid plugin` / a start failure —
+          // the same await-to-settle seam syncMountedPlugins uses (§0.4).
+          await loader.create({ name: moduleUrl, id: `factory/${canonicalId(pluginId)}`, disabled: !enabled })
         },
       },
     })
@@ -896,6 +922,13 @@ export class PluginGovernanceGateway extends TypertRemoteService {
         for (const entry of loader.entries()) {
           try {
             if (entry.options.group || entry.disabled) continue
+            // Mount-channel rows (§9.3): the artifact behind a `factory/`
+            // entry was admitted and registered through the install channel
+            // already, and its options.name is a file URL — mirroring it
+            // would re-register the same code under a URL-derived id. Skip
+            // the channel's namespace prefix: a generic convention, no
+            // plugin knowledge in this body (M2).
+            if (entry.options.id.startsWith('factory/')) continue
             const fiber = entry.fiber
             if (fiber === undefined || fiber.state !== FIBER_ACTIVE) continue
             const service = resolveMountedService(fiber)
@@ -975,6 +1008,62 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     } catch {
       return undefined
     }
+  }
+
+  /**
+   * The Loader's create face when one is present on this context, else
+   * `undefined` (§9.3). Probed separately from {@link resolveLoader} because
+   * the mount channel needs only `create`, and the fake Loader doubles of
+   * unit tests may legitimately expose one face without the other. Same
+   * reflection-throw discipline as the entries probe.
+   */
+  private resolveMountLoader(): (LoaderLike & { create: NonNullable<LoaderLike['create']> }) | undefined {
+    try {
+      const candidate = (this.ctx as unknown as Partial<Record<'loader', LoaderLike>>).loader
+      if (candidate === undefined) return undefined
+      const create = candidate.create
+      if (typeof create !== 'function') return undefined
+      return candidate as LoaderLike & { create: NonNullable<LoaderLike['create']> }
+    } catch {
+      return undefined
+    }
+  }
+
+  /**
+   * Resolve the factory exits of one admitted artifact as file URLs over
+   * its installed directory (§9.3/M-F4/M-F5 — the gate-p P4 algorithm as
+   * production code): the paths come from the artifact's OWN admitted
+   * manifest (`dsh.capabilities[].service.factory`), never from a lookup
+   * table keyed by plugin. `[]` when nothing is loadable: an unregistered
+   * id, a manifest without a service factory, or a provenance row that
+   * names no source directory.
+   */
+  private factoryModuleUrls(pluginId: PluginGovernanceId): string[] {
+    const plugin = this.registry.get(pluginId)
+    if (plugin === null) return []
+    const factories = plugin.manifest.capabilities
+      .map(capability => capability.service?.factory)
+      .filter((factory): factory is string => typeof factory === 'string' && factory.trim().length > 0)
+    if (factories.length === 0) return []
+    const sourceDir = this.artifactSourceDir(pluginId)
+    if (sourceDir === null) return []
+    return factories.map(factory => pathToFileURL(resolve(sourceDir, factory.trim())).href)
+  }
+
+  /**
+   * The directory the admitted artifact's manifest was read from: an npm
+   * row owns its extracted tree under the governance storage area, and a
+   * preinstall `local:` row keeps the seed source verbatim — resolved
+   * against the repository root exactly like the executor's installSource,
+   * so both faces agree on one absolute dir.
+   */
+  private artifactSourceDir(pluginId: PluginGovernanceId): string | null {
+    const row = this.installedSources.get(pluginId)
+    if (row === undefined) return null
+    if (row.kind === 'npm') return row.dir
+    if (!row.spec.startsWith('local:')) return null
+    const rest = row.spec.slice('local:'.length)
+    return isAbsolute(rest) ? rest : resolve(this.repoRoot, rest)
   }
 
   /** Structural read view of the project plugin layer service (no package import). */

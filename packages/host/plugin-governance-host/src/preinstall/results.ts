@@ -19,6 +19,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type {
   PreinstallEntryResult,
+  PreinstallMountResult,
+  PreinstallMountStatus,
   PreinstallReport,
   PreinstallStatus,
 } from '../types.ts'
@@ -33,9 +35,31 @@ export interface PersistedPreinstallResults {
 /** The statuses the schema admits, mirroring {@link PreinstallStatus}. */
 const STATUSES: readonly PreinstallStatus[] = ['installed', 'skipped', 'failed']
 
+/** The mount outcomes the schema admits, mirroring {@link PreinstallMountStatus}. */
+const MOUNT_STATUSES: readonly PreinstallMountStatus[] = ['mounted', 'failed', 'skipped']
+
 /** Empty ledger used when no durable record exists yet. */
 export function emptyPreinstallResults(): PersistedPreinstallResults {
   return { version: 1, ranAt: null, entries: {} }
+}
+
+/**
+ * Narrow one optional `mount` sub-structure (§9.4). A missing or malformed
+ * mount dimension is dropped field-locally — the row's admission `status`
+ * stays trustworthy, which is also what keeps a version:1-era ledger (no
+ * mount column at all) readable by this code unchanged.
+ */
+function readMount(value: unknown): PreinstallMountResult | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const record = value as Record<string, unknown>
+  if (typeof record.status !== 'string' || !MOUNT_STATUSES.includes(record.status as PreinstallMountStatus)) return undefined
+  const reason = typeof record.reason === 'string' ? record.reason : null
+  const at = typeof record.at === 'number' && Number.isFinite(record.at) ? record.at : undefined
+  return {
+    status: record.status as PreinstallMountStatus,
+    ...(reason !== null ? { reason } : {}),
+    ...(at !== undefined ? { at } : {}),
+  }
 }
 
 /** Narrow one parsed entry object to a {@link PreinstallEntryResult}. */
@@ -45,9 +69,14 @@ function readEntry(value: unknown): PreinstallEntryResult | null {
   if (typeof record.status !== 'string' || !STATUSES.includes(record.status as PreinstallStatus)) return null
   if (typeof record.at !== 'number' || !Number.isFinite(record.at)) return null
   const reason = typeof record.reason === 'string' ? record.reason : null
+  const mount = readMount(record.mount)
+  // Key insertion order MATCHES the executor's writeRow (`status, reason,
+  // mount, at, userUninstalled`): a re-saved ledger must not shuffle the
+  // bytes of untouched rows when a sibling row changes.
   return {
     status: record.status as PreinstallStatus,
     ...(reason !== null ? { reason } : {}),
+    ...(mount !== undefined ? { mount } : {}),
     at: record.at,
     ...(record.userUninstalled === true ? { userUninstalled: true } : {}),
   }

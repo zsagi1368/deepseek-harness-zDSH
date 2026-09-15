@@ -196,11 +196,36 @@ export interface PresetNameRequest {
 export type PreinstallStatus = 'installed' | 'skipped' | 'failed'
 
 /**
+ * Outcome of the generic mount channel for one admitted seed entry
+ * (DESIGN-intake-tech.md §9.4, fix8): `mounted` = every factory exit the
+ * admitted artifact declared settled on the Loader; `failed` = a
+ * `loader.create` rejected (e.g. cordis `invalid plugin`), with `reason`;
+ * `skipped` = no mount was attempted (boot-disabled entry, or a manifest
+ * declaring no service factory exit).
+ */
+export type PreinstallMountStatus = 'mounted' | 'failed' | 'skipped'
+
+/**
+ * The `mount` sub-structure of a ledger row (§9.4), queryable separately
+ * from the admission `status`: an entry can be admitted (`installed`) yet
+ * fail to load (`mount.status === 'failed'`) — the K-B2 false-green mirror
+ * Gate-P asserts on this column, not only on `status`.
+ */
+export interface PreinstallMountResult {
+  readonly status: PreinstallMountStatus
+  /** Correction-oriented failure reason; absent or `null` on success/skip. */
+  readonly reason?: string | null
+  /** Epoch milliseconds of the last mount-dimension transition. */
+  readonly at?: number
+}
+
+/**
  * One line of the durable preinstall result ledger (§1.4), also the wire
  * projection returned by `preinstallReport`. `status` is the executor's last
  * recorded verdict for the entry; `reason` carries a failure explanation;
  * `userUninstalled` is the tombstone that stops a later boot re-installing a
- * plugin the operator removed.
+ * plugin the operator removed; `mount` (§9.4) is the loading dimension of the
+ * generic mount channel (§9.3), absent on rows a pass never mounted.
  */
 export interface PreinstallEntryResult {
   readonly status: PreinstallStatus
@@ -213,6 +238,8 @@ export interface PreinstallEntryResult {
    * passes must not resurrect it. Absent or `false` means no tombstone.
    */
   readonly userUninstalled?: boolean
+  /** Mount-channel outcome (§9.4); absent on rows never mounted. */
+  readonly mount?: PreinstallMountResult
 }
 
 /**

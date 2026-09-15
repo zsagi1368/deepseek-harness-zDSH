@@ -5072,7 +5072,15 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'PreinstallEntryResult',
-    declaration: 'export interface PreinstallEntryResult {\n    readonly status: PreinstallStatus;\n    readonly reason?: string | null;\n    readonly at: number;\n    readonly userUninstalled?: boolean;\n}',
+    declaration: 'export interface PreinstallEntryResult {\n    readonly status: PreinstallStatus;\n    readonly reason?: string | null;\n    readonly at: number;\n    readonly userUninstalled?: boolean;\n    readonly mount?: PreinstallMountResult;\n}',
+  },
+  {
+    name: 'PreinstallMountResult',
+    declaration: 'export interface PreinstallMountResult {\n    readonly status: PreinstallMountStatus;\n    readonly reason?: string | null;\n    readonly at?: number;\n}',
+  },
+  {
+    name: 'PreinstallMountStatus',
+    declaration: 'export type PreinstallMountStatus = \'mounted\' | \'failed\' | \'skipped\';',
   },
   {
     name: 'PreinstallReport',
