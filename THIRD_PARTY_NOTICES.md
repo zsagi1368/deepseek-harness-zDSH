@@ -68,6 +68,7 @@ External packages installed for runtime use or distributed inside the prebuilt b
 | [`compression`](https://github.com/expressjs/compression) | MIT |
 | [`diff`](https://github.com/kpdecker/jsdiff) | BSD-3-Clause |
 | [`dsh-omnivision`](https://github.com/zsagi1368/dsh-omnivision) | MIT |
+| [`dsh-webstack-bridge`](https://github.com/zsagi1368/dsh-webstack) | MIT |
 | [`dsh-webstack-verticals`](https://github.com/zsagi1368/dsh-webstack) | MIT |
 | [`e2b`](https://github.com/e2b-dev/e2b) | MIT |
 | [`electron-updater`](https://github.com/electron-userland/electron-builder) | MIT |

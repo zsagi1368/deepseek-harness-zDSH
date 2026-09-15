@@ -6029,6 +6029,9 @@ importers:
       dsh-omnivision:
         specifier: git+https://github.com/zsagi1368/dsh-omnivision.git#981840503fa6d4704acd6ea410eb30abf3365ce7
         version: https://codeload.github.com/zsagi1368/dsh-omnivision/tar.gz/981840503fa6d4704acd6ea410eb30abf3365ce7(@deepseek-ai/schemastery@vendor+schemastery)(sharp@0.35.3(@types/node@22.20.0))
+      dsh-webstack-bridge:
+        specifier: git+https://github.com/zsagi1368/dsh-webstack.git#ffa036435d383edf577c47935f21cb1d7252ea93
+        version: dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/ffa036435d383edf577c47935f21cb1d7252ea93
       dsh-webstack-verticals:
         specifier: git+https://github.com/zsagi1368/dsh-webstack.git#43732b7f7532f6fd1bdc9b5563786d0cbac7290e
         version: dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/43732b7f7532f6fd1bdc9b5563786d0cbac7290e
@@ -7273,7 +7276,7 @@ importers:
         version: link:../../../vendor/schemastery
       '@earendil-works/pi-ai':
         specifier: ^0.85.1
-        version: 0.85.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(supports-color@9.4.0)(ws@8.21.0)(zod@4.4.3)
+        version: 0.85.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.21.0)(zod@4.4.3)
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: workspace:^
@@ -15531,6 +15534,11 @@ packages:
     version: 0.0.0
     engines: {node: '>=22.19.0'}
 
+  dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/ffa036435d383edf577c47935f21cb1d7252ea93:
+    resolution: {gitHosted: true, integrity: sha512-pRpWUgpRy9pwmor5voxZtWDSbwQizoNXBep5uCZUrLtm+KxNjUDAC9gkv82IQvthYgctPJyi58HcWwLFkCTdPA==, tarball: https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/ffa036435d383edf577c47935f21cb1d7252ea93}
+    version: 0.0.0
+    engines: {node: '>=22.19.0'}
+
   dts-resolver@3.0.0:
     resolution: {integrity: sha512-1T1f+z+4tl9XD+m+0HBgWoL/nm0bOIffyWaUuUSBlFg/86IWvfx+wjNaO/ybU0AJzG9/Mi5hBUgGV6zCmWEN7Q==}
     engines: {node: ^22.18.0 || >=24.0.0}
@@ -19180,14 +19188,14 @@ snapshots:
     transitivePeerDependencies:
       - '@algolia/client-search'
 
-  '@earendil-works/pi-ai@0.85.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(supports-color@9.4.0)(ws@8.21.0)(zod@4.4.3)':
+  '@earendil-works/pi-ai@0.85.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.21.0)(zod@4.4.3)':
     dependencies:
       '@anthropic-ai/sdk': 0.123.0(zod@4.4.3)
       '@aws-sdk/client-bedrock-runtime': 3.1048.0
       '@earendil-works/pi-telemetry': 0.85.1
       '@google/genai': 1.52.0(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))
       '@smithy/node-http-handler': 4.7.3
-      http-proxy-agent: 7.0.2(supports-color@9.4.0)
+      http-proxy-agent: 7.0.2
       https-proxy-agent: 7.0.6
       openai: 6.40.0(ws@8.21.0)(zod@4.4.3)
       partial-json: 0.1.7
@@ -21687,7 +21695,7 @@ snapshots:
       cross-spawn: 7.0.6
       debug: 4.4.3(supports-color@9.4.0)
       fs-extra: 10.1.0
-      http-proxy-agent: 7.0.2(supports-color@9.4.0)
+      http-proxy-agent: 7.0.2
       https-proxy-agent: 7.0.6
       js-yaml: 4.3.1
       sanitize-filename: 1.6.4
@@ -22192,6 +22200,8 @@ snapshots:
       sharp: 0.35.3(@types/node@22.20.0)
 
   dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/43732b7f7532f6fd1bdc9b5563786d0cbac7290e: {}
+
+  dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/ffa036435d383edf577c47935f21cb1d7252ea93: {}
 
   dts-resolver@3.0.0(oxc-resolver@11.20.0):
     optionalDependencies:
@@ -23020,7 +23030,7 @@ snapshots:
       statuses: 2.0.2
       toidentifier: 1.0.1
 
-  http-proxy-agent@7.0.2(supports-color@9.4.0):
+  http-proxy-agent@7.0.2:
     dependencies:
       agent-base: 7.1.4
       debug: 4.4.3(supports-color@9.4.0)

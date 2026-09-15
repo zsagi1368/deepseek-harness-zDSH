@@ -1,8 +1,9 @@
 /**
- * Gate-P / Gate-M factory matrix — two artifacts (TC-B1-1.3b task 5, 续跑 TC-B1-1.3c;
+ * Gate-P / Gate-M factory matrix — three artifacts (TC-B1-1.3b task 5, 续跑 TC-B1-1.3c;
  * P4 真 import 探针 by TC-B2-S1b; parameterized into a per-seed-row matrix by
- * TC-B2-2.1b: the factory-off `core/webstack-verticals` pilot + the boot-enabled
- * `core/omnivision` entry).
+ * TC-B2-2.1b, extended to a third row by TC-B2-2.2b: the factory-off
+ * `core/webstack-verticals` pilot + the boot-enabled `core/omnivision` and
+ * `core/webstack-bridge` entries).
  *
  * This is the factory's OWN self-managed test surface (DESIGN-intake-tech.md §6
  * Gate-P row: "新 packages/factory（自管面）+ 根 vitest run"). It drives the real
@@ -156,6 +157,37 @@ const SHAPE_PROBES: Record<string, ShapeProbe> = {
       localOllama: { ...(defaults.localOllama as Record<string, unknown>), enabled: true, baseURL: 'https://ollama.example.com/v1' },
     }
     expect(validateConfig(broken).some(warning => /non-local/.test(warning))).toBe(true)
+  },
+  // The bridge service exit is the cordis assembly barrel published prebuilt by
+  // TC-B2-2.2a (`lib/index.js`): name + inject + Config + apply + BridgeRenderer.
+  // bridge is NOT a channel artifact — it registers no `canHandle` face (2.2a
+  // evidence: zero tools/commands/hooks; apply(ctx) provides the named `bridge`
+  // service). So per TC-B2-2.2b 卡面「无 canHandle 面则按其真实导出契约, 禁造」,
+  // the probe asserts the REAL cordis-plugin contract + its Standard Schema
+  // config validator as the discriminative pair. It never calls apply() (that
+  // starts a loopback WS server + heartbeat timers) — the zero-network /
+  // zero-timer bar the verticals canHandle and omnivision instantiation probes
+  // both hold to stays intact.
+  'core/webstack-bridge': (mod) => {
+    expect(mod.name, 'Gate-P P4: bridge factory exit exports no plugin name').toBe('bridge')
+    expect(typeof mod.apply, 'Gate-P P4: bridge factory exit exports no cordis apply()').toBe('function')
+    expect(typeof mod.BridgeRenderer, 'Gate-P P4: bridge factory exit exports no BridgeRenderer class').toBe('function')
+    // 负例（真实导出契约）：bridge 不是 channel 型工件，捏造的 canHandle 在此必
+    // 缺席——封「照抄 verticals 通道形状」的伪造，兑现卡面「无 canHandle 面」。
+    expect(mod.canHandle, 'Gate-P P4: bridge has no canHandle face (it provides a service, not a channel)').toBeUndefined()
+    // 无强依赖接缝：inject 是真实空数组（web/logger 均为 optional 探测）。
+    expect(Array.isArray(mod.inject), 'Gate-P P4: bridge inject is not an array').toBe(true)
+    expect((mod.inject as unknown[]).length, 'Gate-P P4: bridge declares unexpected hard deps').toBe(0)
+    // Config 判别对（Standard Schema V1，对应 omnivision validateConfig 的
+    // 「恒通过 / 恒拒绝」两侧逃逸封锁）：合法布尔与缺省必须过，非法类型必须拒。
+    const config = mod.Config as { '~standard': { version: number; validate: (v: unknown) => { value?: { enabled?: boolean }; issues?: unknown[] } } }
+    expect(config['~standard'].version, 'Gate-P P4: bridge Config is not Standard Schema v1').toBe(1)
+    const ok = config['~standard'].validate({ enabled: true })
+    expect(ok.issues, 'Gate-P P4: bridge Config rejected a valid boolean config').toBeUndefined()
+    expect(ok.value?.enabled, 'Gate-P P4: bridge Config dropped a valid enabled=true').toBe(true)
+    const bad = config['~standard'].validate({ enabled: 'yes' })
+    expect(Array.isArray(bad.issues), 'Gate-P P4: bridge Config accepted a non-boolean enabled (always-valid stub)').toBe(true)
+    expect(bad.value, 'Gate-P P4: bridge Config returned a coerced value for invalid input (always-valid stub)').toBeUndefined()
   },
 }
 
