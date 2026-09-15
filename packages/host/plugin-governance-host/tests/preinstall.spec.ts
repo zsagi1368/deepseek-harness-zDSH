@@ -458,6 +458,56 @@ describe('EXEC7 S1 + S2 + S3 through the gateway', () => {
     expect(ledger.entries['demo/local']?.userUninstalled).toBeUndefined()
   })
 
+  it('P-9b: the preinstall half keeps the fatal semantics after the narrowing (no warn fallback, no half-state)', async () => {
+    // P-9b (DESIGN §1.2 [P-9b 附裁]) narrows the fatal tombstone write to
+    // `provenance=preinstall` rows only; the sibling npm case in
+    // npm-install.spec.ts covers the non-preinstall fallback. This is the pair
+    // regression proving the narrowing did NOT touch the load-bearing half:
+    // the same injected writer-lock failure must still fail the receipt, and
+    // a later boot must find the plugin exactly where the failed uninstall
+    // left it (registered, un-tombstoned) — never a silently-demoted
+    // "uninstall OK + no tombstone" state a later pass would resurrect.
+    const localDir = localPluginDir('@demo/local')
+    const seedPath = writeSeed([
+      { id: 'demo/local', package: '@demo/local', version: '1.0.0', pin: 'b'.repeat(40), source: `local:${localDir}`, integrity: null, enabledAtBoot: true, family: 'demo', failPolicy: 'fail-open' },
+    ])
+    const storageRoot = mkdtempSync(join(tmpdir(), 'gov-store-'))
+    storageRoots.push(storageRoot)
+    const boot1 = await boot({ storageRoot, seedPath })
+    await boot1.gateway.settlePreinstall()
+    expect(boot1.gateway.preinstallReport().entries['demo/local']?.status).toBe('installed')
+    // The fatal half is decided by the provenance row, so pin the precondition.
+    const rows = [...(boot1.gateway as unknown as { installedSources: Map<string, Record<string, unknown>> }).installedSources.values()]
+    expect(rows.find(r => r.kind === 'preinstall')).toBeDefined()
+
+    const warnings: string[] = []
+    const internals = boot1.gateway as unknown as {
+      preinstaller: { recordUninstall: (id: string) => Promise<boolean> }
+      warn(message: string): void
+    }
+    internals.warn = (message) => { warnings.push(message) }
+    internals.preinstaller.recordUninstall = async () => { throw new Error('injected writer-lock failure') }
+
+    const removed = await boot1.gateway.uninstall({ pluginId: gid('demo/local') })
+    expect(removed.ok).toBe(false)
+    if (!removed.ok) expect(removed.error.code).toBe('persistence-failed')
+    expect(boot1.gateway.list().plugins.some(p => p.pluginId === gid('demo/local'))).toBe(true)
+    // The preinstall half must not silently demote to the P-9b warn fallback.
+    expect(warnings.filter(w => w.includes('tombstone'))).toHaveLength(0)
+
+    // Restart over the same home: the ledger still says `installed` with no
+    // tombstone and the plugin is admitted again — the failed uninstall
+    // committed nothing, so continuity, not resurrection, is what holds.
+    const boot2 = await boot({ storageRoot, seedPath })
+    await boot2.gateway.settlePreinstall()
+    expect(boot2.gateway.list().plugins.some(p => p.pluginId === gid('demo/local'))).toBe(true)
+    const ledger = JSON.parse(readFileSync(boot2.resultsPath, 'utf8')) as {
+      entries: Record<string, { status: string; userUninstalled?: boolean }>
+    }
+    expect(ledger.entries['demo/local']?.status).toBe('installed')
+    expect(ledger.entries['demo/local']?.userUninstalled).toBeUndefined()
+  })
+
   it('S3: badges a local: preinstall row, survives a restart, and never deletes the artifact tree', async () => {
     const localDir = localPluginDir('@demo/local')
     const seedPath = writeSeed([

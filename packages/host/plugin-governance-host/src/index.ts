@@ -558,21 +558,41 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     const previousStatus = this.registry.getStatus(pluginId)
     const previousApproval = this.approvals.get(pluginId)
     const previousDecision = this.persistedDecisions.get(pluginId)
+    // P-9b (DESIGN-intake-tech.md §1.2 [P-9b 附裁], TC-B1-P9 fix6): whether the
+    // `userUninstalled` tombstone is a load-bearing durable contract for THIS
+    // plugin. Its only consumer is the seed preinstall pass, and only a
+    // `provenance=preinstall` row can ever be resurrected by a later pass;
+    // every other provenance (a user-installed `npm:` artifact, a storage or
+    // loader rebuild) has no pass-resurrectable row, so its tombstone write is
+    // best-effort and must never fail the uninstall the operator asked for.
+    const tombstoneIsLoadBearing = this.installedSources.get(pluginId)?.kind === 'preinstall'
     await this.registry.unregister(pluginId)
     this.approvals.delete(pluginId)
     this.persistedDecisions.delete(pluginId)
     try {
       if (previousApproval !== undefined) this.saveApprovals()
       this.persistence.save()
-      // S1 (EXEC7 建议①): the durable `userUninstalled` tombstone is written
-      // BEFORE the storage-area tree removal, inside the same durable block —
-      // if it cannot be committed, the compensation below restores the
-      // pre-call registry state and the receipt fails, so an acknowledged
-      // uninstall can never be missing the guard that stops resurrection.
-      // (The old order wrote the tombstone after everything, best-effort: a
-      // lock-timeout or disk error there produced "uninstall OK + no
-      // tombstone", which the next preinstall pass would resurrect.)
-      await this.preinstaller.recordUninstall(String(pluginId))
+      // S1 (EXEC7 建议①): for a load-bearing (preinstall) row the durable
+      // `userUninstalled` tombstone is written BEFORE the storage-area tree
+      // removal, inside the same durable block — if it cannot be committed,
+      // the compensation below restores the pre-call registry state and the
+      // receipt fails, so an acknowledged uninstall can never be missing the
+      // guard that stops resurrection. (The old order wrote the tombstone
+      // after everything, best-effort: a lock-timeout or disk error there
+      // produced "uninstall OK + no tombstone", which the next preinstall pass
+      // would resurrect.) P-9b keeps that fatal path exactly for preinstall
+      // rows; for a non-preinstall row the same write failure falls back to
+      // non-fatal + warn — an availability-critical user operation is not
+      // gated on a durability write nothing on that path ever reads back.
+      if (tombstoneIsLoadBearing) {
+        await this.preinstaller.recordUninstall(String(pluginId))
+      } else {
+        try {
+          await this.preinstaller.recordUninstall(String(pluginId))
+        } catch (cause) {
+          this.warn(`failed to record the uninstall tombstone of ${String(pluginId)}: ${describe(cause)} (non-preinstall provenance: no preinstall-pass row exists to resurrect this plugin, so the uninstall is not rolled back)`)
+        }
+      }
     } catch (cause) {
       // Compensate both maps and the registry, restoring the pre-call status.
       restoreMapEntry(this.approvals, pluginId, previousApproval)

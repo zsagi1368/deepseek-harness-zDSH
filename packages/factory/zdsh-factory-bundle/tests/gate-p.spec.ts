@@ -26,7 +26,7 @@
  *    node_modules artifact was never touched by governance.
  */
 
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -144,12 +144,20 @@ describe('Gate-M M1 pilot lifecycle — disable → restart → uninstall → no
     expect(removed.ok).toBe(true)
     expect(pilotSummary(boot2.gateway)).toBeUndefined()
     expect(boot2.gateway.preinstallReport().entries[PILOT_ID]?.userUninstalled).toBe(true)
+    // 整改④ (EXEC8, TC-B1-CLOSER): DIRECT in-place assertion of the
+    // node_modules artifact right after the uninstall — symmetric with the
+    // governance-host S3 case — instead of only inferring survival from the
+    // step-5 reinstall succeeding.
+    expect(existsSync(join(PILOT_ABS_SOURCE, 'package.json'))).toBe(true)
 
     // 4. 不复活： the next boot's preinstall pass must NOT resurrect it.
     const boot3 = await boot(storageRoot)
     await boot3.gateway.settlePreinstall()
     expect(boot3.gateway.list().plugins.some(p => p.pluginId === gid(PILOT_ID))).toBe(false)
     expect(boot3.gateway.preinstallReport().entries[PILOT_ID]?.userUninstalled).toBe(true)
+    // 整改④ again after the no-resurrect boot: what governance refused to
+    // delete is still physically on disk at the seed's own source path.
+    expect(existsSync(join(PILOT_ABS_SOURCE, 'package.json'))).toBe(true)
 
     // 5. 重装： the operator can still install it explicitly, which also proves
     //    governance never deleted the node_modules closure (the artifact dir and

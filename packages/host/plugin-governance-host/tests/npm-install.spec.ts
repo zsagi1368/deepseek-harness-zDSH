@@ -371,6 +371,43 @@ describe('npm: installs through the gateway', () => {
     const detail = gateway.get({ pluginId: gid('@demo/plugin') })
     if (detail.ok) expect(detail.value.summary.status).toBe('disabled')
   })
+
+  it('P-9b: a tombstone write failure on an npm install warns and still completes the uninstall', async () => {
+    // P-9b (DESIGN §1.2 [P-9b 附裁], EXEC8 整改): the fatal tombstone semantics
+    // only gate `provenance=preinstall` rows — the sole rows a later preinstall
+    // pass could resurrect. An npm: install has no pass-resurrectable row, so
+    // the same injected writer-lock failure that fails the preinstall half
+    // (preinstall.spec.ts) must here be non-fatal: warn on record, uninstall
+    // completed, storage tree reclaimed.
+    const tarball = buildNpmTar([{ name: 'package/package.json', data: pluginPackageJson() }])
+    const double = registryDouble({
+      '/demo/plugin': { body: packument('https://registry.test', '1.0.0', tarball), contentType: 'application/json' },
+      '/demo/plugin/-/plugin-1.0.0.tgz': { body: tarball, contentType: 'application/x-tar' },
+    })
+    const gateway = await gatewayOn(double)
+    expect((await gateway.install({ source: 'npm:@demo/plugin@1.0.0' })).ok).toBe(true)
+    const installedDir = join(String(storageRoots.at(-1)), 'installed', 'demo', 'plugin')
+    // Pin the precondition the narrowing keys on: provenance row kind npm.
+    const rows = [...(gateway as unknown as { installedSources: Map<string, Record<string, unknown>> }).installedSources.values()]
+    expect(rows.find(r => r.kind === 'npm')).toBeDefined()
+    expect(rows.some(r => r.kind === 'preinstall')).toBe(false)
+
+    const warnings: string[] = []
+    const internals = gateway as unknown as {
+      preinstaller: { recordUninstall: (id: string) => Promise<boolean> }
+      warn(message: string): void
+    }
+    internals.warn = (message) => { warnings.push(message) }
+    internals.preinstaller.recordUninstall = async () => { throw new Error('injected writer-lock failure') }
+
+    const removed = await gateway.uninstall({ pluginId: gid('@demo/plugin') })
+    expect(removed.ok).toBe(true)
+    // The warning is on record and names both the failed write and its cause.
+    expect(warnings.some(w => w.includes('tombstone') && w.includes('injected writer-lock failure'))).toBe(true)
+    // Uninstall semantics fully intact: gone from the roster, tree reclaimed.
+    expect(gateway.list().plugins.some(p => p.pluginId === gid('@demo/plugin'))).toBe(false)
+    expect(existsSync(installedDir)).toBe(false)
+  })
 })
 
 describe('configuration surface', () => {
