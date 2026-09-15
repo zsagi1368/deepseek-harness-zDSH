@@ -160,6 +160,25 @@ The host governance service. It owns one PluginRegistry and one PluginPersistenc
 @Remote('presetDelete') presetDelete(request: PresetNameRequest): GovernanceResult<GovernanceAcknowledgement>
 
 /**
+ * Read the durable factory preinstall result ledger (§1.4): one row per seed
+ * entry recording whether it installed, was skipped, or failed, plus the
+ * `userUninstalled` tombstone. The plugin-center discovery-install hub
+ * consumes this alongside the catalog. A read-only, synchronous projection
+ * of the on-disk ledger — it triggers no install work and never fails; an
+ * absent ledger reports an empty result set.
+ * @returns the point-in-time preinstall report.
+ */
+@Remote('preinstallReport') preinstallReport(): PreinstallReport
+
+/**
+ * Await the in-flight or last factory preinstall pass to settle. Test seam
+ * mirroring {@link syncMountedPlugins}: boot calls the pass fire-and-forget,
+ * so a caller that needs the durable outcome calls this to join it.
+ * @returns when the current pass has committed or decided to write nothing.
+ */
+settlePreinstall(): Promise<void>
+
+/**
  * Mirror the Cordis Loader's currently mounted plugin entries into the
  * governed registry, so the roster and the plugin-manager UI report real
  * production data instead of an empty list. Each entry is wrapped through

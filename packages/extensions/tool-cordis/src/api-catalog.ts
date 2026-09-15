@@ -1489,6 +1489,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'a receipt, or `preset-not-found` / `request-invalid` / `persistence-failed`.',
       },
       {
+        signature: '@Remote(\'preinstallReport\') preinstallReport(): PreinstallReport',
+        description: 'Read the durable factory preinstall result ledger (§1.4): one row per seed entry recording whether it installed, was skipped, or failed, plus the `userUninstalled` tombstone. The plugin-center discovery-install hub consumes this alongside the catalog. A read-only, synchronous projection of the on-disk ledger — it triggers no install work and never fails; an absent ledger reports an empty result set.',
+        parameters: [],
+        returns: 'the point-in-time preinstall report.',
+      },
+      {
+        signature: 'settlePreinstall(): Promise<void>',
+        description: 'Await the in-flight or last factory preinstall pass to settle. Test seam mirroring syncMountedPlugins: boot calls the pass fire-and-forget, so a caller that needs the durable outcome calls this to join it.',
+        parameters: [],
+        returns: 'when the current pass has committed or decided to write nothing.',
+      },
+      {
         signature: 'async syncMountedPlugins(): Promise<void>',
         description: 'Mirror the Cordis Loader\'s currently mounted plugin entries into the governed registry, so the roster and the plugin-manager UI report real production data instead of an empty list. Each entry is wrapped through the governance Cordis adapter in mirror mode: lifecycle stays owned by Cordis, and the operator\'s mount decision in the loader configuration counts as the admission decision. One entry failing to wrap or register never blocks the rest; already-mirrored ids are skipped on re-runs.\n\nRuns once at service init and is re-triggered by every `list`/`health` read so entries mounted after this service can still appear.',
         parameters: [],
@@ -5057,6 +5069,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'PostToolDecision',
     declaration: 'export type PostToolDecision = {\n    kind: \'accept\';\n    content?: ContentBlock[];\n    value?: never;\n    additionalContexts?: UserMessage[];\n} | {\n    kind: \'accept\';\n    value: JsonValue;\n    content?: never;\n    additionalContexts?: UserMessage[];\n} | {\n    kind: \'block\';\n    feedback: ContentBlock[];\n    additionalContexts?: UserMessage[];\n};',
+  },
+  {
+    name: 'PreinstallEntryResult',
+    declaration: 'export interface PreinstallEntryResult {\n    readonly status: PreinstallStatus;\n    readonly reason?: string | null;\n    readonly at: number;\n    readonly userUninstalled?: boolean;\n}',
+  },
+  {
+    name: 'PreinstallReport',
+    declaration: 'export interface PreinstallReport {\n    readonly ranAt: number | null;\n    readonly entries: Readonly<Record<string, PreinstallEntryResult>>;\n}',
+  },
+  {
+    name: 'PreinstallStatus',
+    declaration: 'export type PreinstallStatus = \'installed\' | \'skipped\' | \'failed\';',
   },
   {
     name: 'PreparedAdapterCall',

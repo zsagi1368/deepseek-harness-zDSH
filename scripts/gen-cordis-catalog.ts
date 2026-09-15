@@ -785,6 +785,7 @@ export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   GovernanceHealthReport: 'governance health view is owned by packages/host/plugin-governance-host/src/types.ts',
   PresetNameRequest: 'governance preset identity request is owned by packages/host/plugin-governance-host/src/types.ts',
   PresetApplicationReport: 'governance preset application report is owned by packages/host/plugin-governance-host/src/types.ts',
+  PreinstallReport: 'governance factory preinstall result ledger is owned by packages/host/plugin-governance-host/src/types.ts',
   // zDSH project-plugin-root layer vocabulary (S-43).
   MountResult: 'project plugin mount result is owned by packages/plugins/plugin-project-root/src/plugin.ts',
   ProjectPluginCandidate: 'project plugin discovery candidate is owned by packages/plugins/plugin-project-root/src/discover.ts',
