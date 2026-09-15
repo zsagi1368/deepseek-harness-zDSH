@@ -6,8 +6,8 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "dsh-webstack-verticals": "git+https://github.com/zsagi1368/dsh-webstack.git#43732b7f7532f6fd1bdc9b5563786d0cbac7290e",
-    "dsh-omnivision": "git+https://github.com/zsagi1368/dsh-omnivision.git#981840503fa6d4704acd6ea410eb30abf3365ce7",
+    "dsh-webstack-verticals": "git+https://github.com/zsagi1368/dsh-webstack.git#956df1b0797127746039baee4ca26805b2f4ad4d",
+    "dsh-omnivision": "git+https://github.com/zsagi1368/dsh-omnivision.git#060da4ddda444fc874250b6e7021b1b201ca1943",
     "dsh-webstack-bridge": "git+https://github.com/zsagi1368/dsh-webstack.git#ffa036435d383edf577c47935f21cb1d7252ea93"
   }
 }

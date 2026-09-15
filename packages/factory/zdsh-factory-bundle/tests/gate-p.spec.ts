@@ -41,9 +41,17 @@
  *    instantiation shape plus tool-registry and validateConfig discriminative
  *    positive/negative pairs (same anti-always-true discipline). It asserts the
  *    import + export contract, not a full governance-boot instantiation.
+ *  - P5 (TC-B2-23D): the mount layer above import — the real governance mount
+ *    channel (`ctx.loader.create` via the SeedPreinstaller) is driven over a
+ *    throwaway home + the genuine cordis Loader. bridge + omnivision mount
+ *    LOADED off the shipped seed; verticals is proven mountable via a sandbox
+ *    forced mount (`x-vertical` resolves + canHandle 判别对) while its production
+ *    row stays skipped; a broken barrel row fails MOUNT only with siblings
+ *    mounted (fail-open lock); and an entry unload/remount recheck closes the
+ *    A-card lifecycle leftover (service withdraws on dispose, returns on remount).
  */
 
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -52,11 +60,13 @@ import { Context, Service } from '@deepseek-ai/cordis'
 import PluginGovernanceGateway, { type PluginGovernanceId } from '../../../host/plugin-governance-host/src/index.ts'
 
 const storageRoots: string[] = []
+const scratchDirs: string[] = []
 const contexts: Context[] = []
 
 afterEach(async () => {
   await Promise.all(contexts.splice(0).map(ctx => ctx.fiber.dispose()))
   for (const root of storageRoots.splice(0)) rmSync(root, { recursive: true, force: true })
+  for (const dir of scratchDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
 })
 
 /** Brand a raw id for gateway calls. */
@@ -362,5 +372,248 @@ describe.each(seed.entries)('Gate-P P4 (matrix) — real import() of every servi
       const mod = (await import(pathToFileURL(factoryAbs).href)) as Record<string, unknown>
       SHAPE_PROBES[row.id]!(mod)
     }
+  })
+})
+
+// ============================================================================
+// Gate-P P5 — real `loader.create` MOUNT probes (TC-B2-23D, DESIGN §9.5-D).
+// P4 above proves `import()` + export shape; P5 proves each artifact is a VALID
+// cordis plugin that the governance mount channel (TC-B2-23A) actually loads:
+// the entry reaches LOADED (fiber ACTIVE) and its capability is live off the
+// context — the "can import" vs "can mount" gap §9.5 closed. It drives the real
+// SeedPreinstaller over a throwaway home + the genuine cordis Loader (V2 §5-1,
+// non-fake). verticals is exercised at a SANDBOX forced posture (enabledAtBoot
+// =true) to prove its mountability + provide `x-vertical`; its PRODUCTION seed
+// row stays disabled (FIX9) — asserted in the P1 matrix and the skipped ledger
+// check below. omnivision's ported apply returns the plugin and records it via
+// `mountedFor` but registers NO cordis-named service (a契约偏差 flagged in the
+// TC-B2-23D receipt), so its mount-success signal is the entry reaching ACTIVE
+// plus a live plugin construction, not a `ctx.get('vision')`.
+// ============================================================================
+
+// The full seed rows (mount fixtures need the executor contract fields — pin /
+// package / version / failPolicy — not just the three the matrix column narrows).
+interface FullSeedRow {
+  readonly id: string
+  readonly package: string
+  readonly version: string
+  readonly pin: string
+  readonly source: string
+  readonly integrity: string | null
+  readonly enabledAtBoot: boolean
+  readonly family: string
+  readonly failPolicy: string
+}
+const FULL_SEED = (JSON.parse(readFileSync(SEED_PATH, 'utf8')) as { entries: FullSeedRow[] }).entries
+
+/** A throwaway directory registered for cleanup. */
+function scratch(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'gate-p-p5-'))
+  scratchDirs.push(dir)
+  return dir
+}
+
+/** Copy a real seed row onto its absolute in-repo `local:` source (with overrides). */
+function mountRow(id: string, overrides: Partial<FullSeedRow> = {}): FullSeedRow {
+  const base = FULL_SEED.find(entry => entry.id === id)
+  if (base === undefined) throw new Error(`Gate-P P5: seed is missing the ${id} row`)
+  const merged = { ...base, ...overrides }
+  return { ...merged, source: `local:${localSourceDir(merged)}` }
+}
+
+/** A seed document over given rows, written to a scratch dir. */
+function writeMountSeed(rows: FullSeedRow[]): string {
+  const path = join(scratch(), 'seed.json')
+  writeFileSync(path, JSON.stringify({ version: 1, entries: rows }))
+  return path
+}
+
+/** Boot a gateway over a throwaway home with the REAL cordis Loader mounted. */
+async function bootRealLoader(seedPath: string): Promise<{ ctx: Context; gateway: PluginGovernanceGateway }> {
+  const ctx = new Context()
+  contexts.push(ctx)
+  const { Loader } = await import('@deepseek-ai/cordis-plugin-loader')
+  await ctx.plugin(Loader)
+  const storageRoot = mkdtempSync(join(tmpdir(), 'gate-p-p5-home-'))
+  storageRoots.push(storageRoot)
+  const gateway = new PluginGovernanceGateway(ctx, { storageRoot, seedPath })
+  const self = gateway as unknown as Record<symbol, () => Promise<void>>
+  await self[Service.init]!.call(self)
+  return { ctx, gateway }
+}
+
+/** Read one row's first declared service factory as a file URL (manifest-driven). */
+function firstFactoryHref(row: FullSeedRow): string {
+  const sourceDir = localSourceDir(row)
+  const manifest = JSON.parse(readFileSync(join(sourceDir, 'package.json'), 'utf8')) as {
+    dsh?: { capabilities?: Array<{ service?: { factory?: string } }> }
+  }
+  const factory = (manifest.dsh?.capabilities ?? [])
+    .map(cap => cap.service?.factory)
+    .find((f): f is string => typeof f === 'string' && f.length > 0)
+  if (factory === undefined) throw new Error(`Gate-P P5: ${row.id} declares no service factory`)
+  return pathToFileURL(resolve(sourceDir, factory)).href
+}
+
+/** `ctx.get` for a service that may throw when absent (cordis unresolvable). */
+function tryGet(ctx: Context, name: string): unknown {
+  try {
+    return (ctx as unknown as { get: (n: string) => unknown }).get(name)
+  } catch {
+    return undefined
+  }
+}
+
+/** The fiber-state view of one mounted loader entry (ACTIVE === 2). */
+function entryState(ctx: Context, channelId: string): number | undefined {
+  const entry = (ctx as unknown as {
+    loader: { resolve: (id: string) => { fiber?: unknown } }
+  }).loader.resolve(channelId)
+  return (entry.fiber as { state?: number } | undefined)?.state
+}
+
+// The P5 authored-per-artifact capability probes — the §9.5-D③ data-table
+// extension of SHAPE_PROBES (same "authored per contract, not a harness gap"
+// qualification the fix8 design ruled for escalate 2.2b-§3). Runs after a real
+// mount; asserts the loaded entry + its live capability off the context.
+type MountProbe = (ctx: Context, row: FullSeedRow) => void | Promise<void>
+const MOUNT_PROBES: Record<string, MountProbe> = {
+  'core/webstack-bridge': (ctx) => {
+    // bridge's apply provides the named `bridge` service (2.2a contract).
+    expect(entryState(ctx, 'factory/core/webstack-bridge'), 'Gate-P P5: bridge entry not ACTIVE').toBe(2)
+    expect(tryGet(ctx, 'bridge'), 'Gate-P P5: bridge mounted but `bridge` service did not resolve').toBeTruthy()
+  },
+  'core/omnivision': async (ctx, row) => {
+    // omnivision provides no cordis service; entry ACTIVE is the mount proof,
+    // plus its admitted barrel constructs a live plugin (zero network/timer).
+    expect(entryState(ctx, 'factory/core/omnivision'), 'Gate-P P5: omnivision entry not ACTIVE').toBe(2)
+    const mod = (await import(firstFactoryHref(row))) as Record<string, unknown>
+    expect(typeof mod.apply, 'Gate-P P5: omnivision exit has no cordis apply()').toBe('function')
+    const scratchCtx = { provide: () => {}, effect: () => {}, logger: { info: () => {}, warn: () => {} } }
+    const plugin = (mod.apply as (c: unknown) => { processMessage: unknown; stats: () => { providers: number } })(scratchCtx)
+    expect(typeof plugin.processMessage, 'Gate-P P5: mounted omnivision plugin lacks processMessage').toBe('function')
+    expect(typeof plugin.stats().providers, 'Gate-P P5: mounted omnivision plugin stats invalid').toBe('number')
+  },
+}
+
+// §9.5-D①: a boot-enabled local: seed row with no P5 mount probe is a module-
+// level hard error (mirrors the P4 "no shape probe" anti-drift lock). verticals
+// is NOT boot-enabled (production false → skipped), so it needs no table probe;
+// its mountability rides the explicit sandbox test below.
+for (const row of FULL_SEED) {
+  if (row.enabledAtBoot && row.source.startsWith('local:') && MOUNT_PROBES[row.id] === undefined) {
+    throw new Error(`Gate-P P5: boot-enabled local: seed row ${row.id} ships without a mount probe (DESIGN §9.5-D①)`)
+  }
+}
+
+describe('Gate-P P5 — real mount spectrum over the three artifacts + fail-open + lifecycle', () => {
+  it('production boot: bridge + omnivision mount LOADED, verticals stays skipped (FIX9)', async () => {
+    // The shipped seed posture (verticals false, omnivision + bridge true),
+    // mounted through the real channel: the two boot-enabled rows load and their
+    // probes pass; the verticals row is tried-by-nothing and records skipped.
+    const { ctx, gateway } = await bootRealLoader(SEED_PATH)
+    await gateway.settlePreinstall()
+
+    const report = gateway.preinstallReport()
+    expect(report.entries['core/webstack-bridge']?.status).toBe('installed')
+    expect(report.entries['core/webstack-bridge']?.mount?.status).toBe('mounted')
+    expect(report.entries['core/omnivision']?.status).toBe('installed')
+    expect(report.entries['core/omnivision']?.mount?.status).toBe('mounted')
+    // verticals production stays factory-off: never mounted, ledger skipped.
+    expect(report.entries['core/webstack-verticals']?.status).toBe('installed')
+    expect(report.entries['core/webstack-verticals']?.mount?.status).toBe('skipped')
+    expect(report.entries['core/webstack-verticals']?.mount?.reason).toMatch(/enabledAtBoot=false/)
+    expect(tryGet(ctx, 'x-vertical'), 'Gate-P P5: verticals must NOT be mounted in the production posture').toBeUndefined()
+
+    // Run the authored capability probes for the two boot-enabled rows.
+    for (const id of ['core/webstack-bridge', 'core/omnivision']) {
+      await MOUNT_PROBES[id]!(ctx, FULL_SEED.find(row => row.id === id)!)
+    }
+  })
+
+  it('sandbox verticals forced mount: LOADED, x-vertical resolves, canHandle 判别对 (reuses 23C 自证)', async () => {
+    // FIX9: production verticals stays disabled; mountability is proven HERE by
+    // forcing enabledAtBoot=true on a scratch row and driving the real channel.
+    const { ctx, gateway } = await bootRealLoader(writeMountSeed([mountRow('core/webstack-verticals', { enabledAtBoot: true })]))
+    await gateway.settlePreinstall()
+
+    expect(gateway.preinstallReport().entries['core/webstack-verticals']?.mount?.status).toBe('mounted')
+    expect(entryState(ctx, 'factory/core/webstack-verticals'), 'Gate-P P5: verticals entry not ACTIVE').toBe(2)
+    const service = tryGet(ctx, 'x-vertical') as {
+      channel: { id: string }
+      canHandle: (hints: unknown) => boolean
+    }
+    expect(service, 'Gate-P P5: mounted verticals `x-vertical` service did not resolve').toBeTruthy()
+    expect(service.channel.id).toBe('x-vertical')
+    // 判别对（正/负各一，封恒真/恒假桩，与 P4 canHandle 同源口径）：限域命中、
+    // 域外与空 hints 均不命中。
+    expect(service.canHandle({ hard: [], soft: [], siteFilter: 'x.com' })).toBe(true)
+    expect(service.canHandle({ hard: [], soft: [], siteFilter: 'example.com' })).toBe(false)
+    expect(service.canHandle({ hard: [], soft: [] })).toBe(false)
+  })
+
+  it('fail-open regression lock: a broken factory row fails MOUNT only, siblings unaffected', async () => {
+    // §9.5-D②: inject a library-only barrel (no apply → cordis `invalid plugin`)
+    // beside the two real boot-enabled artifacts. The broken row's ADMISSION
+    // still lands installed, its MOUNT is failed, and both real siblings mount.
+    const brokenDir = scratch()
+    writeFileSync(join(brokenDir, 'package.json'), JSON.stringify({
+      name: '@fixture/p5-barrel',
+      version: '1.0.0',
+      dsh: {
+        autoApprove: true,
+        compatible: '>=0.0.0',
+        capabilities: [{ type: 'service', service: { name: 'p5-barrel/widget', factory: './index.js', singleton: true } }],
+      },
+    }))
+    writeFileSync(join(brokenDir, 'index.js'), 'export const LIB_ONLY = "no apply, no default: a pure library barrel"\n')
+    const brokenRow: FullSeedRow = {
+      id: 'fixture/p5-barrel',
+      package: '@fixture/p5-barrel',
+      version: '1.0.0',
+      pin: 'd'.repeat(40),
+      source: `local:${brokenDir}`,
+      integrity: null,
+      enabledAtBoot: true,
+      family: 'fixture',
+      failPolicy: 'fail-open',
+    }
+    const { gateway } = await bootRealLoader(writeMountSeed([
+      brokenRow,
+      mountRow('core/webstack-bridge'),
+      mountRow('core/omnivision'),
+    ]))
+    await gateway.settlePreinstall()
+
+    const report = gateway.preinstallReport()
+    expect(report.entries['fixture/p5-barrel']?.status).toBe('installed')
+    expect(report.entries['fixture/p5-barrel']?.mount?.status).toBe('failed')
+    expect(report.entries['fixture/p5-barrel']?.mount?.reason).toMatch(/invalid plugin/)
+    // 兄弟不受累（同一 pass 内两件真件均 mounted）：fail-open per-item 隔离铁证。
+    expect(report.entries['core/webstack-bridge']?.mount?.status).toBe('mounted')
+    expect(report.entries['core/omnivision']?.mount?.status).toBe('mounted')
+  })
+
+  it('entry unload/reload recheck (A 卡遗留①): dispose → service unresolvable → remount restores', async () => {
+    // §9.5-A① / 批次 2.3 M1 装载面复验: mount verticals (sandbox forced), observe
+    // `x-vertical` live, dispose the loader entry fiber, observe the service is
+    // withdrawn, then re-create and observe it resolved again.
+    const { ctx, gateway } = await bootRealLoader(writeMountSeed([mountRow('core/webstack-verticals', { enabledAtBoot: true })]))
+    await gateway.settlePreinstall()
+    expect(tryGet(ctx, 'x-vertical'), 'Gate-P P5: pre-dispose x-vertical should resolve').toBeTruthy()
+
+    const channelId = 'factory/core/webstack-verticals'
+    const loader = (ctx as unknown as {
+      loader: {
+        resolve: (id: string) => { fiber?: { dispose?: () => Promise<unknown> | unknown } }
+        create: (o: { name: string; id?: string; disabled?: boolean | null }) => Promise<unknown>
+      }
+    }).loader
+    await loader.resolve(channelId).fiber?.dispose?.()
+    expect(tryGet(ctx, 'x-vertical'), 'Gate-P P5: x-vertical still resolves after the mount entry was disposed').toBeUndefined()
+
+    // 重挂恢复: re-create the same channel id from the artifact's factory exit.
+    await loader.create({ name: firstFactoryHref(mountRow('core/webstack-verticals')), id: channelId, disabled: false })
+    expect(tryGet(ctx, 'x-vertical'), 'Gate-P P5: x-vertical did not come back after a remount').toBeTruthy()
   })
 })

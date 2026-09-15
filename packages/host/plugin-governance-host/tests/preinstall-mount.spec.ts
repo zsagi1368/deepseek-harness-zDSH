@@ -14,11 +14,13 @@
  *  - REAL loader track: the genuine cordis Loader over tmpdir fixtures and
  *    the three REAL factory-bundle artifacts. bridge is the LIVE smoke
  *    (V2 §5-1, non-fake-only): the real `ctx.loader.create` settles and the
- *    `bridge` service resolves off the context. verticals/omnivision are
- *    library-only barrels today, so their create MUST reject with cordis
- *    `invalid plugin` — the expected-red ledger rows are the design intent
- *    (§9.5 card A③): when cards B/C land the adapter exits, these very
- *    assertions flip to `mounted`; nobody sneaks the rows out of the table.
+ *    `bridge` service resolves off the context. verticals/omnivision were
+ *    library-only barrels at the A card's landing (create rejected `invalid
+ *    plugin` → the expected-red ledger rows); cards B (omnivision cordis-adapter
+ *    060da4d) and C (verticals apply entry 956df1b) have since turned them into
+ *    valid cordis plugins, so per §9.5-A③ ("when B/C land the adapter exits,
+ *    these very assertions flip to mounted; nobody sneaks the rows out of the
+ *    table") the TC-B2-23D re-pin below flips those rows to `mounted` verbatim.
  *  - Fail-open iron proof: within ONE pass the valid sibling mounts while a
  *    barrel row lands `mount:'failed'`, the pass never aborts, and the
  *    roster stays clean because the mirror skips the generic `factory/`
@@ -337,12 +339,14 @@ describe('mount channel over the REAL cordis loader — the three real artifacts
     expect(gateway.list().plugins.filter(plugin => String(plugin.pluginId).includes('file')).length).toBe(0)
   })
 
-  it('EXPECTED RED (design intent, §9.5-A③): verticals and omnivision barrels fail with invalid plugin while the bridge sibling mounts', async () => {
-    // Production seed posture + the verticals flip to enabledAtBoot=true
-    // (the card-C posture, exercised early per「勿现在偷偷排除」): both
-    // barrels MUST be tried and MUST land failed rows until B/C ship their
-    // apply exits. When they do, these assertions flip to mounted verbatim.
-    const { gateway } = await bootGatewayWithRealLoader(writeSeed([
+  it('翻正 (TC-B2-23D, was EXPECTED RED §9.5-A③): verticals + omnivision now mount through their B/C adapter exits', async () => {
+    // Cards B (omnivision cordis-adapter) and C (verticals apply entry) shipped;
+    // the re-pin put them under node_modules, so the two rows the A card left as
+    // `failed` now settle `mounted`. verticals is exercised at the sandbox
+    // forced posture (enabledAtBoot=true) to prove mountability — its PRODUCTION
+    // seed row stays `false` (FIX9), asserted skipped in the fake-loader track
+    // and the restart byte-identity below.
+    const { ctx, gateway } = await bootGatewayWithRealLoader(writeSeed([
       rowOf('core/webstack-verticals', { enabledAtBoot: true }),
       rowOf('core/omnivision'),
       rowOf('core/webstack-bridge'),
@@ -350,17 +354,30 @@ describe('mount channel over the REAL cordis loader — the three real artifacts
     await gateway.settlePreinstall()
 
     const report = gateway.preinstallReport()
-    // Two expected-failed table rows (回执件三):
-    // | core/webstack-verticals | installed | mount:failed | invalid plugin |
-    // | core/omnivision         | installed | mount:failed | invalid plugin |
+    // | core/webstack-verticals | installed | mount:mounted | (x-vertical resolves) |
+    // | core/omnivision         | installed | mount:mounted | (entry reaches LOADED) |
     expect(report.entries['core/webstack-verticals']?.status).toBe('installed')
-    expect(report.entries['core/webstack-verticals']?.mount?.status).toBe('failed')
-    expect(report.entries['core/webstack-verticals']?.mount?.reason).toMatch(/invalid plugin/)
+    expect(report.entries['core/webstack-verticals']?.mount?.status).toBe('mounted')
+    expect(report.entries['core/webstack-verticals']?.mount?.reason).toBeUndefined()
     expect(report.entries['core/omnivision']?.status).toBe('installed')
-    expect(report.entries['core/omnivision']?.mount?.status).toBe('failed')
-    expect(report.entries['core/omnivision']?.mount?.reason).toMatch(/invalid plugin/)
+    expect(report.entries['core/omnivision']?.mount?.status).toBe('mounted')
+    expect(report.entries['core/omnivision']?.mount?.reason).toBeUndefined()
     // Sibling live evidence inside the same pass: fail-open 不连坐.
     expect(report.entries['core/webstack-bridge']?.mount?.status).toBe('mounted')
+    // Entry LOADED (fiber ACTIVE=2) through the real tree, not just the ledger.
+    for (const id of ['core/webstack-verticals', 'core/omnivision']) {
+      const entry = ctx.loader.resolve(`factory/${id}`)
+      expect((entry.fiber as unknown as { state?: number } | undefined)?.state, `${id} entry did not reach ACTIVE`).toBe(2)
+    }
+    // verticals' apply provides a real cordis service `x-vertical` that resolves
+    // off the parent context (mirrors the bridge `bridge`-service smoke above).
+    expect(ctx.get('x-vertical')).toBeTruthy()
+    // NOTE (契约偏差, 回执 §9.5-D): omnivision's ported apply returns the plugin
+    // and records it via `mountedFor(ctx)`; it registers NO cordis-named
+    // service, so there is no `ctx.get('vision')` — the entry reaching ACTIVE
+    // (asserted above) is its mount-success signal, and its capability face is
+    // the P4 barrel probe (createOmnivisionPlugin / getTool). Gate-P P5 carries
+    // the deeper omnivision capability + lifecycle checks.
     // Pass completed: all three admitted rows are in the roster.
     for (const id of ['core/webstack-verticals', 'core/omnivision', 'core/webstack-bridge']) {
       expect(gateway.list().plugins.some(plugin => plugin.pluginId === cid(id))).toBe(true)
@@ -392,11 +409,13 @@ describe('mount channel over the REAL cordis loader — the three real artifacts
     const gateway2 = new PluginGovernanceGateway(ctx2, { storageRoot, seedPath })
     await (gateway2 as unknown as Record<symbol, () => Promise<void>>)[Service.init]!.call(gateway2 as never)
     await gateway2.settlePreinstall()
-    // 逐字节：mount 列（mounted/failed+reason/skipped）重启后不得漂移。
+    // 逐字节：mount 列（mounted/skipped+reason）重启后不得漂移。B/C 落地后
+    // 生产三行的 mount 列 = verticals skipped（enabledAtBoot=false）+
+    // omnivision/bridge mounted（TC-B2-23D 翻正，原 omnivision 为 failed）。
     expect(readFileSync(ledger(storageRoot), 'utf8')).toBe(bytes1)
     const parsed = JSON.parse(bytes1) as { entries: Record<string, { mount?: { status: string; at?: number } }> }
     expect(parsed.entries['core/webstack-verticals']?.mount?.status).toBe('skipped')
-    expect(parsed.entries['core/omnivision']?.mount?.status).toBe('failed')
+    expect(parsed.entries['core/omnivision']?.mount?.status).toBe('mounted')
     expect(parsed.entries['core/webstack-bridge']?.mount?.status).toBe('mounted')
     expect(typeof parsed.entries['core/webstack-bridge']?.mount?.at).toBe('number')
   })

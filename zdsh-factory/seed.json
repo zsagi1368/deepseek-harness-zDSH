@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-15T16:19:05Z",
-  "$comment": "zDSH 出厂预装清单（seed manifest）。schema 冻结见 DESIGN-intake-tech.md §1.1（B4 案）。[DESIGN-D1] 两态 source 约定：每个 entry 的 source ∈ { \"local:<仓内解析路径>\", \"npm:<name>@<ver>\" }；integrity 语义随 source 两态——local: 态本战役留 null（工件由 pnpm 供应链落盘：git pin + lockfile 内容寻址承载同等供应链强度，不重复发明目录树哈希），npm: 态必填 sha512（复用既有 install/registry-source.ts tarball 校验面）。generatedAt 由 seed 填充时写入 ISO-8601。〔TC-B1-1.3c 首发：已灌 webstack-verticals 试点单件；TC-B2-2.1b 加灌 omnivision（enabledAtBoot=true=出厂即用功能件，与 verticals 相反，依据=用户定义「开箱即用」+V1 命运表）；TC-B2-2.2b 加灌 webstack-bridge（enabledAtBoot=true=webstack 数据面链路件非 opt-in，family=webstack 与 verticals 同族）；Gate-P 三件矩阵探针见 packages/factory/zdsh-factory-bundle/tests/gate-p.spec.ts〕entries 增项须配 Gate-P 探针。本文件为根级数据文件、非 workspace 包，不触 pnpm-workspace.yaml。",
+  "generatedAt": "2026-09-15T19:06:09Z",
+  "$comment": "zDSH 出厂预装清单（seed manifest）。schema 冻结见 DESIGN-intake-tech.md §1.1（B4 案）。[DESIGN-D1] 两态 source 约定：每个 entry 的 source ∈ { \"local:<仓内解析路径>\", \"npm:<name>@<ver>\" }；integrity 语义随 source 两态——local: 态本战役留 null（工件由 pnpm 供应链落盘：git pin + lockfile 内容寻址承载同等供应链强度，不重复发明目录树哈希），npm: 态必填 sha512（复用既有 install/registry-source.ts tarball 校验面）。generatedAt 由 seed 填充时写入 ISO-8601。〔TC-B1-1.3c 首发：已灌 webstack-verticals 试点单件；TC-B2-2.1b 加灌 omnivision（enabledAtBoot=true=出厂即用功能件，与 verticals 相反，依据=用户定义「开箱即用」+V1 命运表）；TC-B2-2.2b 加灌 webstack-bridge（enabledAtBoot=true=webstack 数据面链路件非 opt-in，family=webstack 与 verticals 同族）；Gate-P 三件矩阵探针见 packages/factory/zdsh-factory-bundle/tests/gate-p.spec.ts；TC-B2-23D re-pin：omnivision pin 9818405→060da4d（TC-B2-23B cordis-adapter 移植件）、verticals pin 43732b7→956df1b（TC-B2-23C 装配入口件），二者由纯库 barrel 转为具名 apply 可挂件（Gate-P P5 真 mount 探针见同一 spec，verticals 出厂 enabledAtBoot 维持 false 不变，可挂性由 P5 沙箱强制 mount 证）〕entries 增项须配 Gate-P 探针。本文件为根级数据文件、非 workspace 包，不触 pnpm-workspace.yaml。",
   "entryFields": {
     "id": "治理规范 id（namespace/name，normalizePluginId 同空间）",
     "package": "npm 包名（解析锚）",
@@ -18,7 +18,7 @@
       "id": "core/webstack-verticals",
       "package": "dsh-webstack-verticals",
       "version": "0.2.0",
-      "pin": "43732b7f7532f6fd1bdc9b5563786d0cbac7290e",
+      "pin": "956df1b0797127746039baee4ca26805b2f4ad4d",
       "source": "local:packages/factory/zdsh-factory-bundle/node_modules/dsh-webstack-verticals/packages/verticals",
       "integrity": null,
       "enabledAtBoot": false,
@@ -29,7 +29,7 @@
       "id": "core/omnivision",
       "package": "dsh-omnivision",
       "version": "0.1.0-alpha",
-      "pin": "981840503fa6d4704acd6ea410eb30abf3365ce7",
+      "pin": "060da4ddda444fc874250b6e7021b1b201ca1943",
       "source": "local:packages/factory/zdsh-factory-bundle/node_modules/dsh-omnivision",
       "integrity": null,
       "enabledAtBoot": true,

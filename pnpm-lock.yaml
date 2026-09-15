@@ -6027,14 +6027,14 @@ importers:
   packages/factory/zdsh-factory-bundle:
     dependencies:
       dsh-omnivision:
-        specifier: git+https://github.com/zsagi1368/dsh-omnivision.git#981840503fa6d4704acd6ea410eb30abf3365ce7
-        version: https://codeload.github.com/zsagi1368/dsh-omnivision/tar.gz/981840503fa6d4704acd6ea410eb30abf3365ce7(@deepseek-ai/schemastery@vendor+schemastery)(sharp@0.35.3(@types/node@22.20.0))
+        specifier: git+https://github.com/zsagi1368/dsh-omnivision.git#060da4ddda444fc874250b6e7021b1b201ca1943
+        version: https://codeload.github.com/zsagi1368/dsh-omnivision/tar.gz/060da4ddda444fc874250b6e7021b1b201ca1943(@deepseek-ai/schemastery@vendor+schemastery)(sharp@0.35.3(@types/node@22.20.0))
       dsh-webstack-bridge:
         specifier: git+https://github.com/zsagi1368/dsh-webstack.git#ffa036435d383edf577c47935f21cb1d7252ea93
         version: dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/ffa036435d383edf577c47935f21cb1d7252ea93
       dsh-webstack-verticals:
-        specifier: git+https://github.com/zsagi1368/dsh-webstack.git#43732b7f7532f6fd1bdc9b5563786d0cbac7290e
-        version: dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/43732b7f7532f6fd1bdc9b5563786d0cbac7290e
+        specifier: git+https://github.com/zsagi1368/dsh-webstack.git#956df1b0797127746039baee4ca26805b2f4ad4d
+        version: dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/956df1b0797127746039baee4ca26805b2f4ad4d
 
   packages/feedback/command-feedback:
     dependencies:
@@ -15516,8 +15516,8 @@ packages:
     resolution: {integrity: sha512-uBq4egWHTcTt33a72vpSG0z3HnPuIl6NqYcTrKEg2azoEyl2hpW0zqlxysq2pK9HlDIHyHyakeYaYnSAwd8bow==}
     engines: {node: '>=12'}
 
-  dsh-omnivision@https://codeload.github.com/zsagi1368/dsh-omnivision/tar.gz/981840503fa6d4704acd6ea410eb30abf3365ce7:
-    resolution: {gitHosted: true, integrity: sha512-YBpRCydo6LmqPO4ItQs//xrI577kCN4ObpEQM0IB8HwyXeR2P8kF4duLHZsAG5zsmT/W2/1g3rC2HDITBXm64A==, tarball: https://codeload.github.com/zsagi1368/dsh-omnivision/tar.gz/981840503fa6d4704acd6ea410eb30abf3365ce7}
+  dsh-omnivision@https://codeload.github.com/zsagi1368/dsh-omnivision/tar.gz/060da4ddda444fc874250b6e7021b1b201ca1943:
+    resolution: {gitHosted: true, integrity: sha512-H06/BSCu/rDvu5Pjpfv1/i067AjAvHiiQwZCFbpkkOH+a1gOn8EkTNSb0zUD/Zz5EH/Rs0SjeKNgyUyYd/8njg==, tarball: https://codeload.github.com/zsagi1368/dsh-omnivision/tar.gz/060da4ddda444fc874250b6e7021b1b201ca1943}
     version: 0.1.0-alpha
     engines: {node: '>=22.19.0'}
     peerDependencies:
@@ -15529,8 +15529,8 @@ packages:
       sharp:
         optional: true
 
-  dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/43732b7f7532f6fd1bdc9b5563786d0cbac7290e:
-    resolution: {gitHosted: true, integrity: sha512-/WHhnLiux0XI8XruJz3pOOvLvca/4q3l+MLjPD4Z025GlMHDLleLcxlmBF/IncQ9b5/IAhbc2hMyVJ1BPLG5vw==, tarball: https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/43732b7f7532f6fd1bdc9b5563786d0cbac7290e}
+  dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/956df1b0797127746039baee4ca26805b2f4ad4d:
+    resolution: {gitHosted: true, integrity: sha512-3E5WBV9hQgWNoMEZUr7h0jtkl9zXdUpNXgNNW9dabvPCA+JUsF9JR2ld1j6UTKJ0J9mmPwu7Ep7J9oTdrJw/+g==, tarball: https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/956df1b0797127746039baee4ca26805b2f4ad4d}
     version: 0.0.0
     engines: {node: '>=22.19.0'}
 
@@ -22194,12 +22194,12 @@ snapshots:
 
   dotenv@16.6.1: {}
 
-  dsh-omnivision@https://codeload.github.com/zsagi1368/dsh-omnivision/tar.gz/981840503fa6d4704acd6ea410eb30abf3365ce7(@deepseek-ai/schemastery@vendor+schemastery)(sharp@0.35.3(@types/node@22.20.0)):
+  dsh-omnivision@https://codeload.github.com/zsagi1368/dsh-omnivision/tar.gz/060da4ddda444fc874250b6e7021b1b201ca1943(@deepseek-ai/schemastery@vendor+schemastery)(sharp@0.35.3(@types/node@22.20.0)):
     optionalDependencies:
       '@deepseek-ai/schemastery': link:vendor/schemastery
       sharp: 0.35.3(@types/node@22.20.0)
 
-  dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/43732b7f7532f6fd1bdc9b5563786d0cbac7290e: {}
+  dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/956df1b0797127746039baee4ca26805b2f4ad4d: {}
 
   dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/ffa036435d383edf577c47935f21cb1d7252ea93: {}
 
