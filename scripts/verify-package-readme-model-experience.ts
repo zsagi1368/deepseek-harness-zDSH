@@ -66,6 +66,7 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/llm/model-slots': { kind: 'indirect', reason: 'The registry only selects the provider/model pair auxiliary requests use; request assembly and the provider adapters own everything the model sees.' },
   'packages/preset/agent-presets': { kind: 'indirect', reason: 'The mount installs a preset\'s own plugins, which own every model-facing registration it makes visible.' },
   'packages/plugins/plugin-project-root': { kind: 'none', reason: 'Host-side discovery, clamping, and mounting; the mounted plugins own every model-facing registration they make.' },
+  'packages/factory/zdsh-factory-bundle': { kind: 'none', reason: 'Private git-pinned dependency manifest for factory seed artifacts; it executes no code and registers nothing model-facing.' },
   'packages/typert/registry': { kind: 'none', reason: 'Runtime type registry; consumers (cordis_inspect, wire faces, gates) own any model-visible projection of registry contents.' },
   'packages/typert/loader': { kind: 'none', reason: 'Loader integration only registers generated artifacts; consumers own any model-visible projection.' },
   'packages/e2b/e2b': { kind: 'none', reason: 'The shared remote-runtime owner registers no model context; provider adapters and consumers own rendered effects.' },

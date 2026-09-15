@@ -6024,6 +6024,12 @@ importers:
         specifier: ^18.2.0
         version: 18.3.1
 
+  packages/factory/zdsh-factory-bundle:
+    dependencies:
+      dsh-webstack-verticals:
+        specifier: git+https://github.com/zsagi1368/dsh-webstack.git#6e31341044598a19f78fe0cff886bc9b4ab7dfb2
+        version: dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/6e31341044598a19f78fe0cff886bc9b4ab7dfb2
+
   packages/feedback/command-feedback:
     dependencies:
       zod:
@@ -15504,6 +15510,11 @@ packages:
     resolution: {integrity: sha512-uBq4egWHTcTt33a72vpSG0z3HnPuIl6NqYcTrKEg2azoEyl2hpW0zqlxysq2pK9HlDIHyHyakeYaYnSAwd8bow==}
     engines: {node: '>=12'}
 
+  dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/6e31341044598a19f78fe0cff886bc9b4ab7dfb2:
+    resolution: {gitHosted: true, integrity: sha512-EqTP3/qfccLeBdojmNA8mlQfLXCPSG62SRrwigRgtdO3kvX64xjcWOjuoJoO5rfLAzpsNo8+2sbWmm5vYO+96w==, tarball: https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/6e31341044598a19f78fe0cff886bc9b4ab7dfb2}
+    version: 0.0.0
+    engines: {node: '>=22.19.0'}
+
   dts-resolver@3.0.0:
     resolution: {integrity: sha512-1T1f+z+4tl9XD+m+0HBgWoL/nm0bOIffyWaUuUSBlFg/86IWvfx+wjNaO/ybU0AJzG9/Mi5hBUgGV6zCmWEN7Q==}
     engines: {node: ^22.18.0 || >=24.0.0}
@@ -22158,6 +22169,8 @@ snapshots:
       dotenv: 16.6.1
 
   dotenv@16.6.1: {}
+
+  dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/6e31341044598a19f78fe0cff886bc9b4ab7dfb2: {}
 
   dts-resolver@3.0.0(oxc-resolver@11.20.0):
     optionalDependencies:
