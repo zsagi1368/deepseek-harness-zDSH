@@ -485,3 +485,6 @@
     # choice.
     - id: llm-deepseek
       name: '@deepseek-ai/dsh-llm-deepseek'
+
+    - id: plugin-governance
+      name: '@deepseek-ai/dsh-plugin-governance-host'
