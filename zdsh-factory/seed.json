@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "generatedAt": null,
+  "$comment": "zDSH 出厂预装清单（seed manifest）空骨架。schema 冻结见 DESIGN-intake-tech.md §1.1（B4 案）。[DESIGN-D1] 两态 source 约定：每个 entry 的 source ∈ { \"local:<仓内解析路径>\", \"npm:<name>@<ver>\" }；integrity 语义随 source 两态——local: 态本战役留 null（工件由 pnpm 供应链落盘：git pin + lockfile 内容寻址承载同等供应链强度，不重复发明目录树哈希），npm: 态必填 sha512（复用既有 install/registry-source.ts tarball 校验面）。generatedAt 由后续 seed 生成器在填充 entries 时写入 ISO-8601；本骨架手维持故留 null。entries 增项须配 Gate-P 探针（见同目录 README.md）。本文件为根级数据文件、非 workspace 包，不触 pnpm-workspace.yaml。",
+  "entryFields": {
+    "id": "治理规范 id（namespace/name，normalizePluginId 同空间）",
+    "package": "npm 包名（解析锚）",
+    "version": "精确 semver（继承 V25 仅精确版策略）",
+    "pin": "供应链 pin：40-hex git 提交号（对齐 PluginRegistry 五规则之 40-hex pin）",
+    "source": "两态：local:<仓内解析路径> | npm:<name>@<ver>",
+    "integrity": "npm: 态必填 sha512；local: 态本战役留 null（[DESIGN-D1]）",
+    "enabledAtBoot": "boolean（verticals=false：出厂装好+默认关，包自述 opt-in）",
+    "family": "族标签（webstack/-bridge/-verticals 同族批量）",
+    "failPolicy": "本战役唯一合法值 fail-open（保留字段满足 R-1.1.4 可查询失败）"
+  },
+  "entries": []
+}
