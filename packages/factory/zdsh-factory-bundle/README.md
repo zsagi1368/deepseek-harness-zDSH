@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Declare, as git URL + full commit pins, every plugin the zDSH factory seeds at first boot. The governance `SeedPreinstaller` admits each pinned artifact in place through the existing `install({ source: 'local:<dir>' })` channel; this package never moves, copies, or deletes the artifacts. Its only consumer is the factory preinstall pass, and its smallest entry point is one `dependencies` row. Batch 1.3 pilots a single artifact, `dsh-webstack-verticals`.
+Declare, as git URL + full commit pins, every plugin the zDSH factory seeds at first boot. The governance `SeedPreinstaller` admits each pinned artifact in place through the existing `install({ source: 'local:<dir>' })` channel; this package never moves, copies, or deletes the artifacts. Its only consumer is the factory preinstall pass, and its smallest entry point is one `dependencies` row. Batch 2 pins two artifacts: `dsh-webstack-verticals` (the factory-off pilot) and `dsh-omnivision` (boot-enabled).
 
 ## Table of Contents
 
@@ -35,8 +35,8 @@ Nothing here enters a request prefix, so provider cache reuse is unaffected.
 ## Known Limitations and Deferred Work
 
 - No runtime invariant companion is published; this package is a private dependency manifest with no executable source and no mutable runtime state to assert invariants over.
-- A git dependency clones the repository root, so `dsh-webstack-verticals` resolves to the WebStack monorepo and the seed's `local:` source points at its `packages/verticals` subdirectory.
-- Only the batch-1.3 pilot artifact is pinned; the remaining intake plugins are added in later batches.
+- A git dependency clones the repository root, so `dsh-webstack-verticals` resolves to the WebStack monorepo and the seed's `local:` source points at its `packages/verticals` subdirectory; `dsh-omnivision` is a single-package repository, so its source points straight at `node_modules/dsh-omnivision`.
+- Two artifacts are pinned (verticals + omnivision); the remaining intake plugins are added in later batches.
 
 ### Dev Note
 

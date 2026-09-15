@@ -1,36 +1,45 @@
 /**
- * Gate-P / Gate-M factory pilot — single item (TC-B1-1.3b task 5, 续跑 TC-B1-1.3c).
+ * Gate-P / Gate-M factory matrix — two artifacts (TC-B1-1.3b task 5, 续跑 TC-B1-1.3c;
+ * P4 真 import 探针 by TC-B2-S1b; parameterized into a per-seed-row matrix by
+ * TC-B2-2.1b: the factory-off `core/webstack-verticals` pilot + the boot-enabled
+ * `core/omnivision` entry).
  *
  * This is the factory's OWN self-managed test surface (DESIGN-intake-tech.md §6
  * Gate-P row: "新 packages/factory（自管面）+ 根 vitest run"). It drives the real
  * governance gateway against the REAL repository seed (`zdsh-factory/seed.json`)
- * and the REAL cold-installed artifact under
+ * and the REAL cold-installed artifacts under
  * `packages/factory/zdsh-factory-bundle/node_modules/...`, over a throwaway
  * storage root standing in for a fresh `DSH_HOME`.
  *
  * Note on placement: the root vitest lane glob covers package tests at the path
  * form "packages/<group>/<package>/tests", which has no rule for a two-level
  * "packages/factory/tests", and the design forbids standing up a new lane /
- * editing the shared vitest config — so the pilot lives inside the bundle
+ * editing the shared vitest config — so the matrix lives inside the bundle
  * package ("packages/factory/zdsh-factory-bundle/tests", the same self-managed
  * assembly) and still runs under the existing "pnpm vitest run".
  *
- * What it proves (the batch-1.3 pilot acceptance slice):
- *  - P1 first boot: the seed's single `core/webstack-verticals` row is admitted,
- *    appears in list(), is DEFAULT DISABLED (enabledAtBoot=false, K-B2: assert the
- *    status column not merely the row), badges provenance 'preinstall' + source native.
- *  - P1 idempotency: a restart over the same home re-settles to a byte-identical
- *    result ledger and the same roster.
- *  - M1 lifecycle: disabled → still disabled on restart → uninstall (tombstone) →
- *    a later boot never resurrects → explicit reinstall brings it back and the
- *    node_modules artifact was never touched by governance.
- *  - P4 (TC-B2-S1b): the manifest's service `factory` is re-pinned to a
- *    prebuilt-inclusive tree, so a real `import()` of that exit (the verticals
- *    `lib/index.js` pure-library barrel) must resolve AND hand back the
- *    `XVerticalChannel` shape — this settles the F8/U-1 loading-semantics doubt
- *    (a service factory pointing at a library re-export) with evidence, not
- *    argument. It asserts only the import + export contract, not a full
- *    governance-boot instantiation.
+ * What it proves (the batch-2 acceptance slice, per seed row):
+ *  - P1 first boot: every seed row is admitted, appears in list(), lands the
+ *    boot posture the seed ITSELF declares (`enabledAtBoot` → 'active', else
+ *    the K-B2 DEFAULT-DISABLED check), and badges provenance 'preinstall' +
+ *    source native. The verticals row is the disabled case; the omnivision row
+ *    is the boot-enabled case (出厂即用功能件, TC-B2-2.1b).
+ *  - P1 idempotency: a restart over the same home re-settles to a
+ *    byte-identical result ledger covering BOTH rows (逐字节), and both roster
+ *    postures survive.
+ *  - M1 lifecycle (verticals pilot, unchanged): disabled → still disabled on
+ *    restart → uninstall (tombstone) → a later boot never resurrects → explicit
+ *    reinstall brings it back and the node_modules artifact was never touched
+ *    by governance.
+ *  - P4: every service `factory` declared by an admitted artifact's OWN
+ *    manifest is iterated (ADJ 建议-3: no more `.find()`-first-only), re-pinned
+ *    to a prebuilt-inclusive tree (existsSync lock), truly `import()`ed once,
+ *    and shape-probed — verticals: `XVerticalChannel` with canHandle 正负例
+ *    (x.com → true; foreign site and empty hints → false, sealing the
+ *    always-true-stub escape); omnivision: `createOmnivisionPlugin`
+ *    instantiation shape plus tool-registry and validateConfig discriminative
+ *    positive/negative pairs (same anti-always-true discipline). It asserts the
+ *    import + export contract, not a full governance-boot instantiation.
  */
 
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
@@ -59,15 +68,110 @@ function gid(value: string): PluginGovernanceId {
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..')
 const SEED_PATH = join(REPO_ROOT, 'zdsh-factory', 'seed.json')
 
-// The single pilot artifact id and its on-disk directory, read back from the
-// seed itself so the test can never drift from the shipped manifest.
-const PILOT_ID = 'core/webstack-verticals'
-const seed = JSON.parse(readFileSync(SEED_PATH, 'utf8')) as {
-  entries: Array<{ id: string; source: string }>
+/** The three seed columns this matrix walks. Everything else is prose. */
+interface SeedRow {
+  readonly id: string
+  readonly source: string
+  readonly enabledAtBoot: boolean
 }
+const seed = JSON.parse(readFileSync(SEED_PATH, 'utf8')) as { entries: SeedRow[] }
+
+/** Resolve a seed row's `local:` artifact directory, rejecting other states. */
+function localSourceDir(row: SeedRow): string {
+  if (!row.source.startsWith('local:')) {
+    throw new Error(`Gate-P: seed row ${row.id} declares a non-local source (${row.source}); the probe matrix only walks local: artifacts`)
+  }
+  return resolve(REPO_ROOT, row.source.slice('local:'.length))
+}
+
+// The M1 lifecycle pilot stays on verticals; its id, entry and on-disk
+// directory are read back from the seed so the test can never drift from the
+// shipped manifest.
+const PILOT_ID = 'core/webstack-verticals'
 const pilotEntry = seed.entries.find(entry => entry.id === PILOT_ID)
 if (pilotEntry === undefined) throw new Error(`the repository seed is missing the ${PILOT_ID} pilot entry`)
-const PILOT_ABS_SOURCE = resolve(REPO_ROOT, pilotEntry.source.slice('local:'.length))
+const PILOT_ABS_SOURCE = localSourceDir(pilotEntry)
+
+/**
+ * Per-artifact P4 shape probes, keyed by the seed id they belong to. Each
+ * receives the already-imported factory module and asserts the live export
+ * shape; every assertion is deterministic and never touches the network (the
+ * same bar the verticals canHandle probe set in S1b).
+ */
+type ShapeProbe = (mod: Record<string, unknown>) => void
+
+const SHAPE_PROBES: Record<string, ShapeProbe> = {
+  // The verticals service exit is its `XVerticalChannel` barrel (S1b probe):
+  // stable id + deterministic canHandle + run.
+  'core/webstack-verticals': (mod) => {
+    const VerticalChannelCtor = mod.XVerticalChannel
+    expect(
+      typeof VerticalChannelCtor,
+      'Gate-P P4: factory module import() resolved but exports no XVerticalChannel constructor',
+    ).toBe('function')
+    const channel = new (VerticalChannelCtor as new () => {
+      id: string
+      canHandle: (hints: unknown) => boolean
+      run: unknown
+    })()
+    expect(channel.id).toBe('x-vertical')
+    expect(typeof channel.run).toBe('function')
+    // 正例：x.com 限域须出手，佐证导出的确是活实现。
+    expect(channel.canHandle({ hard: [], soft: [], siteFilter: 'x.com' })).toBe(true)
+    // 负例（TC-REVIEW-EXEC11 建议-3 / TC-B2-2.1b 卡面「ADJ 建议-3 封恒 true 逃逸」）：
+    // 域外站点与空 hints 均必须不出手——恒 true 桩在此红灯。
+    expect(channel.canHandle({ hard: [], soft: [], siteFilter: 'example.com' })).toBe(false)
+    expect(channel.canHandle({ hard: [], soft: [] })).toBe(false)
+  },
+  // The omnivision service exit is the plugin assembly barrel published
+  // prebuilt by TC-B2-2.1a (`dist/index.js`): factory + class + tool registry
+  // + config validator. Construction composes provider objects only — zero
+  // network, zero timers — so a disposable instance is probed for real.
+  'core/omnivision': (mod) => {
+    expect(typeof mod.createOmnivisionPlugin, 'Gate-P P4: omnivision factory exit exports no createOmnivisionPlugin').toBe('function')
+    expect(typeof mod.OmniVisionPlugin, 'Gate-P P4: omnivision factory exit exports no OmniVisionPlugin class').toBe('function')
+    expect(typeof mod.DEFAULT_CONFIG, 'Gate-P P4: omnivision factory exit exports no DEFAULT_CONFIG').toBe('object')
+    const plugin = (mod.createOmnivisionPlugin as (ctx: unknown) => {
+      processMessage: unknown
+      callTool: unknown
+      stats: () => { providers: number }
+      dispose: () => void
+    })({ config: mod.DEFAULT_CONFIG, workspace: tmpdir() })
+    expect(typeof plugin.processMessage, 'Gate-P P4: instantiated plugin lacks processMessage').toBe('function')
+    expect(typeof plugin.callTool, 'Gate-P P4: instantiated plugin lacks callTool').toBe('function')
+    expect(typeof plugin.stats().providers).toBe('number')
+    plugin.dispose()
+    // 判别对（同 canHandle 正负例纪律，封「恒有/恒空」两侧逃逸）：真实出厂
+    // 工具必须带 handler 在场，捏造名必须缺席——恒定义的桩注册表在此红灯。
+    const getTool = mod.getTool as (name: string) => { handler: unknown } | undefined
+    expect(getTool('vision_crop')?.handler, 'Gate-P P4: vision_crop registered but carries no handler').toBeTypeOf('function')
+    expect(getTool('vision__definitely_not_registered')).toBeUndefined()
+    // validateConfig 判别对：出厂默认（负例）不得报 non-local 警告；故意配坏
+    // localOllama.baseURL（正例）必须报——恒 [] 与恒 warn 两种桩同时红灯。
+    const validateConfig = mod.validateConfig as (config: Record<string, unknown>) => string[]
+    const defaults = mod.DEFAULT_CONFIG as Record<string, unknown>
+    expect(validateConfig(defaults).some(warning => /non-local/.test(warning))).toBe(false)
+    const broken = {
+      ...defaults,
+      localOllama: { ...(defaults.localOllama as Record<string, unknown>), enabled: true, baseURL: 'https://ollama.example.com/v1' },
+    }
+    expect(validateConfig(broken).some(warning => /non-local/.test(warning))).toBe(true)
+  },
+}
+
+// The seed is the single source of truth: a seed row without a P4 probe here is
+// a hard error, mechanically enforcing the seed.json discipline「entries 增项
+// 须配 Gate-P 探针」(TC-B2-2.1b 卡面双件矩阵的防漂移锁).
+for (const row of seed.entries) {
+  if (SHAPE_PROBES[row.id] === undefined) {
+    throw new Error(`Gate-P: seed row ${row.id} ships without a P4 shape probe (seed.json discipline: "entries 增项须配 Gate-P 探针")`)
+  }
+}
+
+/** The roster status a seed row's boot posture must land on (K-B2: status column, not just the row). */
+function expectedBootStatus(row: SeedRow): 'active' | 'disabled' {
+  return row.enabledAtBoot ? 'active' : 'disabled'
+}
 
 interface Boot {
   gateway: PluginGovernanceGateway
@@ -89,26 +193,29 @@ function pilotSummary(gateway: PluginGovernanceGateway) {
   return gateway.list().plugins.find(plugin => plugin.pluginId === gid(PILOT_ID))
 }
 
-describe('Gate-P pilot (single item) — real seed + real cold-installed artifact', () => {
-  it('first boot admits verticals, keeps it DEFAULT DISABLED, and badges factory provenance', async () => {
+describe.each(seed.entries)('Gate-P P1 (matrix) — real seed + real cold-installed artifact: $id', (row) => {
+  it('first boot admits it, lands the seed-declared boot posture, and badges factory provenance', async () => {
     const storageRoot = mkdtempSync(join(tmpdir(), 'gate-p-home-'))
     storageRoots.push(storageRoot)
     const { gateway } = await boot(storageRoot)
     await gateway.settlePreinstall()
 
     // Admitted exactly once, clean install status.
-    expect(gateway.preinstallReport().entries[PILOT_ID]?.status).toBe('installed')
+    expect(gateway.preinstallReport().entries[row.id]?.status).toBe('installed')
 
-    // Present in the roster, and — the K-B2 anti-false-green check — actually
-    // DISABLED (seed enabledAtBoot=false), not merely listed.
-    const summary = pilotSummary(gateway)
+    // Present in the roster, and — the K-B2 anti-false-green check — actually in
+    // the posture the seed row itself declares: verticals DEFAULT DISABLED
+    // (enabledAtBoot=false), omnivision boot-ENABLED (enabledAtBoot=true).
+    const summary = gateway.list().plugins.find(plugin => plugin.pluginId === gid(row.id))
     expect(summary).toBeDefined()
-    expect(summary?.status).toBe('disabled')
+    expect(summary?.status).toBe(expectedBootStatus(row))
     expect(summary?.source).toBe('native')
     expect(summary?.provenance).toBe('preinstall')
   })
+})
 
-  it('a restart over the same home re-settles to a byte-identical ledger', async () => {
+describe('Gate-P pilot — restart idempotency over the whole seed', () => {
+  it('a restart over the same home re-settles BOTH ledger rows byte-identically', async () => {
     const storageRoot = mkdtempSync(join(tmpdir(), 'gate-p-home-'))
     storageRoots.push(storageRoot)
 
@@ -118,17 +225,26 @@ describe('Gate-P pilot (single item) — real seed + real cold-installed artifac
 
     const boot2 = await boot(storageRoot)
     await boot2.gateway.settlePreinstall()
+    // 逐字节：台账整体（含两件行 + ranAt）重启后必须一毫不差。
     expect(readFileSync(boot2.resultsPath, 'utf8')).toBe(bytes1)
 
-    // Roster still holds the disabled preinstall after the restart too.
-    const summary = pilotSummary(boot2.gateway)
-    expect(summary).toBeDefined()
-    expect(summary?.status).toBe('disabled')
-    expect(summary?.provenance).toBe('preinstall')
+    // The ledger really carries exactly the seed's rows, both installed.
+    const ledger = JSON.parse(bytes1) as { entries: Record<string, { status: string }> }
+    expect(Object.keys(ledger.entries).sort()).toEqual(seed.entries.map(entry => entry.id).sort())
+    for (const row of seed.entries) expect(ledger.entries[row.id]?.status).toBe('installed')
+
+    // Roster postures survive the restart for every row (verticals disabled,
+    // omnivision active), still badged preinstall.
+    for (const row of seed.entries) {
+      const summary = boot2.gateway.list().plugins.find(plugin => plugin.pluginId === gid(row.id))
+      expect(summary).toBeDefined()
+      expect(summary?.status).toBe(expectedBootStatus(row))
+      expect(summary?.provenance).toBe('preinstall')
+    }
   })
 })
 
-describe('Gate-M M1 pilot lifecycle — disable → restart → uninstall → no-resurrect → reinstall', () => {
+describe('Gate-M M1 pilot lifecycle (verticals) — disable → restart → uninstall → no-resurrect → reinstall', () => {
   it('walks the five-step operator lifecycle without ever deleting the node_modules artifact', async () => {
     const storageRoot = mkdtempSync(join(tmpdir(), 'gate-p-home-'))
     storageRoots.push(storageRoot)
@@ -176,55 +292,43 @@ describe('Gate-M M1 pilot lifecycle — disable → restart → uninstall → no
   })
 })
 
-describe('Gate-P P4 — real import() of the factory service exit (F8/U-1 loading-semantics probe)', () => {
-  it('dynamically imports the verticals service factory module and asserts the XVerticalChannel shape', async () => {
-    // The exit under probe is the installed artifact's OWN manifest declaration —
-    // read the service `factory` path back from its package.json so this test can
-    // never drift from what governance would actually load (mirrors reading the
-    // seed above rather than hard-coding a relative path).
-    const manifest = JSON.parse(readFileSync(join(PILOT_ABS_SOURCE, 'package.json'), 'utf8')) as {
+describe.each(seed.entries)('Gate-P P4 (matrix) — real import() of every service factory: $id', (row) => {
+  it('imports each declared factory exit and runs the artifact shape probe', async () => {
+    const sourceDir = localSourceDir(row)
+    // The exits under probe are the installed artifact's OWN manifest
+    // declarations — read the service `factory` paths back from its
+    // package.json so this test can never drift from what governance would
+    // actually load (mirrors reading the seed above rather than hard-coding a
+    // relative path).
+    const manifest = JSON.parse(readFileSync(join(sourceDir, 'package.json'), 'utf8')) as {
       dsh?: { capabilities?: Array<{ service?: { factory?: string } }> }
     }
-    const factoryRel = manifest.dsh?.capabilities
-      ?.map(cap => cap.service?.factory)
-      .find((factory): factory is string => typeof factory === 'string' && factory.length > 0)
-    if (factoryRel === undefined) {
-      throw new Error('the installed verticals manifest declares no service factory path')
+    // 多 factory 遍历（ADJ 建议-3：不再 `.find()` 只取首个）：manifest 声明几
+    // 条 service factory，就逐条装载几条。
+    const factories = (manifest.dsh?.capabilities ?? [])
+      .map(cap => cap.service?.factory)
+      .filter((factory): factory is string => typeof factory === 'string' && factory.length > 0)
+    if (factories.length === 0) {
+      throw new Error(`the installed ${row.id} manifest declares no service factory path`)
     }
-    const factoryAbs = resolve(PILOT_ABS_SOURCE, factoryRel)
 
-    // F8/U-1 前置事实：service factory 指向 lib/ 纯库产物，必须先物理落盘。旧
-    // pin（6e31341）树只有 src/ 而无 lib/，装载契约在磁盘层即不成立；re-pin
-    // 43732b7（prebuilt-inclusive 树）后 lib/index.js 才存在。断言文件存在把
-    // "pin 未含 lib" 这一回归锁死为红灯，而不是让下面的 import 抛出难懂的错。
-    expect(
-      existsSync(factoryAbs),
-      `Gate-P P4: verticals service factory '${factoryRel}' is absent under ${PILOT_ABS_SOURCE} — the pinned tree is not prebuilt-inclusive`,
-    ).toBe(true)
+    for (const factoryRel of factories) {
+      const factoryAbs = resolve(sourceDir, factoryRel)
 
-    // 装载语义实证：真 import() 一次 factory 出口（纯库 re-export barrel），
-    // 销 F8/U-1——不是纸面推断，是把 dsh manifest 里那条 factory 路径交给
-    // Node ESM 装载器实际跑一遍。
-    const mod = (await import(pathToFileURL(factoryAbs).href)) as Record<string, unknown>
-    const VerticalChannelCtor = mod.XVerticalChannel
-    expect(
-      typeof VerticalChannelCtor,
-      'Gate-P P4: factory module import() resolved but exports no XVerticalChannel constructor',
-    ).toBe('function')
+      // F8/U-1 前置事实：service factory 指向纯库产物，必须先物理落盘。断言文件
+      // 存在把「pin 未含 prebuilt」这一回归锁死为红灯（S1b 之 6e31341→43732b7
+      // 先例；omnivision 之 9818405 由 TC-B2-2.1a 入库 dist/），而不是让下面的
+      // import 抛出难懂的错。
+      expect(
+        existsSync(factoryAbs),
+        `Gate-P P4: ${row.id} service factory '${factoryRel}' is absent under ${sourceDir} — the pinned tree is not prebuilt-inclusive`,
+      ).toBe(true)
 
-    // 形状断言：new 出 VerticalChannel 契约（稳定 id + 确定性 canHandle + run），
-    // 与 framework.ts 的 VerticalChannel 接口逐面对齐（本地结构镜像，零跨包依赖）。
-    const channel = new (VerticalChannelCtor as new () => {
-      id: string
-      canHandle: unknown
-      run: unknown
-    })()
-    expect(channel.id).toBe('x-vertical')
-    expect(typeof channel.canHandle).toBe('function')
-    expect(typeof channel.run).toBe('function')
-    // 确定性判定（纯函数、不触网）：x.com 限域须出手，佐证导出的确是活实现。
-    expect(
-      (channel.canHandle as (hints: unknown) => boolean)({ hard: [], soft: [], siteFilter: 'x.com' }),
-    ).toBe(true)
+      // 装载语义实证：真 import() 一次 factory 出口（纯库 re-export barrel），
+      // 销 F8/U-1——不是纸面推断，是把 dsh manifest 里那条 factory 路径交给
+      // Node ESM 装载器实际跑一遍。
+      const mod = (await import(pathToFileURL(factoryAbs).href)) as Record<string, unknown>
+      SHAPE_PROBES[row.id]!(mod)
+    }
   })
 })

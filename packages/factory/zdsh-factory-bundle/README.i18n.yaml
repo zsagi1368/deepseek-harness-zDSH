@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/factory/zdsh-factory-bundle/README.md
-README.md: 7469341a22ee7d4b56712a5005b8bc7e64b0e3ae
-README.zh.md: b325b5e0a7186ecf084d831b93885e31bf3045c7
+README.md: 7093f6f8ffe086b7cd1a9d6fe5619c28386133b6
+README.zh.md: 7b24b142465cad9bc447b09ca1b6421625235ca2
