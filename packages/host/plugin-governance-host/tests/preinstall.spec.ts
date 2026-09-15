@@ -13,14 +13,19 @@
  */
 
 import { createHash } from 'node:crypto'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context, Service } from '@deepseek-ai/cordis'
 import PluginGovernanceGateway, { type PluginGovernanceId } from '../src/index.ts'
 import type { HttpLike } from '../src/install/registry-source.ts'
-import { parseSeedManifest, SEED_SCHEMA_VERSION } from '../src/preinstall/seed.ts'
+import {
+  parseSeedManifest,
+  seedEntryContractIssue,
+  SEED_SCHEMA_VERSION,
+  SUPPORTED_FAIL_POLICY,
+} from '../src/preinstall/seed.ts'
 
 const storageRoots: string[] = []
 const dirs: string[] = []
@@ -252,7 +257,10 @@ describe('SeedPreinstaller through the gateway', () => {
     const localDir = localPluginDir('@demo/local')
     const seedPath = writeSeed([
       { id: 'demo/local', package: '@demo/local', version: '1.0.0', pin: 'b'.repeat(40), source: `local:${localDir}`, integrity: null, enabledAtBoot: true, family: 'demo', failPolicy: 'fail-open' },
-      { id: 'demo/plugin', package: '@demo/plugin', version: '1.0.0', pin: 'c'.repeat(40), source: 'npm:@demo/plugin@1.0.0', integrity: null, enabledAtBoot: false, family: 'demo', failPolicy: 'fail-open' },
+      // S2 made `npm:` integrity mandatory; the seed now carries the `sha512-`
+      // prefix (the executor's own guard, checked before the install channel
+      // resolves the tarball against the registry's stated digest).
+      { id: 'demo/plugin', package: '@demo/plugin', version: '1.0.0', pin: 'c'.repeat(40), source: 'npm:@demo/plugin@1.0.0', integrity: `sha512-${'A'.repeat(88)}=`, enabledAtBoot: false, family: 'demo', failPolicy: 'fail-open' },
     ])
     const storageRoot = mkdtempSync(join(tmpdir(), 'gov-store-'))
     storageRoots.push(storageRoot)
@@ -341,5 +349,180 @@ describe('P2 regression — storage-only uninstall reachable after restart', () 
     expect(removed.ok).toBe(true)
     expect(boot2.gateway.list().plugins.some(p => p.pluginId === gid('demo/plugin'))).toBe(false)
     expect(existsSync(installDir)).toBe(false)
+  })
+})
+
+// ============================================================================
+// EXEC7 三修回归（TC-B1-1.3b 任务1 / 续跑卡 TC-B1-1.3c）：
+//   S1 墓碑前置于树删除 — 卸载写墓碑失败时整单回滚、绝不留下"卸载成功却无
+//      墓碑→下一轮复活"的半态；
+//   S2 failPolicy 非法值显式拒绝 + npm: 强制 sha512 integrity — 执行器把无法
+//      兑现的条目落成 failed 行，绝不静默降级为自己的默认；
+//   S3 provenance schema 增量 — factory local: 行标 'preinstall'、source 投影仍
+//      native、可跨重启由 readInstalledSource 载入，且永不删其 node_modules 树。
+// ============================================================================
+
+describe('EXEC7 S2 — seedEntryContractIssue rejects what the executor cannot honor', () => {
+  const base = {
+    id: 'demo/local', package: '@demo/local', version: '1.0.0', pin: 'b'.repeat(40),
+    integrity: null as string | null, enabledAtBoot: false, family: 'demo',
+  }
+
+  it('honors the only implemented failPolicy', () => {
+    expect(seedEntryContractIssue({ ...base, source: 'local:node_modules/@demo/local', failPolicy: SUPPORTED_FAIL_POLICY })).toBeNull()
+  })
+
+  it('rejects a non-fail-open posture instead of laundering it into the default', () => {
+    const reason = seedEntryContractIssue({ ...base, source: 'local:node_modules/@demo/local', failPolicy: 'fail-closed' })
+    expect(reason).toMatch(/failPolicy/)
+    expect(reason).toMatch(/fail-open/)
+  })
+
+  it('rejects an npm: source missing its mandatory sha512 integrity', () => {
+    const reason = seedEntryContractIssue({ ...base, source: 'npm:@demo/plugin@1.0.0', integrity: null, failPolicy: SUPPORTED_FAIL_POLICY })
+    expect(reason).toMatch(/integrity/)
+    expect(reason).toMatch(/sha512/)
+  })
+
+  it('honors an npm: source that declares a sha512 integrity', () => {
+    expect(seedEntryContractIssue({ ...base, source: 'npm:@demo/plugin@1.0.0', integrity: `sha512-${'A'.repeat(88)}=`, failPolicy: SUPPORTED_FAIL_POLICY })).toBeNull()
+  })
+
+  it('surfaces a present-but-invalid failPolicy as an invalid marker, not the default', () => {
+    const parsed = parseSeedManifest({
+      version: SEED_SCHEMA_VERSION,
+      entries: [{ ...base, source: 'local:node_modules/@demo/local', failPolicy: 123 }],
+    })
+    expect(parsed.entries[0]?.failPolicy).toBe('invalid:number')
+    expect(seedEntryContractIssue(parsed.entries[0]!)).toMatch(/failPolicy/)
+  })
+})
+
+describe('EXEC7 S1 + S2 + S3 through the gateway', () => {
+  it('S2: records a failed row for an unimplemented failPolicy and never installs it', async () => {
+    const localDir = localPluginDir('@demo/local')
+    const seedPath = writeSeed([
+      { id: 'demo/local', package: '@demo/local', version: '1.0.0', pin: 'b'.repeat(40), source: `local:${localDir}`, integrity: null, enabledAtBoot: true, family: 'demo', failPolicy: 'fail-closed' },
+    ])
+    const { gateway } = await boot({ seedPath })
+    await gateway.settlePreinstall()
+    const report = gateway.preinstallReport()
+    expect(report.entries['demo/local']?.status).toBe('failed')
+    expect(report.entries['demo/local']?.reason).toMatch(/failPolicy/)
+    // Rejected before install: never reached the roster.
+    expect(gateway.list().plugins.some(p => p.pluginId === gid('demo/local'))).toBe(false)
+  })
+
+  it('S2: records a failed row for an npm: entry without sha512 integrity and never installs it', async () => {
+    const seedPath = writeSeed([
+      { id: 'demo/plugin', package: '@demo/plugin', version: '1.0.0', pin: 'c'.repeat(40), source: 'npm:@demo/plugin@1.0.0', integrity: null, enabledAtBoot: false, family: 'demo', failPolicy: 'fail-open' },
+    ])
+    const { gateway } = await boot({ seedPath })
+    await gateway.settlePreinstall()
+    const report = gateway.preinstallReport()
+    expect(report.entries['demo/plugin']?.status).toBe('failed')
+    expect(report.entries['demo/plugin']?.reason).toMatch(/integrity/)
+    expect(gateway.list().plugins.some(p => p.pluginId === gid('demo/plugin'))).toBe(false)
+  })
+
+  it('S1: fails the uninstall and keeps the plugin registered when the tombstone write cannot commit', async () => {
+    const localDir = localPluginDir('@demo/local')
+    const seedPath = writeSeed([
+      { id: 'demo/local', package: '@demo/local', version: '1.0.0', pin: 'b'.repeat(40), source: `local:${localDir}`, integrity: null, enabledAtBoot: true, family: 'demo', failPolicy: 'fail-open' },
+    ])
+    const storageRoot = mkdtempSync(join(tmpdir(), 'gov-store-'))
+    storageRoots.push(storageRoot)
+    const boot1 = await boot({ storageRoot, seedPath })
+    await boot1.gateway.settlePreinstall()
+    expect(boot1.gateway.preinstallReport().entries['demo/local']?.status).toBe('installed')
+
+    // Inject a tombstone-write failure — the durable stand-in for the K-B1
+    // writer-lock timeout / disk error the S1 fix targets. Only recordUninstall
+    // throws; the earlier persistence.save() still runs, isolating the S1 branch.
+    const preinstaller = (boot1.gateway as unknown as {
+      preinstaller: { recordUninstall: (id: string) => Promise<boolean> }
+    }).preinstaller
+    preinstaller.recordUninstall = async () => { throw new Error('injected writer-lock failure') }
+
+    const removed = await boot1.gateway.uninstall({ pluginId: gid('demo/local') })
+    expect(removed.ok).toBe(false)
+    if (!removed.ok) expect(removed.error.code).toBe('persistence-failed')
+    // Compensation: the plugin stays registered, so there is no
+    // "uninstall OK + no tombstone" half-state a later pass would resurrect.
+    expect(boot1.gateway.list().plugins.some(p => p.pluginId === gid('demo/local'))).toBe(true)
+    // The durable ledger is untouched: still installed, no tombstone row.
+    const ledger = JSON.parse(readFileSync(boot1.resultsPath, 'utf8')) as {
+      entries: Record<string, { status: string; userUninstalled?: boolean }>
+    }
+    expect(ledger.entries['demo/local']?.status).toBe('installed')
+    expect(ledger.entries['demo/local']?.userUninstalled).toBeUndefined()
+  })
+
+  it('S3: badges a local: preinstall row, survives a restart, and never deletes the artifact tree', async () => {
+    const localDir = localPluginDir('@demo/local')
+    const seedPath = writeSeed([
+      { id: 'demo/local', package: '@demo/local', version: '1.0.0', pin: 'b'.repeat(40), source: `local:${localDir}`, integrity: null, enabledAtBoot: true, family: 'webstack', failPolicy: 'fail-open' },
+    ])
+    const storageRoot = mkdtempSync(join(tmpdir(), 'gov-store-'))
+    storageRoots.push(storageRoot)
+    const boot1 = await boot({ storageRoot, seedPath })
+    await boot1.gateway.settlePreinstall()
+
+    const summary1 = boot1.gateway.list().plugins.find(p => p.pluginId === gid('demo/local'))
+    expect(summary1).toBeDefined()
+    expect((summary1 as unknown as { provenance?: string }).provenance).toBe('preinstall')
+    // Source projection stays native (admission went through admitManifest).
+    expect((summary1 as unknown as { source: string }).source).toBe('native')
+
+    // The durable row is kind preinstall and carries NO dir by design.
+    const installedLedger = JSON.parse(readFileSync(join(storageRoot, 'data', 'installed-sources.json'), 'utf8')) as {
+      sources: Record<string, Record<string, unknown>>
+    }
+    expect(installedLedger.sources['demo/local']?.kind).toBe('preinstall')
+    expect(installedLedger.sources['demo/local']).not.toHaveProperty('dir')
+
+    // Restart: readInstalledSource must hydrate the preinstall row back.
+    const boot2 = await boot({ storageRoot, seedPath })
+    const rows2 = [...(boot2.gateway as unknown as { installedSources: Map<string, Record<string, unknown>> }).installedSources.values()]
+    const preRow = rows2.find(r => r.kind === 'preinstall')
+    expect(preRow).toBeDefined()
+    expect(preRow).not.toHaveProperty('dir')
+    await boot2.gateway.settlePreinstall()
+    const summary2 = boot2.gateway.list().plugins.find(p => p.pluginId === gid('demo/local'))
+    expect((summary2 as unknown as { provenance?: string }).provenance).toBe('preinstall')
+
+    // A successful uninstall drops only the ledger row — the artifact dir (the
+    // node_modules closure stand-in) must survive untouched.
+    const removed = await boot2.gateway.uninstall({ pluginId: gid('demo/local') })
+    expect(removed.ok).toBe(true)
+    expect(existsSync(join(localDir, 'package.json'))).toBe(true)
+  })
+
+  it('S3: readInstalledSource hydrates npm+preinstall rows and drops foreign/incomplete shapes', async () => {
+    const storageRoot = mkdtempSync(join(tmpdir(), 'gov-store-'))
+    storageRoots.push(storageRoot)
+    const dataDir = join(storageRoot, 'data')
+    mkdirSync(dataDir, { recursive: true })
+    writeFileSync(join(dataDir, 'installed-sources.json'), JSON.stringify({
+      version: 1,
+      sources: {
+        'npm/ok': { kind: 'npm', spec: 'npm:@demo/ok@1.0.0', version: '1.0.0', installedAt: 1, dir: join(storageRoot, 'installed', 'demo', 'ok') },
+        'pre/ok': { kind: 'preinstall', spec: 'local:node_modules/@demo/pre', version: '2.0.0', installedAt: 2 },
+        'bad/foreign': { kind: 'weird', spec: 'x', version: '1', installedAt: 3 },
+        'bad/npm-nodir': { kind: 'npm', spec: 's', version: 'v', installedAt: 4 },
+        'bad/pre-nonnumeric-at': { kind: 'preinstall', spec: 'local:y', version: '1', installedAt: 'nope' },
+      },
+    }))
+    // A seedless boot still hydrates the ledger once at init (loadInstalledSources).
+    const { gateway } = await boot({ storageRoot, seedPath: writeSeed([]) })
+    const rows = [...(gateway as unknown as { installedSources: Map<string, Record<string, unknown>> }).installedSources.values()]
+    // 2 well-formed rows survive; the 3 malformed shapes are dropped.
+    expect(rows.length).toBe(2)
+    const npm = rows.find(r => r.kind === 'npm')
+    const pre = rows.find(r => r.kind === 'preinstall')
+    expect(typeof npm?.dir).toBe('string')
+    expect(pre).toBeDefined()
+    expect(pre).not.toHaveProperty('dir')
+    expect(rows.some(r => r.installedAt === 'nope')).toBe(false)
   })
 })

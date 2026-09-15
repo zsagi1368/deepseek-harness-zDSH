@@ -33,6 +33,17 @@ export interface GovernedPluginSummary {
    */
   readonly projectRoot?: string
   /**
+   * Factory-provenance marker — the one schema increment the ledger needed to
+   * carry complete factory-preinstall provenance (DESIGN-intake-tech.md §1.3,
+   * G2): rows admitted by the factory preinstall pass from a seed `local:`
+   * artifact are marked `'preinstall'`. Absent for operator installs, npm:
+   * registry rows (even when seeded — the install channel owns those with
+   * their storage tree), loader mirrors, and project entries. The `source`
+   * projection stays 'native' for preinstalled rows (admission goes through
+   * admitManifest, never a Loader mirror).
+   */
+  readonly provenance?: 'preinstall'
+  /**
    * Whether the manifest requests a permission level that needs an explicit
    * user admission decision and has not been auto-approved.
    */

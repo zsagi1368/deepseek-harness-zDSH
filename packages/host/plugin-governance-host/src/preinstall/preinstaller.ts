@@ -35,7 +35,7 @@ import type {
   PreinstallEntryResult,
   PreinstallReport,
 } from '../types.ts'
-import { parseSeedManifest, type SeedEntry } from './seed.ts'
+import { parseSeedManifest, seedEntryContractIssue, type SeedEntry } from './seed.ts'
 import {
   loadPreinstallResults,
   savePreinstallResults,
@@ -60,8 +60,19 @@ export interface SeedPreinstallerHost {
   isRegistered(pluginId: string): boolean
   /** Reuse the gateway's install admission channel verbatim. */
   install(request: { source: string }): Promise<GovernanceResult<GovernanceAcknowledgement>>
-  /** Best-effort enable of an installed artifact; never fails the pass. */
-  activate(pluginId: string): Promise<unknown>
+  /**
+   * Best-effort enable/disable of an installed artifact; the outcome never
+   * fails the pass. `enabled=false` carries the §1.1 factory-off posture
+   * (`enabledAtBoot: false` → admitted-but-disabled, the verticals case).
+   */
+  setBootState(pluginId: string, enabled: boolean): Promise<unknown>
+  /**
+   * Record the G2 factory provenance row (§1.3) for one successfully
+   * installed `local:` preinstall. Synchronous and throw-permissive at this
+   * boundary: the executor wraps the call so a ledger write failure warns
+   * instead of failing an admission that already landed.
+   */
+  recordProvenance(pluginId: string, spec: string, version: string): void
 }
 
 /** Construction inputs the gateway resolves once (paths + host ops). */
@@ -215,12 +226,28 @@ export class SeedPreinstaller {
       return true
     }
     // Absent and untombstoned: install through the shared admission channel.
+    // S2 (EXEC7 建议②): an entry the executor cannot honor — an unimplemented
+    // failPolicy, or an npm: source without its mandatory sha512 integrity —
+    // becomes a queryable `failed` row before any install attempt, never a
+    // silent downgrade to the executor's own defaults.
+    const issue = seedEntryContractIssue(entry)
+    if (issue !== null) return this.writeRow(ledger, id, { status: 'failed', reason: issue }, existing)
     const outcome = await this.installOne(entry, id)
     if (outcome.status === 'installed') {
-      // A fresh boot-activated entry enables once, best-effort; the enable
-      // result never changes the ledger row (activation is not admission).
-      if (entry.enabledAtBoot) this.requestActivation(id)
-      return this.writeRow(ledger, id, { status: 'installed' }, existing)
+      // G2 provenance (§1.3): a `local:` artifact admitted through the shared
+      // channel carries its factory row (the npm: form's registry row is
+      // already written by the install channel itself, dir included).
+      if (entry.source.startsWith('local:')) this.requestProvenance(entry, id)
+      const changed = this.writeRow(ledger, id, { status: 'installed' }, existing)
+      // Activation posture is best-effort and never changes the ledger row
+      // (activation is not admission): boot-enabled entries enable, and a
+      // factory-off entry (`enabledAtBoot: false`, §1.1) takes the
+      // registry's default-ACTIVE admission, so the executor disables it once
+      // on first admit. Restarts skip the disable (row unchanged) and instead
+      // honor the operator's own persisted enable/disable decision.
+      if (entry.enabledAtBoot) this.requestBootState(id, true)
+      else if (changed) this.requestBootState(id, false)
+      return changed
     }
     return this.writeRow(ledger, id, { status: 'failed', reason: outcome.reason }, existing)
   }
@@ -271,10 +298,22 @@ export class SeedPreinstaller {
     return true
   }
 
-  /** Fire the injected enable hook; a throw here never fails the ledger. */
-  private requestActivation(id: string): void {
-    void Promise.resolve(this.host.activate(id)).catch((cause: unknown) => {
-      this.host.warn(`preinstall activate ${JSON.stringify(id)} failed: ${cause instanceof Error ? cause.message : String(cause)}`)
+  /** Fire the injected enable/disable hook; a throw here never fails the ledger. */
+  private requestBootState(id: string, enabled: boolean): void {
+    void Promise.resolve(this.host.setBootState(id, enabled)).catch((cause: unknown) => {
+      this.host.warn(`preinstall boot state ${JSON.stringify(id)}=${enabled ? 'active' : 'disabled'} failed: ${cause instanceof Error ? cause.message : String(cause)}`)
     })
+  }
+
+  /**
+   * Fire the injected provenance record; a durable-write failure warns (the
+   * admission already landed) and the next pass retries, never fails the row.
+   */
+  private requestProvenance(entry: SeedEntry, id: string): void {
+    try {
+      this.host.recordProvenance(id, entry.source, entry.version)
+    } catch (cause) {
+      this.host.warn(`preinstall provenance ${JSON.stringify(id)} failed: ${cause instanceof Error ? cause.message : String(cause)}`)
+    }
   }
 }

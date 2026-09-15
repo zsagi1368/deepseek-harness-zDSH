@@ -132,7 +132,7 @@ interface PersistedPreset {
 }
 
 /** One registry-sourced install recorded in the provenance ledger. */
-interface PersistedInstalledSource {
+interface PersistedNpmInstallSource {
   kind: 'npm'
   /** The exact `npm:` source string the operator installed from. */
   spec: string
@@ -142,6 +142,25 @@ interface PersistedInstalledSource {
   /** Directory under the governance storage area holding the extracted files. */
   dir: string
 }
+
+/**
+ * One factory-preinstalled `local:` artifact recorded in the provenance
+ * ledger (§1.3, the G2 schema increment). The artifact lives in the pnpm
+ * workspace closure of `zdsh-factory-bundle`, never under the governance
+ * storage area, so there is no `dir`: a later uninstall removes this row and
+ * must never touch the node_modules tree (DESIGN-intake-tech.md §1.2).
+ */
+interface PersistedPreinstallSource {
+  kind: 'preinstall'
+  /** The seed entry's two-state `local:` source string, kept verbatim. */
+  spec: string
+  /** The seed-pinned version admitted this boot. */
+  version: string
+  installedAt: number
+}
+
+/** One provenance row, discriminated by how the artifact reached the roster. */
+type PersistedInstalledSource = PersistedNpmInstallSource | PersistedPreinstallSource
 
 /** Durable installed-source ledger format under the persistence data directory. */
 interface PersistedInstalledSources {
@@ -288,7 +307,21 @@ export class PluginGovernanceGateway extends TypertRemoteService {
         warn: message => this.warn(message),
         isRegistered: id => this.registry.get(canonicalId(id)) !== null,
         install: request => this.install(request),
-        activate: id => this.enable({ pluginId: canonicalId(id) }),
+        setBootState: (id, enabled) => enabled
+          ? this.enable({ pluginId: canonicalId(id) })
+          : this.disable({
+            pluginId: canonicalId(id),
+            reason: 'factory preset: installed disabled by default (seed enabledAtBoot=false)',
+          }),
+        recordProvenance: (id, spec, version) => {
+          const pluginId = canonicalId(id)
+          // The npm: install channel already wrote this id's row (storage tree
+          // included); a re-admit on a later boot re-runs the pass, so an
+          // existing row is left untouched — installedAt stays the original.
+          if (this.installedSources.has(pluginId)) return
+          this.installedSources.set(pluginId, { kind: 'preinstall', spec, version, installedAt: Date.now() })
+          this.saveInstalledSources()
+        },
       },
     })
     // Read the persisted decision snapshot up front (R1-17): every sync pass
@@ -531,45 +564,48 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     try {
       if (previousApproval !== undefined) this.saveApprovals()
       this.persistence.save()
+      // S1 (EXEC7 建议①): the durable `userUninstalled` tombstone is written
+      // BEFORE the storage-area tree removal, inside the same durable block —
+      // if it cannot be committed, the compensation below restores the
+      // pre-call registry state and the receipt fails, so an acknowledged
+      // uninstall can never be missing the guard that stops resurrection.
+      // (The old order wrote the tombstone after everything, best-effort: a
+      // lock-timeout or disk error there produced "uninstall OK + no
+      // tombstone", which the next preinstall pass would resurrect.)
+      await this.preinstaller.recordUninstall(String(pluginId))
     } catch (cause) {
       // Compensate both maps and the registry, restoring the pre-call status.
       restoreMapEntry(this.approvals, pluginId, previousApproval)
       restoreMapEntry(this.persistedDecisions, pluginId, previousDecision)
       await this.registry.register({ ...plugin })
       if (previousStatus === PluginStatus.DISABLED) await this.registry.disable(pluginId)
-      return failed('persistence-failed', `the registry snapshot could not be written: ${describe(cause)}`)
+      return failed('persistence-failed', `the uninstall could not be committed durably: ${describe(cause)}`)
     }
     // Registry installs leave an extracted tree under the storage area; its
     // removal is hygiene rather than admission state, so a failure here is
     // logged and the ledger entry restored instead of failing the receipt —
     // the plugin is unregistered either way and a reinstall overwrites the
-    // stale directory.
+    // stale directory. Preinstall rows (§1.3) carry **no** dir by design:
+    // their artifact lives in the pnpm-managed node_modules closure, which
+    // governance must never delete — the row itself is all there is to drop.
     const installed = this.installedSources.get(pluginId)
     if (installed !== undefined) {
       this.installedSources.delete(pluginId)
       try {
-        // Defense in depth against a tampered ledger: only remove trees that
-        // still live inside the governance storage area.
-        const storageRoot = resolve(this.persistence.storagePath)
-        if (!resolve(installed.dir).startsWith(storageRoot + sep)) {
-          throw new Error('recorded install directory is outside the governance storage area')
+        if (installed.kind === 'npm') {
+          // Defense in depth against a tampered ledger: only remove trees that
+          // still live inside the governance storage area.
+          const storageRoot = resolve(this.persistence.storagePath)
+          if (!resolve(installed.dir).startsWith(storageRoot + sep)) {
+            throw new Error('recorded install directory is outside the governance storage area')
+          }
+          rmSync(installed.dir, { recursive: true, force: true })
         }
-        rmSync(installed.dir, { recursive: true, force: true })
         this.saveInstalledSources()
       } catch (cause) {
         restoreMapEntry(this.installedSources, pluginId, installed)
         this.warn(['failed to remove the installed files of', String(pluginId) + ':', describe(cause)].join(' '))
       }
-    }
-    // If this was a factory-preinstalled entry, drop a durable `userUninstalled`
-    // tombstone so the next boot's preinstall pass never resurrects it (§1.2).
-    // Awaited for determinism, but best-effort: a tombstone write failure never
-    // fails the uninstall receipt — the plugin is unregistered either way and
-    // the preinstall pass is idempotent against a missing tombstone row.
-    try {
-      await this.preinstaller.recordUninstall(String(pluginId))
-    } catch (cause) {
-      this.warn(`failed to record uninstall tombstone for ${String(pluginId)}: ${describe(cause)}`)
     }
     return succeeded(Object.freeze({ acknowledged: true }))
   }
@@ -1024,6 +1060,7 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     const manifest = plugin.manifest
     const pluginId = canonicalId(manifest.id)
     const project = this.projectSources.get(pluginId)
+    const installed = this.installedSources.get(pluginId)
     return Object.freeze({
       pluginId,
       displayName: manifest.name,
@@ -1036,6 +1073,9 @@ export class PluginGovernanceGateway extends TypertRemoteService {
         ? 'project'
         : this.mirrored.has(pluginId) ? 'loader-mirror' : 'native',
       ...(project !== undefined ? { projectRoot: project.projectRoot } : {}),
+      // §1.3 G2: factory-preinstalled `local:` rows badge their provenance;
+      // the source projection stays 'native' (admission, not a mirror).
+      ...(installed?.kind === 'preinstall' ? { provenance: 'preinstall' as const } : {}),
       approvalRequired: requiresAdmission(plugin),
       approved: this.approvals.has(pluginId),
       warnings: Object.freeze(this.registry.getPluginWarnings(pluginId) ?? []),
@@ -1109,6 +1149,13 @@ export class PluginGovernanceGateway extends TypertRemoteService {
    */
   private async rebuildInstalledRoster(): Promise<void> {
     for (const [pluginId, source] of [...this.installedSources]) {
+      // Only `npm:` rows own an extracted tree under the governance storage
+      // area and so are what this rebuild restores. A factory `preinstall` row
+      // carries **no** dir (its artifact lives in the pnpm workspace closure,
+      // never here — S3 §1.3), and it is re-admitted by the preinstall pass at
+      // boot, never by this roster scan. Rebuilding from a nonexistent dir
+      // would both fail to compile against the union and risk double-register.
+      if (source.kind !== 'npm') continue
       // A loader mirror, a live native registration, or a rebuilt sibling
       // already owns the id — never double-register.
       if (this.registry.get(pluginId) !== null) continue
@@ -1146,22 +1193,8 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     }
     if (!isRecord(parsed) || !isRecord(parsed.sources)) return
     for (const [id, entry] of Object.entries(parsed.sources)) {
-      if (
-        isRecord(entry)
-        && entry.kind === 'npm'
-        && typeof entry.spec === 'string'
-        && typeof entry.version === 'string'
-        && typeof entry.installedAt === 'number'
-        && typeof entry.dir === 'string'
-      ) {
-        this.installedSources.set(canonicalId(id), {
-          kind: 'npm',
-          spec: entry.spec,
-          version: entry.version,
-          installedAt: entry.installedAt,
-          dir: entry.dir,
-        })
-      }
+      const source = readInstalledSource(entry)
+      if (source !== null) this.installedSources.set(canonicalId(id), source)
     }
   }
 
@@ -1504,6 +1537,48 @@ function readPreset(path: string): PersistedPreset {
 function writePreset(path: string, payload: PersistedPreset): void {
   mkdirSync(dirname(path), { recursive: true })
   writeFileSync(path, JSON.stringify(payload, null, 2))
+}
+
+/**
+ * Narrow one raw ledger row back into a provenance source (S3, §1.3 G2). The
+ * load loop used to inline only the `npm:` shape; the union needs a second
+ * branch for factory-`preinstall` rows, which carry **no** `dir` (their
+ * artifact lives in the pnpm workspace closure, never under the storage area).
+ * An unrecognized shape — a foreign `kind`, or a row missing any mandatory
+ * field — returns `null` so the caller drops it rather than admitting a
+ * partially-narrowed entry that a later uninstall could mis-handle.
+ */
+function readInstalledSource(entry: unknown): PersistedInstalledSource | null {
+  if (!isRecord(entry)) return null
+  if (
+    entry.kind === 'npm'
+    && typeof entry.spec === 'string'
+    && typeof entry.version === 'string'
+    && typeof entry.installedAt === 'number'
+    && typeof entry.dir === 'string'
+  ) {
+    return {
+      kind: 'npm',
+      spec: entry.spec,
+      version: entry.version,
+      installedAt: entry.installedAt,
+      dir: entry.dir,
+    }
+  }
+  if (
+    entry.kind === 'preinstall'
+    && typeof entry.spec === 'string'
+    && typeof entry.version === 'string'
+    && typeof entry.installedAt === 'number'
+  ) {
+    return {
+      kind: 'preinstall',
+      spec: entry.spec,
+      version: entry.version,
+      installedAt: entry.installedAt,
+    }
+  }
+  return null
 }
 
 /** Narrow one parsed JSON document to a plain-object view. */

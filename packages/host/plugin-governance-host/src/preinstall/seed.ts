@@ -27,13 +27,13 @@ export interface SeedEntry {
   readonly pin: string
   /** Two-state source: `local:<in-repo path>` or `npm:<name>[@<ver>]`. */
   readonly source: string
-  /** sha512 for `npm:` sources (V25 tarball check); `null` for `local:` (§1.1-D1). */
+  /** sha512 for `npm:` sources (V25 tarball check; mandatory, S2); `null` for `local:` (§1.1-D1). */
   readonly integrity: string | null
   /** Whether the plugin activates at boot; `false` = installed-but-disabled. */
   readonly enabledAtBoot: boolean
   /** Family tag (webstack / -bridge / -verticals batch grouping). */
   readonly family: string
-  /** Failure posture; `fail-open` is the only legal value this campaign (R-1.1.4). */
+  /** Failure posture; `fail-open` is the only legal value (S2 rejects others, never silently). */
   readonly failPolicy: string
 }
 
@@ -47,6 +47,9 @@ export interface SeedManifest {
 
 /** The only seed schema version this reader understands. */
 export const SEED_SCHEMA_VERSION = 1
+
+/** The only failure posture this executor implements (R-1.1.4, §1.1 schema). */
+export const SUPPORTED_FAIL_POLICY = 'fail-open'
 
 /** Narrow one parsed JSON value to a plain object view. */
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -77,8 +80,40 @@ function parseEntry(value: unknown): SeedEntry | null {
     // Absent or non-boolean reads as disabled: boot-activation is opt-in.
     enabledAtBoot: value.enabledAtBoot === true,
     family: str(value.family) ?? '',
-    failPolicy: str(value.failPolicy) ?? 'fail-open',
+    // S2 (EXEC7 建议②): an absent field keeps the documented default, but a
+    // present-but-unusable one (non-string, blank, or any string other than
+    // fail-open) must not be laundered into that default — it is surfaced as
+    // an `invalid:<type>` marker that {@link seedEntryContractIssue} rejects.
+    failPolicy: value.failPolicy === undefined
+      ? 'fail-open'
+      : str(value.failPolicy) ?? `invalid:${typeof value.failPolicy}`,
   }
+}
+
+/**
+ * The S2 seed-entry contract check (EXEC7 建议②, DESIGN §1.1 schema notes):
+ * the executor refuses — as a queryable `failed` ledger row, never a silent
+ * downgrade — any entry whose declared posture it cannot honor:
+ *
+ * - `failPolicy` other than the only implemented value `fail-open` (a seed
+ *   declaring `fail-closed` must NOT be quietly installed fail-open, or the
+ *   "single legal value this campaign" declaration loses its teeth);
+ * - an `npm:` source without a mandatory `sha512-…` integrity value (§1.1-D1
+ *   marks it required; the parser previously treated the constraint as prose
+ *   only, so the executor now rejects the contract violation up front rather
+ *   than downloading through an unpinned spec).
+ *
+ * @param entry - one whitelist-accepted seed entry.
+ * @returns a correction-oriented reason, or `null` when the entry is honored.
+ */
+export function seedEntryContractIssue(entry: SeedEntry): string | null {
+  if (entry.failPolicy !== SUPPORTED_FAIL_POLICY) {
+    return `failPolicy ${JSON.stringify(entry.failPolicy)} is not implemented; the only supported value is ${JSON.stringify(SUPPORTED_FAIL_POLICY)}`
+  }
+  if (entry.source.startsWith('npm:') && (entry.integrity === null || !entry.integrity.startsWith('sha512-'))) {
+    return 'npm: sources must declare a sha512- integrity value (§1.1-D1: mandatory for the npm: form)'
+  }
+  return null
 }
 
 /**

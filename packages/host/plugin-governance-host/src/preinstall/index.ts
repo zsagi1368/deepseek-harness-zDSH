@@ -6,7 +6,14 @@
  */
 
 export { SeedPreinstaller, type SeedPreinstallerConfig, type SeedPreinstallerHost } from './preinstaller.ts'
-export { parseSeedManifest, SEED_SCHEMA_VERSION, type SeedEntry, type SeedManifest } from './seed.ts'
+export {
+  parseSeedManifest,
+  seedEntryContractIssue,
+  SEED_SCHEMA_VERSION,
+  SUPPORTED_FAIL_POLICY,
+  type SeedEntry,
+  type SeedManifest,
+} from './seed.ts'
 export {
   emptyPreinstallResults,
   loadPreinstallResults,
