@@ -490,6 +490,32 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     if (requiresAdmission(plugin) && !this.approvals.has(pluginId)) {
       await this.registry.disable(pluginId, 'installed without a recorded admission decision')
     }
+    // TC-B3-MM1b (restart boot-posture drift): replay a persisted `disabled`
+    // decision INSIDE this admission, before the snapshot save below. The
+    // factory preinstall pass re-admits each `local:` artifact in every fresh
+    // process, and it runs AFTER the init sync's restorePersistedDecisions
+    // tail — which then finds the id unregistered and merely keeps the
+    // decision queued, while this admission lands the registry default
+    // ACTIVE. Without this replay, the `persistence.save()` tail of the same
+    // call silently overwrites the first boot's factory-off row back to
+    // 'active': the seed's `enabledAtBoot: false` posture survives boot 1 in
+    // memory only, and the drift goes permanent from the next boot onward.
+    // Disable-only, mirroring restorePersistedDecisions' discipline: a queued
+    // 'active' (an operator who enabled a seed-false row) keeps the fresh
+    // ACTIVE admission untouched — operator decisions outrank the seed. The
+    // decision stays queued so a later lazy sync sweep still consumes it
+    // idempotently (the DISABLED-status check makes the replay a no-op).
+    // Fail-soft like the restore tail: a throwing disable warns and leaves
+    // the admission standing, never aborts an install that already landed.
+    if (this.persistedDecisions.get(pluginId) === 'disabled') {
+      try {
+        if (this.registry.getStatus(pluginId) !== PluginStatus.DISABLED) {
+          await this.registry.disable(pluginId, 'persisted disabled decision re-applied at admission')
+        }
+      } catch (cause) {
+        this.warn(`failed to re-apply persisted disabled state at admission for ${String(pluginId)}: ${describe(cause)}`)
+      }
+    }
     if (provenance !== undefined) this.installedSources.set(pluginId, provenance)
     try {
       // Ledger first: if the registry snapshot then fails, compensation drops

@@ -329,6 +329,88 @@ describe('SeedPreinstaller through the gateway', () => {
   })
 })
 
+// ============================================================================
+// TC-B3-MM1b — restart boot-posture drift regression (filehub intake, 主线
+// Gate-P 实测暴露)：SeedPreinstaller 的 requestBootState(false) 只在 install
+// pass 行变更（`else if (changed)`）时触发；重启路径里 local: 工件被
+// admitManifest 以默认 ACTIVE 复准入（该 id 此刻尚未注册，init sync 尾部的
+// restorePersistedDecisions 只能把 'disabled' 决策留在队列里），于是
+// enabledAtBoot=false 的件第二次 boot 漂移成 active，且 install 尾部的
+// persistence.save() 把首启落盘的 'disabled' 持久行覆写回 active。
+// 用例①锁死「seed=false+本体默认 enabled」型的两启一致；用例②锁死修复的
+// 反向边界——用户手动 enable 过的 seed=false 件，决策优先于 seed，重启保
+// active（防「pass 内无条件补 disable」式过度修复）。
+// ============================================================================
+describe('TC-B3-MM1b regression — enabledAtBoot=false local: posture survives restarts', () => {
+  /** filehub 形态：local: + autoApprove（准入默认 ACTIVE）+ seed 姿态 false。 */
+  function falseSeed(): { seedPath: string; localDir: string } {
+    const localDir = localPluginDir('@demo/off')
+    const seedPath = writeSeed([{
+      id: 'demo/off',
+      package: '@demo/off',
+      version: '1.0.0',
+      pin: 'e'.repeat(40),
+      source: `local:${localDir}`,
+      integrity: null,
+      enabledAtBoot: false,
+      family: 'demo',
+      failPolicy: 'fail-open',
+    }])
+    return { seedPath, localDir }
+  }
+
+  it('seed=false 件两次 boot 姿态一致 disabled，台账逐字节且持久决策面不被复写', async () => {
+    const { seedPath } = falseSeed()
+    const storageRoot = mkdtempSync(join(tmpdir(), 'gov-store-'))
+    storageRoots.push(storageRoot)
+
+    const boot1 = await boot({ storageRoot, seedPath })
+    await boot1.gateway.settlePreinstall()
+    expect(boot1.gateway.list().plugins.find(p => p.pluginId === gid('demo/off'))?.status).toBe('disabled')
+    const bytes1 = readFileSync(boot1.resultsPath, 'utf8')
+
+    const boot2 = await boot({ storageRoot, seedPath })
+    await boot2.gateway.settlePreinstall()
+    // 修复前红灯点：boot-2 复准入停在 ACTIVE（漂移），此处应为 disabled。
+    expect(boot2.gateway.list().plugins.find(p => p.pluginId === gid('demo/off'))?.status).toBe('disabled')
+    // §9.4 restart byte-identity 纪律保持：preinstall 台账一毫不差。
+    expect(readFileSync(boot2.resultsPath, 'utf8')).toBe(bytes1)
+    // 首启落盘的 false 持久决策（registry.json 行）不得被 boot-2 install 的
+    // save 覆写回 active——否则第三次重启连磁盘记忆都是错的。
+    const snapshot = JSON.parse(readFileSync(join(storageRoot, 'registry.json'), 'utf8')) as {
+      plugins: Array<{ id: string; status: string }>
+    }
+    expect(snapshot.plugins.find(plugin => plugin.id === 'demo/off')?.status).toBe('disabled')
+
+    // 第三次 boot：修复前磁盘记忆已被 boot-2 复写为 active，新进程构造期读回的
+    // 就是错记忆 → 漂移由「暂态」固化成「永久态」（主线真网关实测即此形态；无
+    // Loader 的本 harness 里 boot-2 的内存态被同步 restore 尾扫掩盖，有 Loader 的
+    // 真网关里首次 list() 读到的就是 ACTIVE）。修复后必须仍 disabled。
+    const boot3 = await boot({ storageRoot, seedPath })
+    await boot3.gateway.settlePreinstall()
+    expect(boot3.gateway.list().plugins.find(p => p.pluginId === gid('demo/off'))?.status).toBe('disabled')
+    expect(readFileSync(boot3.resultsPath, 'utf8')).toBe(bytes1)
+  })
+
+  it('用户手动 enable 过 seed=false 件后重启保 active（决策优先于 seed）', async () => {
+    const { seedPath } = falseSeed()
+    const storageRoot = mkdtempSync(join(tmpdir(), 'gov-store-'))
+    storageRoots.push(storageRoot)
+
+    const boot1 = await boot({ storageRoot, seedPath })
+    await boot1.gateway.settlePreinstall()
+    expect(boot1.gateway.list().plugins.find(p => p.pluginId === gid('demo/off'))?.status).toBe('disabled')
+    expect((await boot1.gateway.enable({ pluginId: gid('demo/off') })).ok).toBe(true)
+
+    // boot-2/3：用户的 active 决策必须压过 seed 的 false 姿态并保持。
+    for (const round of [2, 3]) {
+      const again = await boot({ storageRoot, seedPath })
+      await again.gateway.settlePreinstall()
+      expect(again.gateway.list().plugins.find(p => p.pluginId === gid('demo/off'))?.status, `boot-${round}`).toBe('active')
+    }
+  })
+})
+
 describe('P2 regression — storage-only uninstall reachable after restart', () => {
   it('rebuilds the roster from storage so a restarted npm install uninstalls and reclaims its tree', async () => {
     const storageRoot = mkdtempSync(join(tmpdir(), 'gov-store-'))
