@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-以 git URL + 完整 commit pin 声明每一个 zDSH 首启出厂预装的插件。治理 `SeedPreinstaller` 经既有 `install({ source: 'local:<目录>' })` 通道就地纳管各钉定工件；本包从不搬运、复制或删除工件。唯一消费者是出厂预装通道，最小入口是一行 `dependencies`。批次 2 现钉三件：`dsh-webstack-verticals`（出厂关闭试点）、`dsh-omnivision`（出厂即用件）与 `dsh-webstack-bridge`（出厂即用的 webstack 数据面链路件）。
+以 git URL + 完整 commit pin 声明每一个 zDSH 首启出厂预装的插件。治理 `SeedPreinstaller` 经既有 `install({ source: 'local:<目录>' })` 通道就地纳管各钉定工件；本包从不搬运、复制或删除工件。唯一消费者是出厂预装通道，最小入口是一行 `dependencies`。出厂集现已钉五件：`dsh-webstack-verticals`（出厂关闭试点）、`dsh-omnivision`（出厂即用件）、`dsh-webstack-bridge`（出厂即用的 webstack 数据面链路件），另加 `dsh-filehub` 与 `dsh-plugin-center`——后两件钉「已装但姿态 held」（`enabledAtBoot: false`），为 harness 诚实姿态：装载层待 R-A 装载侧 harness 验收后方翻转 seed 姿态。
 
 ## 目录
 
@@ -37,8 +37,8 @@ kind: "package-reference"
 ## 已知限制与延后事项
 
 - 未随附任何运行时 invariant companion；本包为私有依赖清单，无可执行源码、亦无需断言不变量的可变运行态。
-- git 依赖会克隆仓库根，故 `dsh-webstack-verticals` 实际解析到 WebStack monorepo，seed 的 `local:` 源指向其 `packages/verticals` 子目录；`dsh-omnivision` 为单包仓，其源直指 `node_modules/dsh-omnivision`。
-- 当前已钉三件（verticals + omnivision + bridge）；其余接盘插件在后续批次加入。
+- git 依赖会克隆仓库根，故 `dsh-webstack-verticals` 实际解析到 WebStack monorepo，seed 的 `local:` 源指向其 `packages/verticals` 子目录；`dsh-omnivision`、`dsh-filehub`、`dsh-plugin-center` 为单包仓，其源直指 `node_modules/<包名>`。
+- 当前已钉五件（verticals + omnivision + bridge + filehub + plugin-center）；filehub 与 plugin-center 采 harness 诚实的 held 姿态（`enabledAtBoot: false`），待 R-A 装载侧 harness 验收后翻转；其余接盘插件在后续批次加入。
 
 <a id="dev-note"></a>
 ### 开发备注

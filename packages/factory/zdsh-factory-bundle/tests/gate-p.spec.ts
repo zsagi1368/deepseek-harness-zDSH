@@ -49,6 +49,16 @@
  *    row stays skipped; a broken barrel row fails MOUNT only with siblings
  *    mounted (fail-open lock); and an entry unload/remount recheck closes the
  *    A-card lifecycle leftover (service withdraws on dispose, returns on remount).
+ *  - TC-B3-MM1b (this file's current extension): the seed grew to FIVE rows
+ *    with `core/filehub` + `core/plugin-center` (both enabledAtBoot=false,
+ *    installed-on-disk but held out of the mount spectrum until the R-A
+ *    loader-side flip). Their P4 probes are authored from the REAL pinned-tree
+ *    export shapes (single-package repos, `lib/index.js`); the production-boot
+ *    P5 test gains two held assertions (installed + mount skipped with the
+ *    enabledAtBoot=false reason); and the restart-matrix loop assertions now
+ *    carry the offending `row.id` in their messages (the K-B2 改进 folded in),
+ *    alongside the host-side admit replay fix that keeps a false row disabled
+ *    across re-admission (see preinstall.spec.ts TC-B3-MM1b block).
  */
 
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -79,7 +89,7 @@ function gid(value: string): PluginGovernanceId {
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..')
 const SEED_PATH = join(REPO_ROOT, 'zdsh-factory', 'seed.json')
 
-/** The three seed columns this matrix walks. Everything else is prose. */
+/** The five seed columns this matrix walks. Everything else is prose. */
 interface SeedRow {
   readonly id: string
   readonly source: string
@@ -199,6 +209,43 @@ const SHAPE_PROBES: Record<string, ShapeProbe> = {
     expect(Array.isArray(bad.issues), 'Gate-P P4: bridge Config accepted a non-boolean enabled (always-valid stub)').toBe(true)
     expect(bad.value, 'Gate-P P4: bridge Config returned a coerced value for invalid input (always-valid stub)').toBeUndefined()
   },
+  // TC-B3-MM1b：filehub 服务出口 = 真源仓 732c0d4 的装配 barrel（`lib/index.js`，
+  // 单包仓无子路径）。形制取实不造（scratch-mm1b-shapecapture 实测 dump）：
+  // apply 函数 + inject 恰六项逐位相符 + 无 default + 无 canHandle 面 + 两个具名
+  // builder 在场。判别锁：捏造的 default/canHandle 在此必缺席、恰等 inject 封
+  // 「多声明/少声明接缝」两侧逃逸（与 bridge/omnivision 探针同纪律）。
+  'core/filehub': (mod) => {
+    expect(typeof mod.apply, 'Gate-P P4: filehub factory exit exports no cordis apply()').toBe('function')
+    expect(Array.isArray(mod.inject), 'Gate-P P4: filehub inject is not an array').toBe(true)
+    expect(
+      mod.inject,
+      'Gate-P P4: filehub hard deps drifted from the pinned manifest export face',
+    ).toEqual(['fs', 'sessions', 'storage', 'webServer', 'tools', 'systemPrompt'])
+    expect('default' in mod, 'Gate-P P4: filehub exports a default (the pinned tree has none)').toBe(false)
+    expect(mod.canHandle, 'Gate-P P4: filehub is not a channel artifact; canHandle must be absent').toBeUndefined()
+    expect(typeof mod.createFileHubDomain, 'Gate-P P4: filehub exit has no createFileHubDomain').toBe('function')
+    expect(typeof mod.registerReadingTools, 'Gate-P P4: filehub exit has no registerReadingTools').toBe('function')
+  },
+  // TC-B3-MM1b：plugin-center 服务出口 = 真源仓 46df212 的装配 barrel
+  // （`lib/index.js`）。形制取实（同一 capture）：包面 name 字面
+  // 'zdsh-plugin-center'（roster 位 core/plugin-center 由 normalizePluginId
+  // 派生，不冲突）+ apply 函数 + inject 恰空数组 + default 存在（filehub 探针
+  // 断「无」、本探针断「有」——两件形状互锁，互为伪造红灯）+ ROUTES 具 ≥10
+  // 键且含 'market' + handleApiRequest 函数。不启动 apply()：零网络/零计时器
+  // 纪律与 bridge 同源。
+  'core/plugin-center': (mod) => {
+    expect(mod.name, 'Gate-P P4: plugin-center factory exit name is not the shipped literal').toBe('zdsh-plugin-center')
+    expect(typeof mod.apply, 'Gate-P P4: plugin-center exit exports no cordis apply()').toBe('function')
+    expect(Array.isArray(mod.inject), 'Gate-P P4: plugin-center inject is not an array').toBe(true)
+    expect((mod.inject as unknown[]).length, 'Gate-P P4: plugin-center declares unexpected hard deps').toBe(0)
+    expect('default' in mod, 'Gate-P P4: plugin-center ships no default export (the pinned tree has one)').toBe(true)
+    const routes = mod.ROUTES as Record<string, unknown> | undefined
+    expect(routes !== undefined && typeof routes === 'object', 'Gate-P P4: plugin-center ROUTES is not an object').toBe(true)
+    const routeKeys = Object.keys(routes ?? {})
+    expect(routeKeys.length, 'Gate-P P4: plugin-center ROUTES covers fewer than 10 routes').toBeGreaterThanOrEqual(10)
+    expect(routeKeys, 'Gate-P P4: plugin-center ROUTES lost its market route').toContain('market')
+    expect(typeof mod.handleApiRequest, 'Gate-P P4: plugin-center exit has no handleApiRequest').toBe('function')
+  },
 }
 
 // The seed is the single source of truth: a seed row without a P4 probe here is
@@ -257,7 +304,7 @@ describe.each(seed.entries)('Gate-P P1 (matrix) — real seed + real cold-instal
 })
 
 describe('Gate-P pilot — restart idempotency over the whole seed', () => {
-  it('a restart over the same home re-settles BOTH ledger rows byte-identically', async () => {
+  it('a restart over the same home re-settles every seed row byte-identically', async () => {
     const storageRoot = mkdtempSync(join(tmpdir(), 'gate-p-home-'))
     storageRoots.push(storageRoot)
 
@@ -267,21 +314,23 @@ describe('Gate-P pilot — restart idempotency over the whole seed', () => {
 
     const boot2 = await boot(storageRoot)
     await boot2.gateway.settlePreinstall()
-    // 逐字节：台账整体（含两件行 + ranAt）重启后必须一毫不差。
-    expect(readFileSync(boot2.resultsPath, 'utf8')).toBe(bytes1)
+    // 逐字节：台账整体（含全部 seed 行 + ranAt）重启后必须一毫不差。
+    expect(readFileSync(boot2.resultsPath, 'utf8'), 'Gate-P restart: preinstall ledger is not byte-identical across boots').toBe(bytes1)
 
-    // The ledger really carries exactly the seed's rows, both installed.
+    // The ledger really carries exactly the seed's rows, all installed.
     const ledger = JSON.parse(bytes1) as { entries: Record<string, { status: string }> }
     expect(Object.keys(ledger.entries).sort()).toEqual(seed.entries.map(entry => entry.id).sort())
-    for (const row of seed.entries) expect(ledger.entries[row.id]?.status).toBe('installed')
+    for (const row of seed.entries) {
+      expect(ledger.entries[row.id]?.status, `Gate-P restart: ledger row ${row.id} must stay installed`).toBe('installed')
+    }
 
-    // Roster postures survive the restart for every row (verticals disabled,
-    // omnivision active), still badged preinstall.
+    // Roster postures survive the restart for every row — 断言消息带 row.id
+    // （K-B2 改进并入，TC-B3-MM1b）：五件谱下漂移必须一眼定位到行。
     for (const row of seed.entries) {
       const summary = boot2.gateway.list().plugins.find(plugin => plugin.pluginId === gid(row.id))
-      expect(summary).toBeDefined()
-      expect(summary?.status).toBe(expectedBootStatus(row))
-      expect(summary?.provenance).toBe('preinstall')
+      expect(summary, `Gate-P restart: seed row ${row.id} missing from the roster after boot 2`).toBeDefined()
+      expect(summary?.status, `Gate-P restart: seed row ${row.id} drifted off its declared posture ${expectedBootStatus(row)}`).toBe(expectedBootStatus(row))
+      expect(summary?.provenance, `Gate-P restart: seed row ${row.id} lost its preinstall badge`).toBe('preinstall')
     }
   })
 })
@@ -506,8 +555,8 @@ for (const row of FULL_SEED) {
   }
 }
 
-describe('Gate-P P5 — real mount spectrum over the three artifacts + fail-open + lifecycle', () => {
-  it('production boot: bridge + omnivision mount LOADED, verticals stays skipped (FIX9)', async () => {
+describe('Gate-P P5 — real mount spectrum over the seed rows + fail-open + lifecycle', () => {
+  it('production boot: bridge + omnivision mount LOADED, verticals + filehub + plugin-center stay skipped (FIX9 / TC-B3-MM1b)', async () => {
     // The shipped seed posture (verticals false, omnivision + bridge true),
     // mounted through the real channel: the two boot-enabled rows load and their
     // probes pass; the verticals row is tried-by-nothing and records skipped.
@@ -524,6 +573,15 @@ describe('Gate-P P5 — real mount spectrum over the three artifacts + fail-open
     expect(report.entries['core/webstack-verticals']?.mount?.status).toBe('skipped')
     expect(report.entries['core/webstack-verticals']?.mount?.reason).toMatch(/enabledAtBoot=false/)
     expect(tryGet(ctx, 'x-vertical'), 'Gate-P P5: verticals must NOT be mounted in the production posture').toBeUndefined()
+
+    // TC-B3-MM1b held 断言两条：filehub + plugin-center 同样「装好但姿态 held」——
+    // 台账 installed、mount 维度 skipped（reason 带 enabledAtBoot=false，与
+    // verticals 同型），运行期装载待 R-A harness 翻转后方可进 MOUNT_PROBES 谱。
+    for (const heldId of ['core/filehub', 'core/plugin-center']) {
+      expect(report.entries[heldId]?.status, `Gate-P P5: ${heldId} production row must be installed`).toBe('installed')
+      expect(report.entries[heldId]?.mount?.status, `Gate-P P5: ${heldId} must stay held out of the mount spectrum`).toBe('skipped')
+      expect(report.entries[heldId]?.mount?.reason, `Gate-P P5: ${heldId} skipped-mount reason must cite the seed posture`).toMatch(/enabledAtBoot=false/)
+    }
 
     // Run the authored capability probes for the two boot-enabled rows.
     for (const id of ['core/webstack-bridge', 'core/omnivision']) {

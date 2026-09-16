@@ -67,7 +67,9 @@ External packages installed for runtime use or distributed inside the prebuilt b
 | [`commander`](https://github.com/tj/commander.js) | MIT |
 | [`compression`](https://github.com/expressjs/compression) | MIT |
 | [`diff`](https://github.com/kpdecker/jsdiff) | BSD-3-Clause |
+| [`dsh-filehub`](https://github.com/zsagi1368/zdsh-filehub) | MIT |
 | [`dsh-omnivision`](https://github.com/zsagi1368/dsh-omnivision) | MIT |
+| [`dsh-plugin-center`](https://github.com/zsagi1368/zdsh-plugin-center) | MIT |
 | [`dsh-webstack-bridge`](https://github.com/zsagi1368/dsh-webstack) | MIT |
 | [`dsh-webstack-verticals`](https://github.com/zsagi1368/dsh-webstack) | MIT |
 | [`e2b`](https://github.com/e2b-dev/e2b) | MIT |

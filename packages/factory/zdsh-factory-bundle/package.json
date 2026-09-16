@@ -1,13 +1,15 @@
 {
   "name": "@deepseek-ai/zdsh-factory-bundle",
   "version": "0.0.0",
-  "description": "Factory preinstall artifact bundle: pins the git-URL + commit for every zDSH factory-seeded plugin so `pnpm install` lands each artifact under this package's node_modules closure (B4 case, DESIGN-intake-tech.md §1.1). The governance SeedPreinstaller never moves artifacts; it installs them in place via `install({ source: 'local:<...>/node_modules/<pkg>' })`. Batch 2 current set = webstack-verticals (factory-off pilot) + omnivision (boot-enabled) + webstack-bridge (boot-enabled webstack data-plane link).",
+  "description": "Factory preinstall artifact bundle: pins the git-URL + commit for every zDSH factory-seeded plugin so `pnpm install` lands each artifact under this package's node_modules closure (B4 case, DESIGN-intake-tech.md §1.1). The governance SeedPreinstaller never moves artifacts; it installs them in place via `install({ source: 'local:<...>/node_modules/<pkg>' })`. Batch 2 current set = webstack-verticals (factory-off pilot) + omnivision (boot-enabled) + webstack-bridge (boot-enabled webstack data-plane link). TC-B3-MM1b adds the two harness-honest rows: dsh-filehub + dsh-plugin-center (both installed-at-boot-off until the R-A harness flips their posture).",
   "license": "MIT",
   "private": true,
   "type": "module",
   "dependencies": {
     "dsh-webstack-verticals": "git+https://github.com/zsagi1368/dsh-webstack.git#956df1b0797127746039baee4ca26805b2f4ad4d",
     "dsh-omnivision": "git+https://github.com/zsagi1368/dsh-omnivision.git#060da4ddda444fc874250b6e7021b1b201ca1943",
-    "dsh-webstack-bridge": "git+https://github.com/zsagi1368/dsh-webstack.git#ffa036435d383edf577c47935f21cb1d7252ea93"
+    "dsh-webstack-bridge": "git+https://github.com/zsagi1368/dsh-webstack.git#ffa036435d383edf577c47935f21cb1d7252ea93",
+    "dsh-filehub": "git+https://github.com/zsagi1368/zdsh-filehub.git#732c0d43b7aed3b6e5a1eda196acc2578f159960",
+    "dsh-plugin-center": "git+https://github.com/zsagi1368/zdsh-plugin-center.git#46df212f0000193754e63153579b7dab16f9bae0"
   }
 }
