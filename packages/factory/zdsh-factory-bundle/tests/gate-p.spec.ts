@@ -59,6 +59,27 @@
  *    carry the offending `row.id` in their messages (the K-B2 改进 folded in),
  *    alongside the host-side admit replay fix that keeps a false row disabled
  *    across re-admission (see preinstall.spec.ts TC-B3-MM1b block).
+ *  - TC-B3-MM2 (this file's current extension): the seed grew to SIX rows with
+ *    `core/autopilot`. Its P4 probe is authored from the REAL installed-tree
+ *    export shape (single-package repo, `lib/index.js`; apply function, inject
+ *    empty, the hard name literal `@deepseek-ai/dsh-autopilot`, no default, no
+ *    canHandle, runtimeFor/memoryAuditMirror hooks present — captured by an
+ *    import() probe of the pinned artifact, never invented). The production-boot
+ *    P5 test gains a third held assertion (installed + mount skipped with the
+ *    enabledAtBoot=false reason — mechanically identical to filehub/plugin-center,
+ *    though autopilot's posture is product-design-off (ADJ-3), not harness-honest).
+ *    Per the MM1b lesson, the restart-matrix test now ALSO reads the durable
+ *    `registry.json` off disk and asserts every boot-disabled row (including
+ *    autopilot) is still `disabled` there after boot-2 re-admission — an in-memory
+ *    roster check alone can be masked by the construction-time read-back + tail
+ *    restore, so the disk assertion is the real drift tripwire.
+ *
+ *    NOTE (card-face arithmetic slip, resolved by the seed as single source of
+ *    truth): the MM2 card's "P5 六行谱 (3 mounted / 3 skipped)" is wrong — the
+ *    shipped seed declares only omnivision + webstack-bridge boot-enabled, so the
+ *    real six-row spectrum is 2 mounted / 4 skipped (verticals + filehub +
+ *    plugin-center + autopilot). The matrix is seed-driven and would fail any
+ *    fabricated 3rd mount, so it asserts the truth.
  */
 
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -246,6 +267,26 @@ const SHAPE_PROBES: Record<string, ShapeProbe> = {
     expect(routeKeys, 'Gate-P P4: plugin-center ROUTES lost its market route').toContain('market')
     expect(typeof mod.handleApiRequest, 'Gate-P P4: plugin-center exit has no handleApiRequest').toBe('function')
   },
+  // TC-B3-MM2：autopilot 服务出口 = 真源仓 3ed2d4c（33C2 prebuilt）的装配 barrel
+  // （`lib/index.js`，单包仓无子路径）。形制取实不造（安装态 import 探针实测，
+  // 与 AutoPilot 自测 smoke.spec 同源）：apply 函数 + inject 恰空数组 +
+  // name 字面 '@deepseek-ai/dsh-autopilot'（非包名 dsh-autopilot——插件导出名与
+  // roster 位 core/autopilot 由 normalizePluginId 派生，互不冲突）+ 无 default
+  // （归 filehub「无 default」阵营，与 plugin-center「有 default」互锁）+ 无
+  // canHandle 面（非通道件）+ runtimeFor/memoryAuditMirror 两 inspection 钩子在场。
+  // 不启动 apply()：与 bridge/filehub/PC 同零网络零计时器纪律（其内部虽裹
+  // try/catch「永不抛」，但 P4 只锁导出契约形状，挂载兑现归 P5/后续装配卡）。
+  'core/autopilot': (mod) => {
+    expect(typeof mod.apply, 'Gate-P P4: autopilot factory exit exports no cordis apply()').toBe('function')
+    expect(Array.isArray(mod.inject), 'Gate-P P4: autopilot inject is not an array').toBe(true)
+    expect((mod.inject as unknown[]).length, 'Gate-P P4: autopilot declares unexpected hard deps').toBe(0)
+    // 判别锁（硬字面，封「照抄他件 name」伪造）：导出名字面必须是插件名常量。
+    expect(mod.name, 'Gate-P P4: autopilot factory exit name is not the shipped literal').toBe('@deepseek-ai/dsh-autopilot')
+    expect('default' in mod, 'Gate-P P4: autopilot exports a default (the pinned tree has none)').toBe(false)
+    expect(mod.canHandle, 'Gate-P P4: autopilot is not a channel artifact; canHandle must be absent').toBeUndefined()
+    expect(typeof mod.runtimeFor, 'Gate-P P4: autopilot exit has no runtimeFor inspection hook').toBe('function')
+    expect(Array.isArray(mod.memoryAuditMirror), 'Gate-P P4: autopilot exit has no memoryAuditMirror array').toBe(true)
+  },
 }
 
 // The seed is the single source of truth: a seed row without a P4 probe here is
@@ -325,12 +366,27 @@ describe('Gate-P pilot — restart idempotency over the whole seed', () => {
     }
 
     // Roster postures survive the restart for every row — 断言消息带 row.id
-    // （K-B2 改进并入，TC-B3-MM1b）：五件谱下漂移必须一眼定位到行。
+    // （K-B2 改进并入，TC-B3-MM1b）：六件谱下漂移必须一眼定位到行。
     for (const row of seed.entries) {
       const summary = boot2.gateway.list().plugins.find(plugin => plugin.pluginId === gid(row.id))
       expect(summary, `Gate-P restart: seed row ${row.id} missing from the roster after boot 2`).toBeDefined()
       expect(summary?.status, `Gate-P restart: seed row ${row.id} drifted off its declared posture ${expectedBootStatus(row)}`).toBe(expectedBootStatus(row))
       expect(summary?.provenance, `Gate-P restart: seed row ${row.id} lost its preinstall badge`).toBe('preinstall')
+    }
+
+    // MM1b 固化教训（TC-B3-MM2 带入 autopilot）：内存 roster 断言会被 boot-2
+    // 构造期读回 + 尾扫 restore 同步掩盖——真正锁死「seed=false 件首见漂移」的
+    // 证据链必须落到磁盘 registry.json。逐出厂 disabled 行断言其持久行为
+    // 'disabled'（含新增的 core/autopilot）：若复准入把某行覆写回 active，此处
+    // 红灯，且与准入点重放修复（host admitManifest）互为回归闸。
+    const diskRegistry = JSON.parse(readFileSync(join(storageRoot, 'registry.json'), 'utf8')) as {
+      plugins: Array<{ id: string; status: string }>
+    }
+    for (const row of seed.entries) {
+      if (row.enabledAtBoot) continue
+      const diskRow = diskRegistry.plugins.find(plugin => plugin.id === row.id)
+      expect(diskRow, `Gate-P restart: seed=false row ${row.id} has no durable registry line`).toBeDefined()
+      expect(diskRow?.status, `Gate-P restart: seed=false row ${row.id} drifted on disk after boot 2 re-admission (must stay disabled)`).toBe('disabled')
     }
   })
 })
@@ -556,7 +612,7 @@ for (const row of FULL_SEED) {
 }
 
 describe('Gate-P P5 — real mount spectrum over the seed rows + fail-open + lifecycle', () => {
-  it('production boot: bridge + omnivision mount LOADED, verticals + filehub + plugin-center stay skipped (FIX9 / TC-B3-MM1b)', async () => {
+  it('production boot: bridge + omnivision mount LOADED, verticals + filehub + plugin-center + autopilot stay skipped (FIX9 / TC-B3-MM1b / TC-B3-MM2)', async () => {
     // The shipped seed posture (verticals false, omnivision + bridge true),
     // mounted through the real channel: the two boot-enabled rows load and their
     // probes pass; the verticals row is tried-by-nothing and records skipped.
@@ -574,10 +630,13 @@ describe('Gate-P P5 — real mount spectrum over the seed rows + fail-open + lif
     expect(report.entries['core/webstack-verticals']?.mount?.reason).toMatch(/enabledAtBoot=false/)
     expect(tryGet(ctx, 'x-vertical'), 'Gate-P P5: verticals must NOT be mounted in the production posture').toBeUndefined()
 
-    // TC-B3-MM1b held 断言两条：filehub + plugin-center 同样「装好但姿态 held」——
-    // 台账 installed、mount 维度 skipped（reason 带 enabledAtBoot=false，与
-    // verticals 同型），运行期装载待 R-A harness 翻转后方可进 MOUNT_PROBES 谱。
-    for (const heldId of ['core/filehub', 'core/plugin-center']) {
+    // TC-B3-MM1b held 断言两条 + TC-B3-MM2 一条：filehub + plugin-center（装载
+    // 待 R-A harness 翻转）与 autopilot（【产品设计】整件默认关，ADJ-3，非 harness
+    // 等待）三件同样「装好但姿态 held」——台账 installed、mount 维度 skipped
+    // （reason 带 enabledAtBoot=false，与 verticals 同型）。三者姿态成因不同但
+    // 机制同：出厂 false → 预装通道「tried-by-nothing + records skipped」，均不入
+    // MOUNT_PROBES 谱（§9.5-D① 只约束 boot-enabled local: 行）。
+    for (const heldId of ['core/filehub', 'core/plugin-center', 'core/autopilot']) {
       expect(report.entries[heldId]?.status, `Gate-P P5: ${heldId} production row must be installed`).toBe('installed')
       expect(report.entries[heldId]?.mount?.status, `Gate-P P5: ${heldId} must stay held out of the mount spectrum`).toBe('skipped')
       expect(report.entries[heldId]?.mount?.reason, `Gate-P P5: ${heldId} skipped-mount reason must cite the seed posture`).toMatch(/enabledAtBoot=false/)
