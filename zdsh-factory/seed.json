@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-16T03:53:07Z",
+  "generatedAt": "2026-09-16T05:04:34Z",
   "$comment": "zDSH 出厂预装清单（seed manifest）。schema 冻结见 DESIGN-intake-tech.md §1.1（B4 案）。[DESIGN-D1] 两态 source 约定：每个 entry 的 source ∈ { \"local:<仓内解析路径>\", \"npm:<name>@<ver>\" }；integrity 语义随 source 两态——local: 态本战役留 null（工件由 pnpm 供应链落盘：git pin + lockfile 内容寻址承载同等供应链强度，不重复发明目录树哈希），npm: 态必填 sha512（复用既有 install/registry-source.ts tarball 校验面）。generatedAt 由 seed 填充时写入 ISO-8601。〔TC-B1-1.3c 首发：已灌 webstack-verticals 试点单件；TC-B2-2.1b 加灌 omnivision（enabledAtBoot=true=出厂即用功能件，与 verticals 相反，依据=用户定义「开箱即用」+V1 命运表）；TC-B2-2.2b 加灌 webstack-bridge（enabledAtBoot=true=webstack 数据面链路件非 opt-in，family=webstack 与 verticals 同族）；Gate-P 三件矩阵探针见 packages/factory/zdsh-factory-bundle/tests/gate-p.spec.ts；TC-B2-23D re-pin：omnivision pin 9818405→060da4d（TC-B2-23B cordis-adapter 移植件）、verticals pin 43732b7→956df1b（TC-B2-23C 装配入口件），二者由纯库 barrel 转为具名 apply 可挂件（Gate-P P5 真 mount 探针见同一 spec，verticals 出厂 enabledAtBoot 维持 false 不变，可挂性由 P5 沙箱强制 mount 证）；TC-B3-MM1b 加灌 filehub + plugin-center 两件（enabledAtBoot=false＝装好入册、姿态诚实 held——本卡另修 SeedPreinstaller 重启姿态漂移〔准入点重放持久 disabled 决策〕，两件运行期装载兑现待 R-A 装载面 harness 卡翻转 enabledAtBoot=true 后另行；Gate-P 五件矩阵 + P5 held 断言钉死两启一致）；TC-B3-MM2 加灌 autopilot 第六件（enabledAtBoot=false 属【产品设计】非【harness 诚实】——与 filehub/plugin-center 的「装载待 harness 翻转」不同源：AutoPilot 整件默认关是其出厂最终形态，依据＝DESIGN-intake-tech §8-ADJ4/ADJ-3「autopilot 整件默认关闭、用户显式开启」，不随 R-A harness 翻转，运行期装载面另归后续装配卡；pin/version 照实 3ed2d4c/0.1.0，Gate-P 六件矩阵 + P5 skipped 断言 + MM1b 磁盘回归（boot-2 registry.json 仍 disabled，勿只内存断言）钉死）〕entries 增项须配 Gate-P 探针。本文件为根级数据文件、非 workspace 包，不触 pnpm-workspace.yaml。",
   "entryFields": {
     "id": "治理规范 id（namespace/name，normalizePluginId 同空间）",
@@ -51,7 +51,7 @@
       "id": "core/filehub",
       "package": "dsh-filehub",
       "version": "0.1.0",
-      "pin": "732c0d43b7aed3b6e5a1eda196acc2578f159960",
+      "pin": "538a5b9d7e045b1fedc67338646d6d9179db0afc",
       "source": "local:packages/factory/zdsh-factory-bundle/node_modules/dsh-filehub",
       "integrity": null,
       "enabledAtBoot": false,
@@ -62,7 +62,7 @@
       "id": "core/plugin-center",
       "package": "dsh-plugin-center",
       "version": "0.2.0",
-      "pin": "46df212f0000193754e63153579b7dab16f9bae0",
+      "pin": "b403757a49872afd324724d2f6cac685a477e95d",
       "source": "local:packages/factory/zdsh-factory-bundle/node_modules/dsh-plugin-center",
       "integrity": null,
       "enabledAtBoot": false,

@@ -77,10 +77,6 @@ const OVERRIDES: Record<string, { license?: string; repo?: string }> = {
   '@modelcontextprotocol/server-filesystem': { license: 'MIT / Apache-2.0', repo: 'https://github.com/modelcontextprotocol/servers' },
   // No repository field in the published manifest.
   'node-addon-require-builtin': { repo: 'https://www.npmjs.com/package/node-addon-require-builtin' },
-  // Factory bundle git-pinned artifact: the pinned tree's package.json (commit
-  // 732c0d4, TC-B3-MM1b intake) carries no `repository` field; the repo URL is
-  // verbatim the bundle's own dependency pin in zdsh-factory-bundle/package.json.
-  'dsh-filehub': { repo: 'https://github.com/zsagi1368/zdsh-filehub' },
   // No `license` field in the published manifest; the tarball's LICENSE.txt is the MIT text.
 }
 

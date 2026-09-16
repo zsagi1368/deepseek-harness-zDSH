@@ -9,8 +9,8 @@
     "dsh-webstack-verticals": "git+https://github.com/zsagi1368/dsh-webstack.git#956df1b0797127746039baee4ca26805b2f4ad4d",
     "dsh-omnivision": "git+https://github.com/zsagi1368/dsh-omnivision.git#060da4ddda444fc874250b6e7021b1b201ca1943",
     "dsh-webstack-bridge": "git+https://github.com/zsagi1368/dsh-webstack.git#ffa036435d383edf577c47935f21cb1d7252ea93",
-    "dsh-filehub": "git+https://github.com/zsagi1368/zdsh-filehub.git#732c0d43b7aed3b6e5a1eda196acc2578f159960",
-    "dsh-plugin-center": "git+https://github.com/zsagi1368/zdsh-plugin-center.git#46df212f0000193754e63153579b7dab16f9bae0",
+    "dsh-filehub": "git+https://github.com/zsagi1368/zdsh-filehub.git#538a5b9d7e045b1fedc67338646d6d9179db0afc",
+    "dsh-plugin-center": "git+https://github.com/zsagi1368/zdsh-plugin-center.git#b403757a49872afd324724d2f6cac685a477e95d",
     "dsh-autopilot": "git+https://github.com/zsagi1368/zdsh-autopilot.git#3ed2d4cac8bd55fccdbb37ed0db5d21b005cf0b3"
   }
 }
