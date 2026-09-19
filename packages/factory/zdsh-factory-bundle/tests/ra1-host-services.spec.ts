@@ -47,20 +47,22 @@
  *
  * Gate-M M1 (load-surface recheck, DESIGN §10.4 M1/RA-1 side): the dispose /
  * withdraw / remount lifecycle is proven on plugin-center (dynamic-injected
- * routes) and — since the TC-B4-RP re-pin — on filehub, where the RA1d probe
- * found the domain-object dispose is DROPPED by cordis's constructor path:
- * traceable-service facets (tools/prompt) withdraw, but the webServer route
- * leaks and a remount dies on the duplicate-route rejection. Both halves of
- * that are pinned as RA1d failure-mode locks in the M1 filehub test.
+ * routes) and — since the TC-B4-RP2 re-pin (aab73d7, the RA1d fix) — on
+ * filehub at BOTH halves: traceable facets and the domain-owned prefix route
+ * withdraw on dispose, and a clean remount restores the full surface. The
+ * RA1d defect this now guards against: any regression that again leaves
+ * domain disposal unwired (route leak / duplicate-route crash on remount)
+ * turns this leg red.
  *
  * ➡➡➡ REGRESSION GATE — the filehub mount leg was a PERMANENT FAILURE-MODE
  * LOCK until pin 6c3b570 (RA1c guarded `ctx.get` seam + TC-B4-RP re-pin)
- * flipped it to the positive ACTIVE proof. If FileHub EVER again reads an
- * undeclared service in `apply` — or the guarded seam is removed — the mount
- * flips back to `failed` and this spec goes red. That red is the defect
- * asserting itself; fix the plugin or the pin, never the assertion. The RA1d
- * locks (route leak + remount crash) flip positive only when the 〔源〕
- * disposal-wiring fix lands AND the bundle re-pins past it.
+ * flipped it to the positive ACTIVE proof; the M1 disposal leg flipped
+ * positive at pin aab73d7 (RA1d effect-contract wiring + TC-B4-RP2 re-pin).
+ * If FileHub EVER again reads an undeclared service in `apply`, removes the
+ * guarded seam, or leaves domain disposal unwired — the mount flips back to
+ * `failed`, or the route leaks past dispose and the remount crashes — and
+ * this spec goes red. That red is the defect asserting itself; fix the
+ * plugin or the pin, never the assertion.
  */
 
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -480,29 +482,19 @@ describe('RA-1 sandbox mount proof (fixture + real loader.create, production see
     expect(entryState(ctx, pcChannel), 'M1: plugin-center did not come back after remount').toBe(2)
   })
 
-  // M1 filehub leg (added at the TC-B4-RP re-pin) — HONESTLY SPLIT after the
-  // RA1d probe finding. Facts (mainline probe, del/probe-cordis.ts, deleted):
-  //  - FileHub's `apply` is a REGULAR function returning a domain object
-  //    `{sweep, dispose}`; cordis `isConstructor` sees `.prototype` and takes
-  //    the `new callback(ctx, config)` path (vendor/cordis fiber.ts:251-257),
-  //    where a constructor's returned OBJECT becomes the instance and only
-  //    `instance[symbols.init]?.()` is collected — the domain object (and its
-  //    `dispose`) is DROPPED. `domain.dispose()` therefore NEVER runs on fiber
-  //    disposal.
-  //  - Facets registered through cordis-traceable services (tools entries,
-  //    systemPrompt sections — the fixture mounts the REAL ToolRuntime /
-  //    SystemPrompt) ARE withdrawn by the fiber's own effect teardown.
-  //  - The webServer prefix route's disposer lives ONLY in domain.dispose, so
-  //    the route LEAKS past disposal; a remount then dies on the capture
-  //    registrar's duplicate-route rejection (the real WebServer rejects
-  //    duplicates identically — webserver/src/index.ts:165-172), and the sweep
-  //    timer keeps running. This is a REAL production defect (unload/reinstall
-  //    cycle crashes; timer+handles leak), tracked as TC-B4-RA1d〔源〕.
-  // So this leg asserts the withdrawal that genuinely happens, and PINS the
-  // leak + the remount crash as RA1d failure-mode locks. When RA1d lands and
-  // the bundle re-pins, UPGRADE: route withdrawn after dispose + clean
-  // remount to ACTIVE. Do not delete the locks as false reds before that.
-  it('M1 filehub: cordis-collected facets withdraw; route leak + remount crash pinned as RA1d locks', async () => {
+  // M1 filehub leg — UPGRADED AT TC-B4-RP2 (re-pin aab73d7 = the RA1d fix).
+  // History: pins ≤6c3b570 returned a domain OBJECT from `apply`; cordis's
+  // constructor path (isConstructor=true → `new callback(ctx, config)` → only
+  // `instance[symbols.init]?.()` collected, vendor/cordis fiber.ts:251-257)
+  // silently dropped it, so `domain.dispose()` never ran on fiber disposal:
+  // traceable-service facets (tools/prompt) withdrew, the webServer prefix
+  // route LEAKED, and a remount died on the duplicate-route rejection. RA1d
+  // (FileHub aab73d7) wires `ctx.effect(() => () => domain.dispose(), …)` —
+  // the effect-contract form where the setup's RETURN is the unload disposer
+  // — so the full capability surface now withdraws on dispose and the
+  // remount cycle is clean. This leg is the positive mirror of both old
+  // locks: full withdrawal + clean remount + surface restored.
+  it('M1 filehub: dispose withdraws the full surface, remount restores it cleanly (RP2, aab73d7)', async () => {
     const { ctx, gateway, fx } = await bootWithServices(writeMountSeed([
       mountRow('core/filehub', { enabledAtBoot: true }),
     ]))
@@ -524,22 +516,23 @@ describe('RA-1 sandbox mount proof (fixture + real loader.create, production see
 
     await loader.resolve(fhChannel).fiber?.dispose?.()
     expect(stateOrGone(), 'M1: filehub still ACTIVE after dispose').not.toBe(2)
-    // Cordis-collected facets DO withdraw (traceable-service effect teardown).
+    // Traceable-service facets withdraw (fiber effect teardown) …
     expect(fx.tools!.get('read_document'), 'M1: dispose leaked read_document').toBeUndefined()
     expect(fx.tools!.get('list_workspace_files'), 'M1: dispose leaked list_workspace_files').toBeUndefined()
     expect((await fx.systemPrompt!.assemble()).sections.some(s => s.name === 'filehub-document-reading'),
       'M1: dispose leaked the guidance section').toBe(false)
-    // ── RA1d FAILURE-MODE LOCK — the domain-object dispose is dropped by the
-    // cordis constructor path, so the prefix route survives disposal. When
-    // RA1d wires domain disposal through the effect contract, flip this to
-    // toBeUndefined() and the remount below to a clean ACTIVE assertion.
+    // … and the RA1d effect wiring withdraws the domain-owned facets too:
+    // the prefix route that used to leak past disposal must now be gone.
     expect(fx.webServer!.find('prefix', '/api/filehub'),
-      'RA1d lock: the prefix-route leak was FIXED — upgrade this leg (route withdrawn + clean remount) and close TC-B4-RA1d').toBeDefined()
-    // The leak's production consequence, pinned: remount dies on the duplicate
-    // route the leaked registration left behind.
-    await expect(
-      loader.create({ name: firstFactoryHref(mountRow('core/filehub')), id: fhChannel, disabled: false }),
-      'RA1d lock: remount succeeded — the route leak is fixed; upgrade this leg',
-    ).rejects.toThrow(/duplicate prefix route/)
+      'M1 RA1d: the prefix route survived dispose — the effect-contract wiring regressed (revert to the RA1d failure lock and re-open TC-B4-RA1d)').toBeUndefined()
+
+    // Clean remount through the SAME real loader.create channel — no
+    // duplicate-route rejection, ACTIVE restored, surface back.
+    await loader.create({ name: firstFactoryHref(mountRow('core/filehub')), id: fhChannel, disabled: false })
+    expect(entryState(ctx, fhChannel), 'M1 RA1d: filehub did not come back after remount').toBe(2)
+    expect(fx.tools!.get('read_document'), 'M1 RA1d: read_document not restored after remount').toBeDefined()
+    expect((await fx.systemPrompt!.assemble()).sections.some(s => s.name === 'filehub-document-reading'),
+      'M1 RA1d: guidance section not restored after remount').toBe(true)
+    expect(fx.webServer!.find('prefix', '/api/filehub'), 'M1 RA1d: prefix route not restored after remount').toBeDefined()
   })
 })
