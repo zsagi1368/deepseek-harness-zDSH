@@ -497,6 +497,54 @@ describe('RA-1 sandbox mount proof (fixture + real loader.create; fixture is the
   // — so the full capability surface now withdraws on dispose and the
   // remount cycle is clean. This leg is the positive mirror of both old
   // locks: full withdrawal + clean remount + surface restored.
+
+  // ── TC-B3-33C3c: autopilot sandbox boot leg (production seed stays
+  // enabledAtBoot=false — ADJ-3 product-design-off; this leg mirrors the
+  // verticals P5 sandbox-forced-mount precedent). AP's `inject=[]` clears the
+  // cordis gate, so the entry reaches ACTIVE in this fixture; its dual route
+  // disposers (33C3b wired them through ctx.effect in the FileHub aab73d7
+  // double-arrow form + the MountedRuntime.dispose fallback) must withdraw
+  // both HTTP routes on fiber dispose — the RA1d criterion applied to the
+  // second plugin family. The approval/request answerer (33C3a) is an event
+  // listener on the fixture context, not an observable service; its behavior
+  // is locked in AutoPilot's own spec on a real cordis bus.
+  it('autopilot sandbox boot: ACTIVE under the fixture, routes withdraw on dispose (33C3c)', async () => {
+    const { ctx, gateway, fx } = await bootWithServices(writeMountSeed([
+      mountRow('core/autopilot', { enabledAtBoot: true }),
+    ]))
+    await gateway.settlePreinstall()
+    const apChannel = 'factory/core/autopilot'
+    expect(gateway.preinstallReport().entries['core/autopilot']?.mount?.status,
+      'RA-1: autopilot must mount under the fixture at pin 3bc4963 (inject=[] clears the gate)').toBe('mounted')
+    expect(entryState(ctx, apChannel), 'RA-1: autopilot entry not ACTIVE in the sandbox boot').toBe(2)
+    // The 33C3b bridge routes live on the fixture's capture registrar once
+    // the host webServer service is present (AP registers them when the
+    // service resolves; the fixture provides it).
+    expect(fx.webServer!.find('exact', '/api/autopilot-action'), 'RA-1: autopilot action route absent after sandbox boot').toBeDefined()
+    expect(fx.webServer!.find('exact', '/api/autopilot-bridge'), 'RA-1: autopilot bridge route absent after sandbox boot').toBeDefined()
+
+    const loader = (ctx as unknown as {
+      loader: {
+        resolve: (id: string) => { fiber?: { state?: number; dispose?: () => Promise<unknown> | unknown } }
+        create: (o: { name: string; id?: string; disabled?: boolean | null }) => Promise<unknown>
+      }
+    }).loader
+    const stateOrGone = (): number | undefined => {
+      try { return entryState(ctx, apChannel) } catch { return undefined }
+    }
+    await loader.resolve(apChannel).fiber?.dispose?.()
+    expect(stateOrGone(), 'M1: autopilot still ACTIVE after dispose').not.toBe(2)
+    // RA1d criterion, AP leg: the ctx.effect wiring (33C3b) must withdraw
+    // both routes on dispose — a leak here re-opens the constructor-path
+    // disposal defect for the second plugin family.
+    expect(fx.webServer!.find('exact', '/api/autopilot-action'), 'M1 RA1d: dispose leaked the autopilot action route').toBeUndefined()
+    expect(fx.webServer!.find('exact', '/api/autopilot-bridge'), 'M1 RA1d: dispose leaked the autopilot bridge route').toBeUndefined()
+
+    await loader.create({ name: firstFactoryHref(mountRow('core/autopilot')), id: apChannel, disabled: false })
+    expect(entryState(ctx, apChannel), 'M1: autopilot did not come back after remount').toBe(2)
+    expect(fx.webServer!.find('exact', '/api/autopilot-action'), 'M1: action route not restored after remount').toBeDefined()
+    expect(fx.webServer!.find('exact', '/api/autopilot-bridge'), 'M1: bridge route not restored after remount').toBeDefined()
+  })
   it('M1 filehub: dispose withdraws the full surface, remount restores it cleanly (RP2, aab73d7)', async () => {
     const { ctx, gateway, fx } = await bootWithServices(writeMountSeed([
       mountRow('core/filehub', { enabledAtBoot: true }),

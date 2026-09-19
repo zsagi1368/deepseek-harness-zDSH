@@ -11,6 +11,6 @@
     "dsh-webstack-bridge": "git+https://github.com/zsagi1368/dsh-webstack.git#ffa036435d383edf577c47935f21cb1d7252ea93",
     "dsh-filehub": "git+https://github.com/zsagi1368/zdsh-filehub.git#aab73d7ca4a3c57351a4810c611957da76838e8b",
     "dsh-plugin-center": "git+https://github.com/zsagi1368/zdsh-plugin-center.git#b403757a49872afd324724d2f6cac685a477e95d",
-    "dsh-autopilot": "git+https://github.com/zsagi1368/zdsh-autopilot.git#3ed2d4cac8bd55fccdbb37ed0db5d21b005cf0b3"
+    "dsh-autopilot": "git+https://github.com/zsagi1368/zdsh-autopilot.git#3bc49638bbdc102eccab644065f73e46298fcc61"
   }
 }

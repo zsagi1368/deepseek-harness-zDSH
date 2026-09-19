@@ -6027,8 +6027,8 @@ importers:
   packages/factory/zdsh-factory-bundle:
     dependencies:
       dsh-autopilot:
-        specifier: git+https://github.com/zsagi1368/zdsh-autopilot.git#3ed2d4cac8bd55fccdbb37ed0db5d21b005cf0b3
-        version: https://codeload.github.com/zsagi1368/zdsh-autopilot/tar.gz/3ed2d4cac8bd55fccdbb37ed0db5d21b005cf0b3(@deepseek-ai/cordis@vendor+cordis)
+        specifier: git+https://github.com/zsagi1368/zdsh-autopilot.git#3bc49638bbdc102eccab644065f73e46298fcc61
+        version: https://codeload.github.com/zsagi1368/zdsh-autopilot/tar.gz/3bc49638bbdc102eccab644065f73e46298fcc61(@deepseek-ai/cordis@vendor+cordis)
       dsh-filehub:
         specifier: git+https://github.com/zsagi1368/zdsh-filehub.git#aab73d7ca4a3c57351a4810c611957da76838e8b
         version: https://codeload.github.com/zsagi1368/zdsh-filehub/tar.gz/aab73d7ca4a3c57351a4810c611957da76838e8b(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/schemastery@vendor+schemastery)(react@18.3.1)
@@ -15609,8 +15609,8 @@ packages:
     resolution: {integrity: sha512-uBq4egWHTcTt33a72vpSG0z3HnPuIl6NqYcTrKEg2azoEyl2hpW0zqlxysq2pK9HlDIHyHyakeYaYnSAwd8bow==}
     engines: {node: '>=12'}
 
-  dsh-autopilot@https://codeload.github.com/zsagi1368/zdsh-autopilot/tar.gz/3ed2d4cac8bd55fccdbb37ed0db5d21b005cf0b3:
-    resolution: {gitHosted: true, integrity: sha512-GxnMgvJhZ3ypIuyYrafla3Voe3QT2do21cKpk+2OV+749MTc58AnvYY93nw3QYMYKikHJQc5ZHcImxu5rZIhpg==, tarball: https://codeload.github.com/zsagi1368/zdsh-autopilot/tar.gz/3ed2d4cac8bd55fccdbb37ed0db5d21b005cf0b3}
+  dsh-autopilot@https://codeload.github.com/zsagi1368/zdsh-autopilot/tar.gz/3bc49638bbdc102eccab644065f73e46298fcc61:
+    resolution: {gitHosted: true, integrity: sha512-9Kqt5dViygwlS2I9a/gqAHn3NcE9+sZkMS9w7sPe/32Qik0oFKnnNQohjcmWibi/uraHZ2GWbdpmPdTIgojpig==, tarball: https://codeload.github.com/zsagi1368/zdsh-autopilot/tar.gz/3bc49638bbdc102eccab644065f73e46298fcc61}
     version: 0.1.0
     engines: {node: '>=22'}
     peerDependencies:
@@ -22447,7 +22447,7 @@ snapshots:
 
   dotenv@16.6.1: {}
 
-  dsh-autopilot@https://codeload.github.com/zsagi1368/zdsh-autopilot/tar.gz/3ed2d4cac8bd55fccdbb37ed0db5d21b005cf0b3(@deepseek-ai/cordis@vendor+cordis):
+  dsh-autopilot@https://codeload.github.com/zsagi1368/zdsh-autopilot/tar.gz/3bc49638bbdc102eccab644065f73e46298fcc61(@deepseek-ai/cordis@vendor+cordis):
     optionalDependencies:
       '@deepseek-ai/cordis': link:vendor/cordis
 
