@@ -9,20 +9,25 @@
  *  - `core/plugin-center`  → REACHES LOADED. `inject=[]` clears the cordis gate
  *    and its DYNAMIC `ctx.inject(['webServer'], …)` lands the full exact route
  *    table on the capture registrar. (①③)
- *  - `core/filehub`        → CANNOT activate on the current bundle pin: its
- *    `apply` reads `ctx.llm` WITHOUT declaring `llm` in `inject`, and cordis
- *    gates property reads on that declaration. This is captured as a PERMANENT
- *    FAILURE-MODE LOCK (below), NOT a fabricated green — see the RA-2 note.
- *    (① lock + ② B01 proof, decoupled from the blocker)
+ *  - `core/filehub`        → REACHES ACTIVE at bundle pin 6c3b570 (TC-B4-RP
+ *    re-pin of the RA1c fix): its `apply` reads the optional `llm` service
+ *    through the guarded `ctx.get('llm')` seam, which passes the no-inject
+ *    production mount channel. Historically (pins ≤538a5b9) this row could NOT
+ *    activate — `ctx.llm` was read undeclared and cordis hard-gated it — and
+ *    the lock was a PERMANENT FAILURE-MODE assertion; TC-B4-RP upgraded it to
+ *    the positive capability-surface proof below. (①②)
  *
- * What it locks (RA-1 acceptance, honestly re-scoped):
- *  - ① plugin-center → ACTIVE + ledger `mount:'mounted'`; filehub → the pinned
- *    `mount:'failed'` reason + entry-not-resolvable + zero capability leak.
+ * What it locks (RA-1 acceptance):
+ *  - ① both rows → ACTIVE + ledger `mount:'mounted'` + entry resolvable at
+ *    fiber state 2; filehub additionally carries the full capability surface
+ *    (read_document / list_workspace_files tools, the
+ *    `filehub-document-reading` guidance section, the `/api/filehub` prefix
+ *    route).
  *  - ② B01 anti-masking: FileHub's OWN real reading-tool DSL, pushed through
  *    the REAL validating registry (`assertSupportedJsonSchema`), is ACCEPTED —
- *    so the mount blocker is purely the undeclared `llm`, not a schema defect.
- *    The forged-node negatives that prove the registry genuinely validates live
- *    in ④ (a non-validating fake registry would accept them = the old B01 mask).
+ *    so no schema defect hides behind the mount path. The forged-node
+ *    negatives that prove the registry genuinely validates live in ④ (a
+ *    non-validating fake registry would accept them = the old B01 mask).
  *  - ③ plugin-center REACHES ACTIVE + ledger mounted (the RA-1 load-fidelity
  *    proof for its dynamic `ctx.inject(['webServer'])` path). RA-1b finding: PC
  *    mounts into a cordis plugin REALM whose route-table / handler state does
@@ -40,17 +45,22 @@
  *    capabilities — the red line that makes "flip enabledAtBoot=true without
  *    the fixture" fail honestly instead of masking (RA-F3 close-out).
  *
- * Gate-M M1 (load-surface recheck, DESIGN §10.4 M1/RA-1 side): sunk onto the
- * plugin-center row (the only one that mounts today) — dispose withdraws its
- * whole dynamic-injected route table with no orphans, a remount restores it.
- * When the 〔源〕 filehub `llm` fix lands and its failure lock is upgraded to a
- * positive ACTIVE test, mirror the same dispose/remount recheck there.
+ * Gate-M M1 (load-surface recheck, DESIGN §10.4 M1/RA-1 side): the dispose /
+ * withdraw / remount lifecycle is proven on plugin-center (dynamic-injected
+ * routes) and — since the TC-B4-RP re-pin — on filehub, where the RA1d probe
+ * found the domain-object dispose is DROPPED by cordis's constructor path:
+ * traceable-service facets (tools/prompt) withdraw, but the webServer route
+ * leaks and a remount dies on the duplicate-route rejection. Both halves of
+ * that are pinned as RA1d failure-mode locks in the M1 filehub test.
  *
- * ➡➡➡ RA-2 REGRESSION GATE — DO NOT DELETE THE FILEHUB FAILURE LOCK AS A
- * "FALSE RED". It asserts a KNOWN, tracked FileHub〔源〕defect. Deleting or
- * inverting it to make things "green" would re-open exactly the B01-style
- * masking §10.6-4 forbids. It flips (to the positive assertion) only when
- * FileHub declares/guards `llm` AND the bundle is re-pinned.
+ * ➡➡➡ REGRESSION GATE — the filehub mount leg was a PERMANENT FAILURE-MODE
+ * LOCK until pin 6c3b570 (RA1c guarded `ctx.get` seam + TC-B4-RP re-pin)
+ * flipped it to the positive ACTIVE proof. If FileHub EVER again reads an
+ * undeclared service in `apply` — or the guarded seam is removed — the mount
+ * flips back to `failed` and this spec goes red. That red is the defect
+ * asserting itself; fix the plugin or the pin, never the assertion. The RA1d
+ * locks (route leak + remount crash) flip positive only when the 〔源〕
+ * disposal-wiring fix lands AND the bundle re-pins past it.
  */
 
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -196,10 +206,10 @@ interface ProbeArgs {
 
 type Ra1MountProbe = (args: ProbeArgs) => void | Promise<void>
 
-// The success-path mount probes for boot-enabled rows. Only `core/plugin-center`
-// has one: FileHub's honest terminal state under the current bundle pin is a
-// FAILURE, recorded as a permanent lock in `test 1` below (see the RA-2 note),
-// not a success probe — so it deliberately has no entry here.
+// The success-path mount probes for boot-enabled rows. `core/plugin-center`
+// (below) and — since the TC-B4-RP re-pin to 6c3b570 — `core/filehub` (whose
+// capability-surface proof lives directly in the ①② test body and the M1
+// filehub leg, both richer than a probe-table entry needs to be).
 const RA1_MOUNT_PROBES: Record<string, Ra1MountProbe> = {
   // PluginCenter: `inject=[]` clears the cordis hard gate and it activates to
   // ACTIVE(state 2) with ledger `mount:'mounted'` once the host services are in
@@ -244,52 +254,57 @@ describe('RA-1 sandbox mount proof (fixture + real loader.create, production see
     await RA1_MOUNT_PROBES['core/plugin-center']!({ ctx, row: FULL_SEED.find(row => row.id === 'core/plugin-center')!, fx })
   })
 
-  // ── PERMANENT FAILURE-MODE LOCK — DO NOT DELETE AS A FALSE RED ─────────────
-  // ①② FileHub. Its current bundle pin reads `ctx.llm` in `apply` WITHOUT
-  // declaring `llm` in its `inject` list; cordis gates property reads on the
-  // declaration (vendor/cordis reflect.ts:144 `cannot get property "llm"
-  // without inject`, independent of whether an ancestor fiber provides llm),
-  // and the PRODUCTION mount channel — `host.mount` → `loader.create({name,
-  // id, disabled})`, governance-host index.ts:349 — passes NO inject. So the
-  // honest factory path cannot activate FileHub. This test pins that terminal
-  // state as a RA-2 REGRESSION GATE: RA-2 must not flip the production
-  // `enabledAtBoot` true while this fails.
-  // ➡ When the 〔源〕 FileHub follow-up declares/guards `llm` (PC-style
-  // `ctx.inject(['llm'], …)` or `llm` added to `inject`) and the bundle is
-  // re-pinned, UPGRADE this leg to the positive ACTIVE assertion (tools +
-  // guidance section + prefix route live, matching plugin-center). Until then
-  // a red here is the KNOWN defect asserting itself correctly.
-  it('FILEHUB PERMANENT FAILURE LOCK: undeclared 7th service `llm` blocks honest mount (①②)', async () => {
+  // ── UPGRADED POSITIVE MOUNT PROOF (was the PERMANENT FAILURE-MODE LOCK) ────
+  // ① FileHub, re-pinned to 6c3b570 (TC-B4-RP). The old pin read `ctx.llm`
+  // in `apply` WITHOUT declaring `llm` in its `inject` list, and cordis gates
+  // property reads on that declaration (vendor/cordis reflect.ts:144 `cannot
+  // get property "llm" without inject`, independent of the ancestor fiber
+  // store) — so the honest factory path could NOT activate FileHub, and the
+  // lock below pinned that terminal state. The 〔源〕 RA1c fix (6c3b570) reads
+  // the optional service through the guarded `ctx.get('llm')` seam
+  // (`typeof ctx.get === 'function' ? ctx.get('llm') : ctx.llm`) instead,
+  // which passes the production mount channel (`host.mount` →
+  // `loader.create({name, id, disabled})` — still NO inject) and mounts to
+  // ACTIVE even though the fixture provides `llm` only as a real ancestor
+  // service. This leg is now the positive mirror: FULL capability surface
+  // live (tools + guidance section + prefix route).
+  // The NEW regression gate this assertion carries: if FileHub ever again
+  // reads an undeclared service in `apply` (or the guarded seam is removed),
+  // the mount flips back to `failed` and this test goes red — the exact
+  // failure mode the pre-RP lock used to pin. Do not weaken either side.
+  it('filehub reaches ACTIVE with full capability surface under the fixture (①, upgraded at re-pin 6c3b570)', async () => {
     const { ctx, gateway, fx } = await bootWithServices(writeMountSeed([
       mountRow('core/filehub', { enabledAtBoot: true }),
     ]))
     await gateway.settlePreinstall()
 
     const report = gateway.preinstallReport()
-    // Admitted (installed) but NOT mounted — the failure is at activation, not
-    // admission, so flipping enabledAtBoot on the CURRENT pin ships a broken row.
     expect(report.entries['core/filehub']?.status, 'RA-1: filehub admission regressed').toBe('installed')
-    const mount = report.entries['core/filehub']?.mount
-    expect(mount?.status, 'RA-1: filehub MUST NOT mount while it reads an undeclared service').toBe('failed')
-    expect(String(mount?.reason ?? ''), 'RA-1: filehub mount failure MUST be the undeclared-llm without-inject error (pin the exact reason so cordis drift is caught)')
-      .toMatch(/cannot get property "llm" without inject/)
-    // Not ACTIVE: the fiber never settles onto the tree, so resolve throws.
-    expect(() => entryState(ctx, 'factory/core/filehub'), 'RA-1: filehub unexpectedly resolvable — it must not reach the tree').toThrow()
-    // No orphan capabilities: FileHub's apply registered its reading tools at
-    // the top and THEN threw at the llm read; the cordis fiber teardown must have
-    // rolled every effect back, so nothing may leak onto the shared fixture.
-    expect(fx.tools!.get('read_document'), 'RA-1: failed filehub mount leaked read_document').toBeUndefined()
-    expect(fx.tools!.get('list_workspace_files'), 'RA-1: failed filehub mount leaked list_workspace_files').toBeUndefined()
+    expect(report.entries['core/filehub']?.mount?.status, 'RA-1: filehub must mount under the fixture at pin 6c3b570 (guarded llm seam)').toBe('mounted')
+    // ACTIVE on the tree: the fiber settles, so resolve works and reports 2.
+    expect(entryState(ctx, 'factory/core/filehub'), 'RA-1: filehub entry not ACTIVE at pin 6c3b570').toBe(2)
+    // Full capability surface live — the same four facets the old no-leak lock
+    // asserted ABSENT when the mount failed (they leaked nowhere then; they
+    // must be PRESENT now that the mount succeeds).
+    expect(fx.tools!.get('read_document'), 'RA-1: mounted filehub did not register read_document').toBeDefined()
+    expect(fx.tools!.get('list_workspace_files'), 'RA-1: mounted filehub did not register list_workspace_files').toBeDefined()
     expect((await fx.systemPrompt!.assemble()).sections.some(s => s.name === 'filehub-document-reading'),
-      'RA-1: failed filehub mount leaked its guidance section').toBe(false)
-    expect(fx.webServer!.find('prefix', '/api/filehub'), 'RA-1: failed filehub mount leaked its prefix route').toBeUndefined()
+      'RA-1: mounted filehub guidance section absent').toBe(true)
+    expect(fx.webServer!.find('prefix', '/api/filehub'), 'RA-1: mounted filehub prefix route absent').toBeDefined()
+    const readDoc = fx.tools!.get('read_document') as { output?: { schema?: { type?: unknown } } } | undefined
+    expect(readDoc?.output?.schema?.type, 'RA-1: mounted read_document output schema is not host-normalized object-rooted').toBe('object')
+  })
 
-    // ② B01 ANTI-MASKING, decoupled from the mount blocker: pushing FileHub's
-    // OWN real reading-tool DSL through the REAL validating registry (the very
-    // `assertSupportedJsonSchema` path the pre-B01 non-validating fake registry
-    // skipped) must SUCCEED — so the only thing keeping FileHub from mounting is
-    // the undeclared `llm` service, NOT a tool-schema defect. The forged-node
-    // NEGATIVES that prove this registry is genuinely validating live in ④.
+  // ② B01 ANTI-MASKING, DECOUPLED onto a fresh fixture boot (empty seed): the
+  // mounted filehub of ① already registered its tools, so the direct
+  // registerReadingTools pass runs on its OWN boot — pushing FileHub's OWN
+  // real reading-tool DSL through the REAL validating registry (the very
+  // `assertSupportedJsonSchema` path the pre-B01 non-validating fake registry
+  // skipped) must SUCCEED, so no schema defect hides behind the mount path.
+  // The forged-node NEGATIVES that prove this registry is genuinely
+  // validating live in ④.
+  it('B01 anti-masking: filehub real reading-tool DSL passes the real validating registry (②)', async () => {
+    const { fx } = await bootWithServices(writeMountSeed([]))
     const fh = (await import(firstFactoryHref(mountRow('core/filehub')))) as {
       registerReadingTools(deps: unknown): Array<() => void>
     }
@@ -429,15 +444,15 @@ describe('RA-1 sandbox mount proof (fixture + real loader.create, production see
       'RA-1 counterexample B: route registered although the apply must never have run').toBeUndefined()
   })
 
-  // M1 load-surface recheck (DESIGN §10.4 M1, RA-1 side), on the ONE row that
-  // honestly activates today — plugin-center. FileHub's dispose path is moot
-  // while it cannot activate (its failed-apply no-leak guarantee is asserted in
-  // the failure lock above). The observable proof here is the mount-channel
-  // lifecycle (entry ACTIVE → dispose → gone → remount → ACTIVE again); the
-  // "no orphan registration" facet rides on PC's dynamic-injected routes, which
-  // — per the RA-1b finding in the ③ probe comment — live in a plugin realm the
-  // bare harness cannot read, so the real route-disposer orphan check is deferred
-  // to the batch-4.2 web-server smoke with the rest of PC's route execution.
+  // M1 load-surface recheck (DESIGN §10.4 M1, RA-1 side), on BOTH rows that
+  // activate — plugin-center (dynamic-injected routes; the "no orphan
+  // registration" facet rides on PC's injected routes, which per the RA-1b
+  // finding in the ③ probe comment live in a plugin realm the bare harness
+  // cannot read, so the real route-disposer orphan check is deferred to the
+  // batch-4.2 web-server smoke) and, since the TC-B4-RP re-pin to 6c3b570,
+  // filehub: its capability surface (tools / guidance section / prefix route)
+  // IS visible on the fixture root, so dispose must withdraw exactly those
+  // four facets and remount must restore them.
   it('M1 load-surface recheck on plugin-center: dispose withdraws the entry, remount restores (Gate-M 并入)', async () => {
     const { ctx, gateway } = await bootWithServices(writeMountSeed([
       mountRow('core/plugin-center', { enabledAtBoot: true }),
@@ -463,5 +478,68 @@ describe('RA-1 sandbox mount proof (fixture + real loader.create, production see
     // remount through the SAME real loader.create channel → ACTIVE again.
     await loader.create({ name: firstFactoryHref(mountRow('core/plugin-center')), id: pcChannel, disabled: false })
     expect(entryState(ctx, pcChannel), 'M1: plugin-center did not come back after remount').toBe(2)
+  })
+
+  // M1 filehub leg (added at the TC-B4-RP re-pin) — HONESTLY SPLIT after the
+  // RA1d probe finding. Facts (mainline probe, del/probe-cordis.ts, deleted):
+  //  - FileHub's `apply` is a REGULAR function returning a domain object
+  //    `{sweep, dispose}`; cordis `isConstructor` sees `.prototype` and takes
+  //    the `new callback(ctx, config)` path (vendor/cordis fiber.ts:251-257),
+  //    where a constructor's returned OBJECT becomes the instance and only
+  //    `instance[symbols.init]?.()` is collected — the domain object (and its
+  //    `dispose`) is DROPPED. `domain.dispose()` therefore NEVER runs on fiber
+  //    disposal.
+  //  - Facets registered through cordis-traceable services (tools entries,
+  //    systemPrompt sections — the fixture mounts the REAL ToolRuntime /
+  //    SystemPrompt) ARE withdrawn by the fiber's own effect teardown.
+  //  - The webServer prefix route's disposer lives ONLY in domain.dispose, so
+  //    the route LEAKS past disposal; a remount then dies on the capture
+  //    registrar's duplicate-route rejection (the real WebServer rejects
+  //    duplicates identically — webserver/src/index.ts:165-172), and the sweep
+  //    timer keeps running. This is a REAL production defect (unload/reinstall
+  //    cycle crashes; timer+handles leak), tracked as TC-B4-RA1d〔源〕.
+  // So this leg asserts the withdrawal that genuinely happens, and PINS the
+  // leak + the remount crash as RA1d failure-mode locks. When RA1d lands and
+  // the bundle re-pins, UPGRADE: route withdrawn after dispose + clean
+  // remount to ACTIVE. Do not delete the locks as false reds before that.
+  it('M1 filehub: cordis-collected facets withdraw; route leak + remount crash pinned as RA1d locks', async () => {
+    const { ctx, gateway, fx } = await bootWithServices(writeMountSeed([
+      mountRow('core/filehub', { enabledAtBoot: true }),
+    ]))
+    await gateway.settlePreinstall()
+    const fhChannel = 'factory/core/filehub'
+    expect(entryState(ctx, fhChannel), 'M1: filehub not ACTIVE before dispose').toBe(2)
+    expect(fx.tools!.get('read_document'), 'M1: filehub read_document absent before dispose').toBeDefined()
+    expect(fx.webServer!.find('prefix', '/api/filehub'), 'M1: filehub prefix route absent before dispose').toBeDefined()
+
+    const loader = (ctx as unknown as {
+      loader: {
+        resolve: (id: string) => { fiber?: { state?: number; dispose?: () => Promise<unknown> | unknown } }
+        create: (o: { name: string; id?: string; disabled?: boolean | null }) => Promise<unknown>
+      }
+    }).loader
+    const stateOrGone = (): number | undefined => {
+      try { return entryState(ctx, fhChannel) } catch { return undefined }
+    }
+
+    await loader.resolve(fhChannel).fiber?.dispose?.()
+    expect(stateOrGone(), 'M1: filehub still ACTIVE after dispose').not.toBe(2)
+    // Cordis-collected facets DO withdraw (traceable-service effect teardown).
+    expect(fx.tools!.get('read_document'), 'M1: dispose leaked read_document').toBeUndefined()
+    expect(fx.tools!.get('list_workspace_files'), 'M1: dispose leaked list_workspace_files').toBeUndefined()
+    expect((await fx.systemPrompt!.assemble()).sections.some(s => s.name === 'filehub-document-reading'),
+      'M1: dispose leaked the guidance section').toBe(false)
+    // ── RA1d FAILURE-MODE LOCK — the domain-object dispose is dropped by the
+    // cordis constructor path, so the prefix route survives disposal. When
+    // RA1d wires domain disposal through the effect contract, flip this to
+    // toBeUndefined() and the remount below to a clean ACTIVE assertion.
+    expect(fx.webServer!.find('prefix', '/api/filehub'),
+      'RA1d lock: the prefix-route leak was FIXED — upgrade this leg (route withdrawn + clean remount) and close TC-B4-RA1d').toBeDefined()
+    // The leak's production consequence, pinned: remount dies on the duplicate
+    // route the leaked registration left behind.
+    await expect(
+      loader.create({ name: firstFactoryHref(mountRow('core/filehub')), id: fhChannel, disabled: false }),
+      'RA1d lock: remount succeeded — the route leak is fixed; upgrade this leg',
+    ).rejects.toThrow(/duplicate prefix route/)
   })
 })
