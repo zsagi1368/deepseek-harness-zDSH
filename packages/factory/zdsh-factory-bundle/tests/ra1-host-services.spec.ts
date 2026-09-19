@@ -2,9 +2,12 @@
  * TC-B4-RA1 — host-services fixture + RA-1 SANDBOX mount proof (DESIGN-intake-tech §10.4).
  *
  * Drives the REAL `loader.create` mount channel over SCRATCH seed rows forced
- * `enabledAtBoot:true` (production seed untouched — both rows stay false; the
- * posture flip is RA-2), to establish, honestly, which harness-honest rows can
- * actually activate once the host services are in place:
+ * `enabledAtBoot:true` (since TC-B4-RA-2 the production seed itself boots
+ * filehub + plugin-center true — the scratch forcing below now matches the
+ * production posture rather than diverging from it; the fixture remains the
+ * only harness providing the seven real host services those rows need), to
+ * establish, honestly, which harness-honest rows can actually activate once
+ * the host services are in place:
  *
  *  - `core/plugin-center`  → REACHES LOADED. `inject=[]` clears the cordis gate
  *    and its DYNAMIC `ctx.inject(['webServer'], …)` lands the full exact route
@@ -240,7 +243,7 @@ const RA1_MOUNT_PROBES: Record<string, Ra1MountProbe> = {
 // RA-1 proof
 // ---------------------------------------------------------------------------
 
-describe('RA-1 sandbox mount proof (fixture + real loader.create, production seed untouched)', () => {
+describe('RA-1 sandbox mount proof (fixture + real loader.create; fixture is the only seven-service harness)', () => {
   // plugin-center honestly reaches LOADED under the fixture: `inject=[]` clears
   // the cordis hard gate and its DYNAMIC `ctx.inject(['webServer'], …)` lands
   // the full exact route table on the capture registrar (③).

@@ -599,6 +599,27 @@ const MOUNT_PROBES: Record<string, MountProbe> = {
     expect(typeof plugin.processMessage, 'Gate-P P5: mounted omnivision plugin lacks processMessage').toBe('function')
     expect(typeof plugin.stats().providers, 'Gate-P P5: mounted omnivision plugin stats invalid').toBe('number')
   },
+  // TC-B4-RA-2: filehub + plugin-center flipped boot-enabled. Their probes are
+  // authored at the same bar as the siblings, split by inject shape:
+  //  - plugin-center (`inject=[]`) passes the cordis gate instantly, so its
+  //    entry reaches ACTIVE even in THIS bare harness — asserted here.
+  //  - filehub (six hard injects) mounts through the real channel (ledger
+  //    `mounted`, asserted in the production-boot test) but its fiber stays
+  //    PENDING in this bare harness — the six services exist only on the real
+  //    host faces (web-app / headless CLI) and the ra1 host-services fixture.
+  //    Asserting ACTIVE here would be dishonest (the services are genuinely
+  //    absent); the ACTIVE + full-capability proof lives in the ra1 spec under
+  //    the real-service fixture. The probe instead pins the honest bare shape:
+  //    the fiber is PENDING (service-gated), never FAILED — a FAILED state
+  //    here would mean the artifact itself broke, which is exactly what this
+  //    probe must catch (e.g. the pre-RA1c undeclared-llm crash flipped the
+  //    ledger to 'failed', which the ledger assertions above already catch).
+  'core/filehub': (ctx) => {
+    expect(entryState(ctx, 'factory/core/filehub'), 'Gate-P P5: filehub fiber must be service-gated PENDING in the bare harness, not FAILED/ACTIVE — a FAILED state means the artifact broke').toBe(0)
+  },
+  'core/plugin-center': (ctx) => {
+    expect(entryState(ctx, 'factory/core/plugin-center'), 'Gate-P P5: plugin-center entry not ACTIVE in the production posture').toBe(2)
+  },
 }
 
 // §9.5-D①: a boot-enabled local: seed row with no P5 mount probe is a module-
@@ -612,38 +633,34 @@ for (const row of FULL_SEED) {
 }
 
 describe('Gate-P P5 — real mount spectrum over the seed rows + fail-open + lifecycle', () => {
-  it('production boot: bridge + omnivision mount LOADED, verticals + filehub + plugin-center + autopilot stay skipped (FIX9 / TC-B3-MM1b / TC-B3-MM2)', async () => {
-    // The shipped seed posture (verticals false, omnivision + bridge true),
-    // mounted through the real channel: the two boot-enabled rows load and their
-    // probes pass; the verticals row is tried-by-nothing and records skipped.
+  it('production boot: bridge + omnivision + filehub + plugin-center mount LOADED; verticals + autopilot stay skipped (FIX9 / TC-B3-MM1b/MM2 → TC-B4-RA-2)', async () => {
+    // The shipped seed posture after TC-B4-RA-2 (verticals false,
+    // omnivision + bridge + filehub + plugin-center true), mounted through the
+    // real channel: the four boot-enabled rows load and their probes pass; the
+    // verticals + autopilot rows are tried-by-nothing and record skipped.
     const { ctx, gateway } = await bootRealLoader(SEED_PATH)
     await gateway.settlePreinstall()
 
     const report = gateway.preinstallReport()
-    expect(report.entries['core/webstack-bridge']?.status).toBe('installed')
-    expect(report.entries['core/webstack-bridge']?.mount?.status).toBe('mounted')
-    expect(report.entries['core/omnivision']?.status).toBe('installed')
-    expect(report.entries['core/omnivision']?.mount?.status).toBe('mounted')
+    for (const id of ['core/webstack-bridge', 'core/omnivision', 'core/filehub', 'core/plugin-center']) {
+      expect(report.entries[id]?.status, `Gate-P P5: ${id} production row must be installed`).toBe('installed')
+      expect(report.entries[id]?.mount?.status, `Gate-P P5: ${id} must mount in the RA-2 production posture`).toBe('mounted')
+    }
     // verticals production stays factory-off: never mounted, ledger skipped.
     expect(report.entries['core/webstack-verticals']?.status).toBe('installed')
     expect(report.entries['core/webstack-verticals']?.mount?.status).toBe('skipped')
     expect(report.entries['core/webstack-verticals']?.mount?.reason).toMatch(/enabledAtBoot=false/)
     expect(tryGet(ctx, 'x-vertical'), 'Gate-P P5: verticals must NOT be mounted in the production posture').toBeUndefined()
 
-    // TC-B3-MM1b held 断言两条 + TC-B3-MM2 一条：filehub + plugin-center（装载
-    // 待 R-A harness 翻转）与 autopilot（【产品设计】整件默认关，ADJ-3，非 harness
-    // 等待）三件同样「装好但姿态 held」——台账 installed、mount 维度 skipped
-    // （reason 带 enabledAtBoot=false，与 verticals 同型）。三者姿态成因不同但
-    // 机制同：出厂 false → 预装通道「tried-by-nothing + records skipped」，均不入
-    // MOUNT_PROBES 谱（§9.5-D① 只约束 boot-enabled local: 行）。
-    for (const heldId of ['core/filehub', 'core/plugin-center', 'core/autopilot']) {
-      expect(report.entries[heldId]?.status, `Gate-P P5: ${heldId} production row must be installed`).toBe('installed')
-      expect(report.entries[heldId]?.mount?.status, `Gate-P P5: ${heldId} must stay held out of the mount spectrum`).toBe('skipped')
-      expect(report.entries[heldId]?.mount?.reason, `Gate-P P5: ${heldId} skipped-mount reason must cite the seed posture`).toMatch(/enabledAtBoot=false/)
-    }
+    // autopilot stays product-design-off (ADJ-3: the whole engine ships
+    // disabled by default — NOT a harness-honesty hold like filehub/PC were
+    // before RA-2; it does not flip with the R-A work and rides no probe).
+    expect(report.entries['core/autopilot']?.status, 'Gate-P P5: core/autopilot production row must be installed').toBe('installed')
+    expect(report.entries['core/autopilot']?.mount?.status, 'Gate-P P5: core/autopilot must stay held out of the mount spectrum').toBe('skipped')
+    expect(report.entries['core/autopilot']?.mount?.reason, 'Gate-P P5: core/autopilot skipped-mount reason must cite the seed posture').toMatch(/enabledAtBoot=false/)
 
-    // Run the authored capability probes for the two boot-enabled rows.
-    for (const id of ['core/webstack-bridge', 'core/omnivision']) {
+    // Run the authored capability probes for the four boot-enabled rows.
+    for (const id of ['core/webstack-bridge', 'core/omnivision', 'core/filehub', 'core/plugin-center']) {
       await MOUNT_PROBES[id]!(ctx, FULL_SEED.find(row => row.id === id)!)
     }
   })
