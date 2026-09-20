@@ -1,11 +1,13 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { createRequire } from 'node:module'
 import { describe, expect, it } from 'vitest'
 
 const packageRoot = resolve(import.meta.dirname, '..')
+const repositoryRoot = resolve(packageRoot, '..', '..', '..')
+const healthRecipeScript = join(repositoryRoot, 'scripts', 'run-healthy-spec.mjs')
 const bundlePath = join(packageRoot, 'lib/client.js')
 const require = createRequire(import.meta.url)
 const licenseNames = [
@@ -29,15 +31,65 @@ function run(command: string, args: string[], cwd: string, timeout: number): str
   return result.stdout
 }
 
+interface DetectedPnpm {
+  kind: 'entrypoint' | 'command'
+  path: string
+}
+
+interface PnpmDetectionPayload {
+  ok: boolean
+  pnpm?: { adopted?: { kind?: 'entrypoint' | 'command'; path?: string } | null }
+  guidance?: string[]
+}
+
+/**
+ * Detect the real pnpm through the repository health-recipe script
+ * (`scripts/run-healthy-spec.mjs detect-pnpm --json`). That script is the
+ * single source of truth for the probe order (packageManager pin
+ * materialization, npm-global `node_modules/pnpm/bin/` derivation, PATH
+ * pnpm), so this spec cannot drift from the recipe it is verified with.
+ * Spawned as a child process (repo precedent: install-lefthook.spec.ts) to
+ * keep this file free of untyped static imports.
+ */
+function detectPnpm(): DetectedPnpm {
+  const probe = spawnSync(process.execPath, [healthRecipeScript, 'detect-pnpm', '--json'], {
+    cwd: packageRoot, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout: 120_000,
+  })
+  const payload = probe.stdout === ''
+    ? undefined
+    : JSON.parse(probe.stdout) as PnpmDetectionPayload
+  const adopted = payload?.pnpm?.adopted ?? undefined
+  if (probe.status !== 0 || payload === undefined || !payload.ok || adopted === undefined) {
+    const guidance = payload?.guidance?.join(' ') ?? (probe.stderr === '' ? `exit ${String(probe.status)}` : probe.stderr)
+    throw new Error(`no usable pnpm detected via ${healthRecipeScript}: ${guidance}`)
+  }
+  const { kind, path } = adopted
+  if (kind !== 'entrypoint' && kind !== 'command') {
+    throw new Error(`pnpm detection returned an unknown candidate kind: ${JSON.stringify(adopted)}`)
+  }
+  if (path === undefined || path === '') {
+    throw new Error(`pnpm detection returned an empty path: ${JSON.stringify(adopted)}`)
+  }
+  return { kind, path }
+}
+
 function runPnpm(args: string[], cwd: string, timeout: number): string {
   const entrypoint = process.env.npm_execpath
-  if (entrypoint === undefined || entrypoint === '') {
-    if (process.platform === 'win32') throw new Error('npm_execpath is required to run pnpm on Windows')
-    return run('pnpm', args, cwd, timeout)
+  if (entrypoint !== undefined && entrypoint !== '' && /^pnpm\.[cm]?js$/iu.test(basename(entrypoint))) {
+    // Launched by a real pnpm lifecycle (pnpm run/exec, CI, health recipe):
+    // npm_execpath already is pnpm, keep using it without an extra probe.
+    return /\.[cm]?js$/iu.test(entrypoint)
+      ? run(process.execPath, [entrypoint, ...args], cwd, timeout)
+      : run(entrypoint, args, cwd, timeout)
   }
-  return /\.[cm]?js$/iu.test(entrypoint)
-    ? run(process.execPath, [entrypoint, ...args], cwd, timeout)
-    : run(entrypoint, args, cwd, timeout)
+  // npm_execpath is absent or points at npm-cli (bare `npx vitest`): npm's
+  // `pack --json` shape differs from pnpm's (`packed.files` would be
+  // undefined), so pin the packer to a detected real pnpm instead of
+  // trusting the lifecycle variable.
+  const pnpm = detectPnpm()
+  return pnpm.kind === 'entrypoint'
+    ? run(process.execPath, [pnpm.path, ...args], cwd, timeout)
+    : run(pnpm.path, args, cwd, timeout)
 }
 
 describe('published PDF.js licenses', () => {
