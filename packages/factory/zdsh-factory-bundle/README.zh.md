@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-以 git URL + 完整 commit pin 声明每一个 zDSH 首启出厂预装的插件。治理 `SeedPreinstaller` 经既有 `install({ source: 'local:<目录>' })` 通道就地纳管各钉定工件；本包从不搬运、复制或删除工件。唯一消费者是出厂预装通道，最小入口是一行 `dependencies`。出厂集现已钉六件：`dsh-webstack-verticals`（出厂关闭试点）、`dsh-omnivision`（出厂即用件）、`dsh-webstack-bridge`（出厂即用的 webstack 数据面链路件）、`dsh-filehub` 与 `dsh-plugin-center`（两件自 TC-B4-RA-2 起出厂即用：R-A 装载侧 harness 已全套验收其装载——含 RA1c 可选 llm 守卫与 RA1d 处置接线（pin aab73d7）——故 seed 翻为 `enabledAtBoot: true` 开箱可用），另加 `dsh-autopilot`——`enabledAtBoot: false` 属【产品设计默认关】（ADJ-3：整件出厂默认关闭、由用户显式开启），不随 R-A harness 翻转。
+以 git URL + 完整 commit pin 声明每一个 zDSH 首启出厂预装的插件。治理 `SeedPreinstaller` 经既有 `install({ source: 'local:<目录>' })` 通道就地纳管各钉定工件；本包从不搬运、复制或删除工件。唯一消费者是出厂预装通道，最小入口是一行 `dependencies`。出厂集现已钉七件：`dsh-webstack-verticals`（出厂关闭试点）、`dsh-omnivision`（出厂即用件）、`dsh-webstack-bridge`（出厂即用的 webstack 数据面链路件）、`dsh-filehub` 与 `dsh-plugin-center`（两件自 TC-B4-RA-2 起出厂即用：R-A 装载侧 harness 已全套验收其装载——含 RA1c 可选 llm 守卫与 RA1d 处置接线（pin aab73d7）——故 seed 翻为 `enabledAtBoot: true` 开箱可用），另加 `dsh-autopilot`——`enabledAtBoot: false` 属【产品设计默认关】（ADJ-3：整件出厂默认关闭、由用户显式开启），不随 R-A harness 翻转。TC-B4-W3 加灌 `dsh-webstack`——WebStack monorepo 的聚合内核包，经 W-DEC 裁决出厂即用：三工具（`web_backend_status`、`web_batch_search`、`web_history`）首启即注册，coexist 数据面在宿主钉死的双选择器（`deepseek-official`/`http`）之后保持休眠——出厂不改变任何搜索/抓取路由，直至显式接管。
 
 ## 目录
 
@@ -37,8 +37,9 @@ kind: "package-reference"
 ## 已知限制与延后事项
 
 - 未随附任何运行时 invariant companion；本包为私有依赖清单，无可执行源码、亦无需断言不变量的可变运行态。
-- git 依赖会克隆仓库根，故 `dsh-webstack-verticals` 实际解析到 WebStack monorepo，seed 的 `local:` 源指向其 `packages/verticals` 子目录；`dsh-omnivision`、`dsh-filehub`、`dsh-plugin-center`、`dsh-autopilot` 为单包仓，其源直指 `node_modules/<包名>`。
-- 当前已钉六件（verticals + omnivision + bridge + filehub + plugin-center + autopilot）；出厂姿态谱=四件挂载（omnivision + bridge + filehub + plugin-center——后两件经 R-A 前置全套转绿后由 TC-B4-RA-2 翻为 `enabledAtBoot: true`）+ 两件跳过（verticals：包自述 opt-in；autopilot：ADJ-3 产品设计默认关）；其余接盘插件在后续批次加入。
+- git 依赖会克隆仓库根，故 `dsh-webstack-verticals`、`dsh-webstack-bridge` 与 `dsh-webstack` 均解析到 WebStack monorepo，seed 的 `local:` 源分别指向其 `packages/verticals`、`packages/bridge`、`packages/webstack` 子目录；`dsh-omnivision`、`dsh-filehub`、`dsh-plugin-center`、`dsh-autopilot` 为单包仓，其源直指 `node_modules/<包名>`。
+- 当前已钉七件（verticals + omnivision + bridge + filehub + plugin-center + autopilot + webstack）；出厂姿态谱=五件挂载（omnivision + bridge + filehub + plugin-center + webstack——filehub/plugin-center 经 R-A 前置全套转绿后由 TC-B4-RA-2 翻为 `enabledAtBoot: true`；webstack 由 TC-B4-W3 按 W-DEC 裁决灌入出厂即用，且在 W1/W1b/W1c 契约修复链全绿之后——禁先灌 true 再修源）+ 两件跳过（verticals：包自述 opt-in；autopilot：ADJ-3 产品设计默认关）；其余接盘插件在后续批次加入。
+- SSRF 双轨分工：走 webstack fetch/渲染路径的请求由插件自带 `checkTarget` 闸把关（`safety/ssrf.ts`，按解析后 IP fail-closed）；走宿主内置 http fetch 路径的请求由平台四闸链把关（policy/network/provider 逐跳 + 有界体）。bridge 的 JS 渲染回退经其 `dsh-webstack` peer import 复用插件闸（peer 缺席时 fail-closed）。
 
 <a id="dev-note"></a>
 ### 开发备注

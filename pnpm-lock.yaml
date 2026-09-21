@@ -6038,6 +6038,9 @@ importers:
       dsh-plugin-center:
         specifier: git+https://github.com/zsagi1368/zdsh-plugin-center.git#b403757a49872afd324724d2f6cac685a477e95d
         version: https://codeload.github.com/zsagi1368/zdsh-plugin-center/tar.gz/b403757a49872afd324724d2f6cac685a477e95d(@deepseek-ai/cordis@vendor+cordis)(react@18.3.1)
+      dsh-webstack:
+        specifier: git+https://github.com/zsagi1368/dsh-webstack.git#5d9bba4d3e88cced4e36513036a57c5ee61d3665
+        version: dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/5d9bba4d3e88cced4e36513036a57c5ee61d3665
       dsh-webstack-bridge:
         specifier: git+https://github.com/zsagi1368/dsh-webstack.git#ffa036435d383edf577c47935f21cb1d7252ea93
         version: dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/ffa036435d383edf577c47935f21cb1d7252ea93
@@ -15685,6 +15688,11 @@ packages:
       react:
         optional: true
 
+  dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/5d9bba4d3e88cced4e36513036a57c5ee61d3665:
+    resolution: {gitHosted: true, integrity: sha512-pRo2smP/shTeqAmgrv5ICxupjek8PAAnNMHrnWmt8to24LnAZJJb6cvHeStlIYhqu07308kkmoJzTAmQD+VQaQ==, tarball: https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/5d9bba4d3e88cced4e36513036a57c5ee61d3665}
+    version: 0.0.0
+    engines: {node: '>=22.19.0'}
+
   dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/956df1b0797127746039baee4ca26805b2f4ad4d:
     resolution: {gitHosted: true, integrity: sha512-3E5WBV9hQgWNoMEZUr7h0jtkl9zXdUpNXgNNW9dabvPCA+JUsF9JR2ld1j6UTKJ0J9mmPwu7Ep7J9oTdrJw/+g==, tarball: https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/956df1b0797127746039baee4ca26805b2f4ad4d}
     version: 0.0.0
@@ -22471,6 +22479,8 @@ snapshots:
     optionalDependencies:
       '@deepseek-ai/cordis': link:vendor/cordis
       react: 18.3.1
+
+  dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/5d9bba4d3e88cced4e36513036a57c5ee61d3665: {}
 
   dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/956df1b0797127746039baee4ca26805b2f4ad4d: {}
 

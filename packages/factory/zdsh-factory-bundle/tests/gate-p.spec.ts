@@ -287,6 +287,30 @@ const SHAPE_PROBES: Record<string, ShapeProbe> = {
     expect(typeof mod.runtimeFor, 'Gate-P P4: autopilot exit has no runtimeFor inspection hook').toBe('function')
     expect(Array.isArray(mod.memoryAuditMirror), 'Gate-P P4: autopilot exit has no memoryAuditMirror array').toBe(true)
   },
+  // TC-B4-W3：webstack 服务出口 = W2 prebuilt 整树反转入库的聚合内核 barrel
+  // （6 件分片树，factory './lib/index.js'）。形制取实不造（装件导出面 22 键
+  // 实测）：cordis 四出口 name/inject/apply/Config + buildEngineRegistry 装配面
+  // + checkTarget SSRF 闸出口。判别对骑 Config 的 Standard Schema 面（bridge
+  // 探针先例同款）：零 config 必须解析到冻结默认（layer='free'/enabled=true），
+  // 非法 layer 必须拒——恒收/恒拒两侧桩同时红灯。零网络零计时器 P4 纪律：
+  // 不启动 apply()（引擎构建与 provider 注册归 P5/ra1 装载面）。
+  'core/webstack': (mod) => {
+    expect(typeof mod.apply, 'Gate-P P4: webstack factory exit exports no cordis apply()').toBe('function')
+    expect(mod.name, 'Gate-P P4: webstack factory exit name is not the shipped literal').toBe('webstack')
+    expect(mod.inject, 'Gate-P P4: webstack inject must declare exactly the web service').toEqual(['web'])
+    expect('default' in mod, 'Gate-P P4: webstack exports a default (the pinned tree has none)').toBe(false)
+    expect(typeof mod.buildEngineRegistry, 'Gate-P P4: webstack exit has no buildEngineRegistry assembly face').toBe('function')
+    expect(typeof mod.checkTarget, 'Gate-P P4: webstack exit has no SSRF checkTarget gate').toBe('function')
+    const config = mod.Config as { '~standard': { version: number; validate: (v: unknown) => { value?: { layer?: string; enabled?: boolean }; issues?: unknown[] } } }
+    expect(config['~standard'].version, 'Gate-P P4: webstack Config is not Standard Schema v1').toBe(1)
+    const ok = config['~standard'].validate({})
+    expect(ok.issues, 'Gate-P P4: webstack Config rejected the zero config (must resolve to the frozen defaults)').toBeUndefined()
+    expect(ok.value?.layer, 'Gate-P P4: webstack default layer is not the free pool').toBe('free')
+    expect(ok.value?.enabled, 'Gate-P P4: webstack default enabled is not true').toBe(true)
+    const bad = config['~standard'].validate({ layer: 'definitely-not-a-tier' })
+    expect(Array.isArray(bad.issues), 'Gate-P P4: webstack Config accepted a bogus layer (always-valid stub)').toBe(true)
+    expect(bad.value, 'Gate-P P4: webstack Config returned a coerced value for invalid input (always-valid stub)').toBeUndefined()
+  },
 }
 
 // The seed is the single source of truth: a seed row without a P4 probe here is
@@ -620,6 +644,19 @@ const MOUNT_PROBES: Record<string, MountProbe> = {
   'core/plugin-center': (ctx) => {
     expect(entryState(ctx, 'factory/core/plugin-center'), 'Gate-P P5: plugin-center entry not ACTIVE in the production posture').toBe(2)
   },
+  // TC-B4-W3: webstack is the seventh factory artifact (enabledAtBoot=true per
+  // the W-DEC ruling). Its single hard inject is `web`, which only exists on
+  // the real host faces (the base patch's web row) and in the ra1
+  // host-services fixture — so the honest bare-harness shape is a
+  // service-gated PENDING fiber, the SAME qualification the filehub probe
+  // above carries: asserting ACTIVE here would be dishonest (the service is
+  // genuinely absent), and the positive ACTIVE + capability proof lives in the
+  // ra1 spec's webstack leg. PENDING — never FAILED — is the artifact-integrity
+  // lock: FAILED would mean the artifact itself broke during load (e.g. an
+  // F2-class schema rejection at tools registration).
+  'core/webstack': (ctx) => {
+    expect(entryState(ctx, 'factory/core/webstack'), 'Gate-P P5: webstack fiber must be service-gated PENDING in the bare harness, not FAILED/ACTIVE — a FAILED state means the artifact broke').toBe(0)
+  },
 }
 
 // §9.5-D①: a boot-enabled local: seed row with no P5 mount probe is a module-
@@ -633,18 +670,19 @@ for (const row of FULL_SEED) {
 }
 
 describe('Gate-P P5 — real mount spectrum over the seed rows + fail-open + lifecycle', () => {
-  it('production boot: bridge + omnivision + filehub + plugin-center mount LOADED; verticals + autopilot stay skipped (FIX9 / TC-B3-MM1b/MM2 → TC-B4-RA-2)', async () => {
-    // The shipped seed posture after TC-B4-RA-2 (verticals false,
-    // omnivision + bridge + filehub + plugin-center true), mounted through the
-    // real channel: the four boot-enabled rows load and their probes pass; the
-    // verticals + autopilot rows are tried-by-nothing and record skipped.
+  it('production boot: bridge + omnivision + filehub + plugin-center + webstack mount LOADED; verticals + autopilot stay skipped (FIX9 / TC-B3-MM1b/MM2 → TC-B4-RA-2 → TC-B4-W3)', async () => {
+    // The shipped seed posture after TC-B4-W3 (verticals false,
+    // omnivision + bridge + filehub + plugin-center + webstack true), mounted
+    // through the real channel: the five boot-enabled rows load and their
+    // probes pass; the verticals + autopilot rows are tried-by-nothing and
+    // record skipped.
     const { ctx, gateway } = await bootRealLoader(SEED_PATH)
     await gateway.settlePreinstall()
 
     const report = gateway.preinstallReport()
-    for (const id of ['core/webstack-bridge', 'core/omnivision', 'core/filehub', 'core/plugin-center']) {
+    for (const id of ['core/webstack-bridge', 'core/omnivision', 'core/filehub', 'core/plugin-center', 'core/webstack']) {
       expect(report.entries[id]?.status, `Gate-P P5: ${id} production row must be installed`).toBe('installed')
-      expect(report.entries[id]?.mount?.status, `Gate-P P5: ${id} must mount in the RA-2 production posture`).toBe('mounted')
+      expect(report.entries[id]?.mount?.status, `Gate-P P5: ${id} must mount in the W3 production posture`).toBe('mounted')
     }
     // verticals production stays factory-off: never mounted, ledger skipped.
     expect(report.entries['core/webstack-verticals']?.status).toBe('installed')
@@ -659,8 +697,8 @@ describe('Gate-P P5 — real mount spectrum over the seed rows + fail-open + lif
     expect(report.entries['core/autopilot']?.mount?.status, 'Gate-P P5: core/autopilot must stay held out of the mount spectrum').toBe('skipped')
     expect(report.entries['core/autopilot']?.mount?.reason, 'Gate-P P5: core/autopilot skipped-mount reason must cite the seed posture').toMatch(/enabledAtBoot=false/)
 
-    // Run the authored capability probes for the four boot-enabled rows.
-    for (const id of ['core/webstack-bridge', 'core/omnivision', 'core/filehub', 'core/plugin-center']) {
+    // Run the authored capability probes for the five boot-enabled rows.
+    for (const id of ['core/webstack-bridge', 'core/omnivision', 'core/filehub', 'core/plugin-center', 'core/webstack']) {
       await MOUNT_PROBES[id]!(ctx, FULL_SEED.find(row => row.id === id)!)
     }
   })

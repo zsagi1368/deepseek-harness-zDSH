@@ -3,11 +3,12 @@
  *
  * Drives the REAL `loader.create` mount channel over SCRATCH seed rows forced
  * `enabledAtBoot:true` (since TC-B4-RA-2 the production seed itself boots
- * filehub + plugin-center true — the scratch forcing below now matches the
- * production posture rather than diverging from it; the fixture remains the
- * only harness providing the seven real host services those rows need), to
- * establish, honestly, which harness-honest rows can actually activate once
- * the host services are in place:
+ * filehub + plugin-center true — and since TC-B4-W3 webstack too — the
+ * scratch forcing below now matches the production posture rather than
+ * diverging from it; the fixture remains the only harness providing the eight
+ * real host services those rows need — the seventh inject `web` joined at
+ * TC-B4-W3), to establish, honestly, which harness-honest rows can actually
+ * activate once the host services are in place:
  *
  *  - `core/plugin-center`  → REACHES LOADED. `inject=[]` clears the cordis gate
  *    and its DYNAMIC `ctx.inject(['webServer'], …)` lands the full exact route
@@ -243,7 +244,7 @@ const RA1_MOUNT_PROBES: Record<string, Ra1MountProbe> = {
 // RA-1 proof
 // ---------------------------------------------------------------------------
 
-describe('RA-1 sandbox mount proof (fixture + real loader.create; fixture is the only seven-service harness)', () => {
+describe('RA-1 sandbox mount proof (fixture + real loader.create; fixture is the only eight-service harness)', () => {
   // plugin-center honestly reaches LOADED under the fixture: `inject=[]` clears
   // the cordis hard gate and its DYNAMIC `ctx.inject(['webServer'], …)` lands
   // the full exact route table on the capture registrar (③).
@@ -335,9 +336,9 @@ describe('RA-1 sandbox mount proof (fixture + real loader.create; fixture is the
     // boolean array to keep the failure message renderable (a raw object under
     // `toBe(true)` makes vitest pretty-print the proxy and crash on `$$typeof`).
     expect(
-      [fx.tools, fx.systemPrompt, fx.sessions, fx.storage, fx.fs, fx.webServer, fx.llm]
+      [fx.tools, fx.systemPrompt, fx.sessions, fx.storage, fx.fs, fx.webServer, fx.llm, fx.web]
         .every(service => service !== undefined),
-      'RA-1: full seven-service fixture (six inject + the empirically-required llm) must resolve complete',
+      'RA-1: full eight-service fixture (seven inject + the empirically-required llm) must resolve complete',
     ).toBe(true)
     const webServer = fx.webServer as WebServerRouteCapture
 
@@ -544,6 +545,88 @@ describe('RA-1 sandbox mount proof (fixture + real loader.create; fixture is the
     expect(entryState(ctx, apChannel), 'M1: autopilot did not come back after remount').toBe(2)
     expect(fx.webServer!.find('exact', '/api/autopilot-action'), 'M1: action route not restored after remount').toBeDefined()
     expect(fx.webServer!.find('exact', '/api/autopilot-bridge'), 'M1: bridge route not restored after remount').toBeDefined()
+  })
+
+  // ── TC-B4-W3: webstack production-posture boot leg. The production seed
+  // itself carries enabledAtBoot=true since W3 (W-DEC ruling: the three tools
+  // go live off the box while the coexist data plane stays dormant behind the
+  // host's pinned selectors), so this leg runs the row UNOVERRIDDEN — scratch
+  // posture and production posture are the same. `inject=['web']` is
+  // satisfied by the fixture's eighth service (the real WebRuntime mounted
+  // with the host production selectors; zero init side effects).
+  //
+  // RA1d-criterion check (result recorded in the W3 receipt): webstack's
+  // apply side-effect surface is ENTIRELY fiber-managed host services — the
+  // three tool registrations on the real ToolRuntime and the dual provider
+  // registrations on WebRuntime (whose registerProvider binds disposal to
+  // the CALLING fiber through ctx.effect) — with no domain-owned
+  // timers/routes/sweeps started at mount time, so there is no plugin-side
+  // disposer for the effect contract to wire. The M1 half below locks exactly
+  // that claim: dispose must withdraw EVERY facet and remount must restore
+  // it — a leak would mean some side effect escaped fiber management
+  // (re-opening the RA1d class for this family).
+  //
+  // The tools registration itself is the F2 fix's factory-level true-host
+  // smoke: the pre-W1 lib carried a root-level `required` array that throws
+  // inside the real assertSupportedJsonSchema at registration, which would
+  // flip this mount to failed — this leg is that regression gate.
+  it('webstack reaches ACTIVE at the production posture with three tools + dual web providers; dispose withdraws the fiber-scoped surface (W3)', async () => {
+    const { ctx, gateway, fx } = await bootWithServices(writeMountSeed([
+      mountRow('core/webstack'),
+    ]))
+    await gateway.settlePreinstall()
+    const wsChannel = 'factory/core/webstack'
+    const report = gateway.preinstallReport()
+    expect(report.entries['core/webstack']?.status, 'RA-1 W3: webstack admission regressed').toBe('installed')
+    expect(report.entries['core/webstack']?.mount?.status, 'RA-1 W3: webstack must mount under the fixture (inject=[web] satisfied)').toBe('mounted')
+    expect(entryState(ctx, wsChannel), 'RA-1 W3: webstack entry not ACTIVE under the fixture').toBe(2)
+
+    // Three tools registered through the REAL validating registry (the F2
+    // fix's factory-level smoke — the old root-level-required schema threw
+    // here and flipped the mount to failed).
+    for (const tool of ['web_backend_status', 'web_batch_search', 'web_history']) {
+      expect(fx.tools!.get(tool), `RA-1 W3: mounted webstack did not register ${tool}`).toBeDefined()
+    }
+    const statusTool = fx.tools!.get('web_backend_status') as { output?: { schema?: { type?: unknown } } } | undefined
+    expect(statusTool?.output?.schema?.type, 'RA-1 W3: web_backend_status output schema is not host-normalized object-rooted').toBe('object')
+
+    // Dual provider registration on the real WebRuntime, observed on its
+    // registries, plus the duplicate-id discrimination pair: a stub
+    // registrar would accept the second 'webstack' registration.
+    const web = fx.web as unknown as {
+      searchProviders: Map<string, unknown>
+      fetchProviders: Map<string, unknown>
+      registerSearchProvider: (p: { id: string }) => () => void
+    }
+    expect(web.searchProviders.has('webstack'), 'RA-1 W3: webstack search provider absent on the real WebRuntime').toBe(true)
+    expect(web.fetchProviders.has('webstack'), 'RA-1 W3: webstack fetch provider absent on the real WebRuntime').toBe(true)
+    expect(() => web.registerSearchProvider({ id: 'webstack' }),
+      'RA-1 W3: duplicate provider id accepted — the registration never really landed').toThrow(/already registered/)
+
+    // M1 lifecycle (RA1d-criterion check for the webstack family): fiber
+    // dispose withdraws every facet; remount restores the full surface.
+    const loader = (ctx as unknown as {
+      loader: {
+        resolve: (id: string) => { fiber?: { state?: number; dispose?: () => Promise<unknown> | unknown } }
+        create: (o: { name: string; id?: string; disabled?: boolean | null }) => Promise<unknown>
+      }
+    }).loader
+    const stateOrGone = (): number | undefined => {
+      try { return entryState(ctx, wsChannel) } catch { return undefined }
+    }
+    await loader.resolve(wsChannel).fiber?.dispose?.()
+    expect(stateOrGone(), 'M1 W3: webstack still ACTIVE after dispose').not.toBe(2)
+    for (const tool of ['web_backend_status', 'web_batch_search', 'web_history']) {
+      expect(fx.tools!.get(tool), `M1 W3: dispose leaked ${tool}`).toBeUndefined()
+    }
+    expect(web.searchProviders.has('webstack'), 'M1 W3: dispose leaked the search provider').toBe(false)
+    expect(web.fetchProviders.has('webstack'), 'M1 W3: dispose leaked the fetch provider').toBe(false)
+
+    await loader.create({ name: firstFactoryHref(mountRow('core/webstack')), id: wsChannel, disabled: false })
+    expect(entryState(ctx, wsChannel), 'M1 W3: webstack did not come back after remount').toBe(2)
+    expect(fx.tools!.get('web_backend_status'), 'M1 W3: tools not restored after remount').toBeDefined()
+    expect(web.searchProviders.has('webstack'), 'M1 W3: search provider not restored after remount').toBe(true)
+    expect(web.fetchProviders.has('webstack'), 'M1 W3: fetch provider not restored after remount').toBe(true)
   })
   it('M1 filehub: dispose withdraws the full surface, remount restores it cleanly (RP2, aab73d7)', async () => {
     const { ctx, gateway, fx } = await bootWithServices(writeMountSeed([

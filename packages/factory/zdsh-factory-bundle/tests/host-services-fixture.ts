@@ -30,6 +30,14 @@
  *    registered in the RA-1 receipt). It mirrors the real `register(route)`
  *    contract (exact/prefix tables, duplicate rejection, disposer) and adds
  *    the runtime validation the real class leaves to its TypeScript types.
+ *  - `web`            → REAL in-tree `WebRuntime` (TC-B4-W3, the eighth
+ *    service): isolation-safe — no `[Service.init]` hook, constructor only
+ *    reads config/env, zero ports/timers/network at mount. Mounted with the
+ *    HOST production-posture selectors (base/cordis.patch.yml `web` row:
+ *    search=deepseek-official / fetch=http), which are NOT registered in the
+ *    fixture, so any execution-time selection resolves to a clean
+ *    CONFIGURED_MISSING error — provider registration is observable while the
+ *    data plane stays dormant (the shipped coexist semantics, zero network).
  *
  * Structural constraints honoured here (DESIGN §10.6):
  *  - M2: this module body contains ZERO plugin/artifact names. It provides
@@ -58,6 +66,7 @@ import * as StorageJson from '../../../storage/storage-json/src/index.ts'
 import { SystemPrompt } from '../../../core/system-prompt/src/index.ts'
 import { ToolRuntime } from '../../../core/tools/src/index.ts'
 import { LlmRuntime } from '../../../llm/llm/src/index.ts'
+import { WebRuntime } from '../../../web/web/src/index.ts'
 
 /** One route as recorded by {@link WebServerRouteCapture}. */
 export interface CapturedRoute {
@@ -153,6 +162,7 @@ export interface HostServicesFixture {
   readonly fs: unknown | undefined
   readonly webServer: WebServerRouteCapture | undefined
   readonly llm: LlmRuntime | undefined
+  readonly web: WebRuntime | undefined
 }
 
 /**
@@ -199,6 +209,13 @@ export async function provideHostServices(
     await ctx.plugin(StorageJson, { root: options.storageRoot })
   }
   if (wants('webServer')) await ctx.plugin(WebServerRouteCapture)
+  // `web` (TC-B4-W3): the REAL WebRuntime, mounted with the host production
+  // selectors (see the header's fidelity ladder). Init is side-effect-free;
+  // registered providers are observable, execution-time selection stays a
+  // clean CONFIGURED_MISSING (the shipped coexist dormancy, zero network).
+  if (wants('web')) {
+    await ctx.plugin(WebRuntime, { searchProvider: 'deepseek-official', fetchProvider: 'http' })
+  }
 
   const get = (name: string): unknown => {
     try {
@@ -217,5 +234,6 @@ export async function provideHostServices(
     fs: get('fs'),
     webServer: get('webServer') as WebServerRouteCapture | undefined,
     llm: get('llm') as LlmRuntime | undefined,
+    web: get('web') as WebRuntime | undefined,
   }
 }
