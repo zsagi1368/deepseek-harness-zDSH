@@ -92,6 +92,48 @@ function runPnpm(args: string[], cwd: string, timeout: number): string {
     : run(pnpm.path, args, cwd, timeout)
 }
 
+interface DetectedTar {
+  kind: 'absolute' | 'command'
+  path: string
+}
+
+interface TarDetectionPayload {
+  ok: boolean
+  tar?: { adopted?: { kind?: 'absolute' | 'command'; path?: string } | null }
+}
+
+/**
+ * Resolve the tar command through the repository health-recipe script
+ * (`scripts/run-healthy-spec.mjs detect-tar --json`), the single source of
+ * truth for the bsdtar probe (same contract family as detectPnpm above, so
+ * this spec cannot drift from the recipe it is verified with). On Windows
+ * git-bash, GNU tar shadows `C:\Windows\System32\tar.exe` on PATH and
+ * misreads drive-letter archive paths as remote hosts ("tar: Cannot connect
+ * to C:", spawnSync status 128); the recipe adopts the absolute bsdtar path
+ * when present and falls back to PATH `tar` otherwise (POSIX tar handles
+ * absolute paths).
+ */
+function detectTar(): DetectedTar {
+  const probe = spawnSync(process.execPath, [healthRecipeScript, 'detect-tar', '--json'], {
+    cwd: packageRoot, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout: 120_000,
+  })
+  const payload = probe.stdout === ''
+    ? undefined
+    : JSON.parse(probe.stdout) as TarDetectionPayload
+  const adopted = payload?.tar?.adopted ?? undefined
+  if (probe.status !== 0 || payload === undefined || !payload.ok || adopted === undefined) {
+    throw new Error(`no usable tar detected via ${healthRecipeScript}: ${probe.stderr === '' ? `exit ${String(probe.status)}` : probe.stderr}`)
+  }
+  const { kind, path } = adopted
+  if (kind !== 'absolute' && kind !== 'command') {
+    throw new Error(`tar detection returned an unknown candidate kind: ${JSON.stringify(adopted)}`)
+  }
+  if (path === undefined || path === '') {
+    throw new Error(`tar detection returned an empty path: ${JSON.stringify(adopted)}`)
+  }
+  return { kind, path }
+}
+
 describe('published PDF.js licenses', () => {
   it.skipIf(!existsSync(bundlePath))('keeps every bundled license in the packed client artifact', ({ task }) => {
     const output = mkdtempSync(join(tmpdir(), 'dsh-document-preview-pack-'))
@@ -102,7 +144,8 @@ describe('published PDF.js licenses', () => {
       expect(packed.files.map(file => file.path)).toContain('lib/client.js')
       expect(packed.files.some(file => file.path.endsWith('pdfjs-NOTICES.txt'))).toBe(false)
 
-      const client = run('tar', ['-xOf', resolve(packageRoot, packed.filename), 'package/lib/client.js'], packageRoot, task.timeout)
+      const tar = detectTar()
+      const client = run(tar.path, ['-xOf', resolve(packageRoot, packed.filename), 'package/lib/client.js'], packageRoot, task.timeout)
       expect(client).toContain('//! Bundled PDF.js license notices')
       const pdfRoot = dirname(require.resolve('pdfjs-dist/package.json'))
       for (const name of licenseNames) {

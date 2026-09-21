@@ -27,6 +27,16 @@
  *       packages/client/ui-sidebar-documentpreview/tests/pdf-license-bundle.client.spec.ts
  *       (single source of truth for the probe order; no static import so the
  *       spec stays typecheck-clean).
+ *   node scripts/run-healthy-spec.mjs detect-tar [--json]
+ *       Tar resolution only (TC-B4-S2c face 1): reuses the recipe's bsdtar
+ *       probe (probeBsdtar, unchanged) and prints the adopted tar command as
+ *       JSON with the same stdout contract as detect-pnpm. Adopted shape:
+ *       `tar.adopted = { kind: 'absolute', path: <System32 bsdtar> }` on win32
+ *       when bsdtar exists (git-bash GNU tar shadows it on PATH and misreads
+ *       `C:\...` archive paths as remote hosts), otherwise
+ *       `{ kind: 'command', path: 'tar' }` (PATH fallback; POSIX tar handles
+ *       absolute paths). Independent of the pnpm probes: detect-tar never
+ *       runs detectPnpm, so it also works on machines without pnpm.
  *
  * pnpm probe order (each probe is recorded in the structured output):
  *   1. packageManager pin materialized inside the repo
@@ -281,6 +291,25 @@ function probeBsdtar(jsonMode) {
   return { applicable: true, path: tarExe, exists: true, version, pathPrepended: true }
 }
 
+/**
+ * Adopt the tar command from the (unchanged) bsdtar probe — detect-tar mode.
+ * win32 + System32 bsdtar present → its absolute path (GNU tar on PATH would
+ * misread `C:\...` archive paths as remote hosts); otherwise PATH `tar`
+ * (POSIX tar handles absolute paths; on win32 without bsdtar the probe
+ * already logged the GNU-tar-signature warning).
+ * @param probe - probeBsdtar result.
+ * @returns {{ kind: 'absolute' | 'command', path: string, source: string, version: string | null }}
+ */
+function adoptTarCommand(probe) {
+  if (probe.applicable === true && probe.exists === true) {
+    return { kind: 'absolute', path: probe.path, source: 'System32 bsdtar', version: probe.version ?? null }
+  }
+  const source = probe.applicable === true
+    ? 'PATH fallback (System32 bsdtar absent; GNU tar signatures may appear on drive-letter paths)'
+    : 'PATH tar (non-Windows: POSIX tar handles absolute paths)'
+  return { kind: 'command', path: 'tar', source, version: null }
+}
+
 function resolveSpecPath(arg) {
   if (isAbsolute(arg) && existsSync(arg)) return arg
   const fromRoot = resolve(repoRoot, arg)
@@ -306,6 +335,7 @@ function parseArgv(argv) {
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]
     if (arg === 'detect-pnpm') mode = 'detect-pnpm'
+    else if (arg === 'detect-tar') mode = 'detect-tar'
     else if (arg === '--json') jsonMode = true
     else if (arg === '--spec') {
       index += 1
@@ -327,6 +357,15 @@ function main() {
     return 2
   }
   const { mode, jsonMode } = parsed
+  if (mode === 'detect-tar') {
+    // Tar resolution is pnpm-independent: skip the pin/pnpm probes entirely
+    // (existing modes keep their original probe order below, untouched).
+    const probe = probeBsdtar(jsonMode)
+    const adopted = adoptTarCommand(probe)
+    log(jsonMode, `[detect-tar] adopted ${adopted.kind} ${adopted.path} (${adopted.source})`)
+    out(`${JSON.stringify({ ok: true, mode, tar: { adopted, probe }, exitCode: 0 }, null, 2)}\n`)
+    return 0
+  }
   const pin = readPin()
   log(jsonMode, `[pin] packageManager = ${pin.raw ?? '(none)'}`)
   const detection = detectPnpm(pin, jsonMode)
