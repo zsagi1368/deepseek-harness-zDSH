@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process'
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { parseArgs } from 'node:util'
 import { join, resolve } from 'node:path'
+import { pnpmInvocation } from '../../../scripts/pnpm-invocation.ts'
 import {
   desktopBuildRecordFilename,
   resolveDesktopAutoUpdateConfig,
@@ -250,12 +251,17 @@ function runPnpm(
   env: NodeJS.ProcessEnv = process.env,
   cwd: string = APP_ROOT,
 ): Promise<void> {
-  const pnpmEntry = process.env.npm_execpath
-  if (pnpmEntry === undefined || pnpmEntry === '') {
-    throw new Error('desktop package: invoke this script through a pnpm package command')
-  }
+  // TC-B4-S2d: shared trust model (scripts/pnpm-invocation.ts) — npm_execpath is
+  // honored only when its basename is genuinely pnpm; this packaging script's
+  // contract is invocation through a pnpm package command, so an absent or
+  // non-pnpm value fails fast with guidance instead of misusing another
+  // package manager's CLI. Resolution reads process.env (as before); the
+  // stripped `env` parameter only feeds the child process.
+  const invocation = pnpmInvocation([...args], process.env, () => {
+    throw new Error(`desktop package: npm_execpath must be a real pnpm entrypoint (found: ${JSON.stringify(process.env.npm_execpath ?? null)}); invoke this script through a pnpm package command`)
+  })
   return new Promise((resolvePromise, reject) => {
-    const child = spawn(process.execPath, [pnpmEntry, ...args], {
+    const child = spawn(invocation.command, invocation.args, {
       cwd,
       env,
       stdio: 'inherit',

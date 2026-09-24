@@ -9,9 +9,10 @@
 import { spawn } from 'node:child_process'
 import { existsSync, statSync } from 'node:fs'
 import { chmod, copyFile, cp, lstat, mkdir, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises'
-import { basename, dirname, extname, join, resolve, sep } from 'node:path'
+import { basename, dirname, join, resolve, sep } from 'node:path'
 import { parseArgs } from 'node:util'
 import { resolveLinuxNodePtyAddon, resolveWindowsNodePtyAddons } from './build-exe-for-python-sdk-native-pty.ts'
+import { pnpmInvocation as resolvePnpmInvocation, type DetectedPnpm } from './pnpm-invocation.ts'
 
 const root = resolve(import.meta.dirname, '..')
 
@@ -219,27 +220,38 @@ class BuildCli {
   }
 }
 
-function pnpmInvocation(args: string[]): [command: string, args: string[]] {
-  const entrypoint = process.env.npm_execpath?.trim()
-  if (entrypoint !== undefined && entrypoint !== '') {
-    const extension = extname(entrypoint).toLowerCase()
-    if (extension === '.js' || extension === '.cjs' || extension === '.mjs') {
-      return [process.execPath, [entrypoint, ...args]]
-    }
-    if (extension !== '.cmd') return [entrypoint, args]
-  }
+/**
+ * Explicit resolution for this script's context (TC-B4-S2d): the pnpm package
+ * bin derived from PNPM_HOME, then PATH `pnpm` off Windows; on Windows a real
+ * JavaScript entrypoint is required (shell-free spawn cannot run a .cmd shim).
+ * Injected into the shared trust model below in place of the health recipe,
+ * preserving this script's spec-locked fallback chain verbatim.
+ */
+function detectPnpmForBuildExe(): DetectedPnpm {
   const home = process.env.PNPM_HOME?.trim()
   if (home !== undefined && home !== '') {
     const packageBin = resolve(home, '..', 'pnpm', 'bin')
     for (const filename of ['pnpm.mjs', 'pnpm.cjs']) {
       const candidate = resolve(packageBin, filename)
-      if (existsSync(candidate)) return [process.execPath, [candidate, ...args]]
+      if (existsSync(candidate)) return { kind: 'entrypoint', path: candidate }
     }
   }
   if (process.platform === 'win32') {
     throw new Error('build-exe-for-python-sdk: pnpm must expose a JavaScript entrypoint through npm_execpath or PNPM_HOME on Windows.')
   }
-  return ['pnpm', args]
+  return { kind: 'command', path: 'pnpm' }
+}
+
+/**
+ * Resolve the shell-free pnpm invocation through the shared trust model
+ * (scripts/pnpm-invocation.ts, TC-B4-S2c face 2): `npm_execpath` is honored
+ * only when its basename is genuinely pnpm — an npm/yarn entrypoint (e.g.
+ * npm-cli.js under `npx`) falls to the explicit context resolution above
+ * instead of being misused as pnpm.
+ */
+function pnpmInvocation(args: string[]): [command: string, args: string[]] {
+  const invocation = resolvePnpmInvocation(args, process.env, detectPnpmForBuildExe)
+  return [invocation.command, invocation.args]
 }
 
 /**
