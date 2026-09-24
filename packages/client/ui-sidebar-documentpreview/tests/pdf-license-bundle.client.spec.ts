@@ -117,9 +117,17 @@ function detectTar(): DetectedTar {
   const probe = spawnSync(process.execPath, [healthRecipeScript, 'detect-tar', '--json'], {
     cwd: packageRoot, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout: 120_000,
   })
-  const payload = probe.stdout === ''
-    ? undefined
-    : JSON.parse(probe.stdout) as TarDetectionPayload
+  // TC-B4-S2d (REVIEW-S2c suggestion 1): a corrupted recipe payload must
+  // surface as structured guidance, not a bare SyntaxError from JSON.parse.
+  let payload: TarDetectionPayload | undefined
+  if (probe.stdout !== '') {
+    try {
+      payload = JSON.parse(probe.stdout) as TarDetectionPayload
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error)
+      throw new Error(`tar detection: ${healthRecipeScript} detect-tar returned invalid JSON (${detail}): verify the recipe script is intact — stdout in --json mode must be exactly the detect-tar contract payload`)
+    }
+  }
   const adopted = payload?.tar?.adopted ?? undefined
   if (probe.status !== 0 || payload === undefined || !payload.ok || adopted === undefined) {
     throw new Error(`no usable tar detected via ${healthRecipeScript}: ${probe.stderr === '' ? `exit ${String(probe.status)}` : probe.stderr}`)

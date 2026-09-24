@@ -46,9 +46,17 @@ function detectPnpmViaHealthRecipe(): DetectedPnpm {
     timeout: 120_000,
     windowsHide: true,
   })
-  const payload = probe.stdout === ''
-    ? undefined
-    : JSON.parse(probe.stdout) as PnpmDetectionPayload
+  // TC-B4-S2d (REVIEW-S2c suggestion 1): a corrupted recipe payload must
+  // surface as structured guidance, not a bare SyntaxError from JSON.parse.
+  let payload: PnpmDetectionPayload | undefined
+  if (probe.stdout !== '') {
+    try {
+      payload = JSON.parse(probe.stdout) as PnpmDetectionPayload
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error)
+      throw new Error(`pnpm invocation: ${healthRecipeScript} detect-pnpm returned invalid JSON (${detail}): verify the recipe script is intact — stdout in --json mode must be exactly the detect-pnpm contract payload`)
+    }
+  }
   const adopted = payload?.pnpm?.adopted ?? undefined
   if (probe.status !== 0 || payload === undefined || !payload.ok || adopted === undefined) {
     const guidance = payload?.guidance?.join(' ') ?? (probe.stderr === '' ? `exit ${String(probe.status)}` : probe.stderr)
