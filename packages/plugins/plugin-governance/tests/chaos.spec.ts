@@ -5,8 +5,11 @@
  * responsive, and disposable throughout.
  */
 
+import { readFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi, afterEach } from 'vitest'
-import { LoadGuard } from '../src/guards/load-guard.ts'
+import { LoadGuard, getSymbolIsolationScanStats, resetSymbolIsolationCacheForTest } from '../src/guards/load-guard.ts'
 import { RunGuard } from '../src/guards/run-guard.ts'
 import { HealthGuard, type HealthCheck } from '../src/guards/health-guard.ts'
 import { DefaultPluginRegistry } from '../src/registry/registry.ts'
@@ -273,5 +276,230 @@ describe('组合混沌：固定种子故障风暴下的核心不变式', () => {
     runGuard.unwatch('calm/x3')
     runGuard.unwatch('chaos/x1')
     runGuard.unwatch('chaos/x2')
+  })
+})
+
+// ============================================================================
+// TC-B4-G3（Gate-C C4，DESIGN §6.1:201 原文「chaos 套件扩展=逐插件『崩/超时/
+// 畸形 manifest』隔离用例（北极星 4 固化）」）——出厂七件谱×三形态隔离矩阵
+// + G1 检查位不误报复验（K-1.2.1 出厂集零误杀硬门的 chaos 面复证）。
+//
+// 枚举单一真源 = zdsh-factory/seed.json 读回（gate-p/preinstall-mount 同纪律：
+// read-back, never re-declared——seed 增项谱系自适，硬编码=漂移源）。
+// fail-open per-item 逐腿断言四件套：肇事者只伤己（谱内其余六件 ACTIVE 且照常
+// 应答）+ 台账逐项（kernel 面=健康报告/watcher 计数归因可查询）+ 核心读取面
+// 完好 + boot/处置面不受累。
+//
+// 注入机制分双面（卡面「scratch seed 行+tmpdir 伪造坏工件 local: 源」）：
+// 本文件 = kernel 面三形态（RunGuard timeoutMs = 治理域唯一现成超时 seam，
+// 超时切断在 kernel RunGuard 层兑现〔G3 裁决①〕；LoadGuard PreLoad 全链含
+// G1 SymbolIsolationCheck）；host 面 scratch seed 行 + tmpdir 伪造工件见
+// packages/host/plugin-governance-host/tests/preinstall-chaos.spec.ts。
+//
+// G1 语义分清（卡面条 3 + 裁决④）：正常件经全链**绝不得**被 symbol-isolation
+// 误杀（误杀=红灯，Gate 级停并报）；畸形件被拒=守卫正确工作（归因=清单族检查；
+// 若 G1 fail-closed 对畸形件触发亦属预期行为——拒绝本身即断言，归因如实记录）。
+// ============================================================================
+
+const G3_REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..')
+const G3_SEED_PATH = join(G3_REPO_ROOT, 'zdsh-factory', 'seed.json')
+
+interface G3SeedRow {
+  readonly id: string
+  readonly package: string
+  readonly enabledAtBoot: boolean
+}
+
+/** 出厂七件谱 = seed 读回（W3 已落：verticals/omnivision/bridge/filehub/plugin-center/autopilot/webstack）。 */
+const G3_SPECTRUM: readonly G3SeedRow[] = (
+  JSON.parse(readFileSync(G3_SEED_PATH, 'utf8')) as { entries: G3SeedRow[] }
+).entries
+if (G3_SPECTRUM.length === 0) {
+  throw new Error('G3 chaos matrix premise: zdsh-factory/seed.json declares no entries')
+}
+const G3_IDS: readonly string[] = G3_SPECTRUM.map(row => row.id)
+
+/** 谱内全部兄弟件（除肇事者）——「不连坐兄弟件」断言面。 */
+function g3SiblingsOf(culprit: string): string[] {
+  return G3_IDS.filter(id => id !== culprit)
+}
+
+describe.each(G3_SPECTRUM)('G3-C4 崩形态（逐出厂件）：$id', (row) => {
+  it('sync throw + async reject 只伤肇事者；谱内其余六件 ACTIVE 且照常应答；计数台账逐项', async () => {
+    const registry = new DefaultPluginRegistry()
+    const runGuard = new RunGuard()
+    const culprit = pluginOf(row.id, 'sync-throw')
+    expect((await registry.register(culprit)).success, `${row.id}: 肇事者注册不应被崩剧本先验连坐`).toBe(true)
+    runGuard.watch(row.id, culprit)
+    for (const id of g3SiblingsOf(row.id)) {
+      const sibling = pluginOf(id)
+      expect((await registry.register(sibling)).success, `${id}: 正常件注册被 ${row.id} 崩剧本连坐`).toBe(true)
+      runGuard.watch(id, sibling)
+    }
+
+    // 崩两形：同步 throw（剧本化 runTool）+ 异步 reject（裸拒绝闭包）。
+    await expect(
+      runGuard.execute(row.id, () => culprit.runTool('x')),
+      `${row.id}: 同步 throw 必须以被拒浮出（不吞不崩核心）`,
+    ).rejects.toThrow(`boom:${row.id}`)
+    await expect(
+      runGuard.execute(row.id, () => Promise.reject(new Error(`rej-g3:${row.id}`))),
+      `${row.id}: 异步 reject 必须以被拒浮出`,
+    ).rejects.toThrow(`rej-g3:${row.id}`)
+
+    // 兄弟件不连坐：肇事者两崩之后逐件立即照常应答（fail-open per-item）。
+    for (const id of g3SiblingsOf(row.id)) {
+      await expect(
+        runGuard.execute(id, () => (registry.get(id) as ScriptedPlugin).runTool('ping')),
+        `${id}: 在 ${row.id} 崩后应照常应答`,
+      ).resolves.toBe('ok:ping')
+    }
+
+    // 台账逐项（kernel 面）：肇事者双错计数可见且归因可查询；兄弟件零错误记录。
+    const report = registry.getHealthReport()
+    expect(report.total, '谱系报告应含全部件（崩不改 roster 计数）').toBe(G3_IDS.length)
+    const culpritHealth = runGuard.getWatcher(row.id)?.getHealthStatus()
+    expect(culpritHealth?.callCount, `${row.id}: 肇事者应计数 2 次调用`).toBe(2)
+    expect(culpritHealth?.errorRate, `${row.id}: 肇事者错误率应满`).toBe(1)
+    expect(culpritHealth?.lastError, `${row.id}: 肇事者归因应可查询`).toContain(`rej-g3:${row.id}`)
+    for (const id of g3SiblingsOf(row.id)) {
+      expect(registry.getStatus(id), `${id}: 状态被 ${row.id} 崩连坐`).toBe(PluginStatus.ACTIVE)
+      const health = runGuard.getWatcher(id)?.getHealthStatus()
+      expect(health?.healthy, `${id}: 在兄弟件崩后应保持 healthy`).toBe(true)
+      expect(health?.lastError ?? null, `${id}: 不应有任何错误记录`).toBeNull()
+    }
+    expect(
+      registry.findActive().map(p => p.manifest.id),
+      'roster 活跃面应含全部兄弟件',
+    ).toEqual(expect.arrayContaining(g3SiblingsOf(row.id)))
+
+    // 处置面收官：dispose 干净，watcher 全撤。
+    await registry.dispose()
+    for (const id of G3_IDS) runGuard.unwatch(id)
+  })
+})
+
+describe.each(G3_SPECTRUM)('G3-C4 超时形态（逐出厂件）：$id', (row) => {
+  it('挂起件被 timeoutMs 切断且仅肇事者担超时；其余六件立即应答零连坐', async () => {
+    // 超时切断在 kernel RunGuard 层兑现（G3 裁决①）：挂起不返回的调用由
+    // PluginWatcher 的 Promise.race + PluginTimeoutError 切断——治理域唯一
+    // 现成超时 seam（host mount 层无切断=G3-F1，见回执专节；本腿即卡面
+    // 「apply 超时（挂起不返回）」形态的真 fail-open 证明面）。
+    const registry = new DefaultPluginRegistry()
+    const runGuard = new RunGuard()
+    const hung = pluginOf(row.id, 'healthy', {
+      sandbox: testManifest().sandbox && {
+        ...testManifest().sandbox,
+        resources: { memoryLimitMb: 64, cpuLimit: 10, timeoutMs: 40, maxOutputBytes: 1000 },
+      },
+    })
+    expect((await registry.register(hung)).success, `${row.id}: 挂起剧本件注册不应被连坐`).toBe(true)
+    runGuard.watch(row.id, hung)
+    for (const id of g3SiblingsOf(row.id)) {
+      const sibling = pluginOf(id)
+      expect((await registry.register(sibling)).success, `${id}: 正常件注册被连坐`).toBe(true)
+      runGuard.watch(id, sibling)
+    }
+
+    // 挂起两轮：每轮超时只切断肇事者；每轮之后全部兄弟件立即照常应答。
+    for (let round = 0; round < 2; round += 1) {
+      await expect(
+        runGuard.execute(row.id, () => new Promise<string>(() => {})),
+        `${row.id} 第 ${round} 轮：挂起不返回必须被超时切断`,
+      ).rejects.toThrow(/timeout|timed out|超时/iu)
+      for (const id of g3SiblingsOf(row.id)) {
+        await expect(
+          runGuard.execute(id, () => (registry.get(id) as ScriptedPlugin).runTool('ping')),
+          `${id}: 在 ${row.id} 第 ${round} 轮超时后应立即应答（不连坐）`,
+        ).resolves.toBe('ok:ping')
+      }
+    }
+
+    // 台账逐项：肇事者超时归因可查询；兄弟件全程健康；报告计数完整。
+    const hungHealth = runGuard.getWatcher(row.id)?.getHealthStatus()
+    expect(hungHealth?.callCount, `${row.id}: 肇事者应计数 2 次挂起调用`).toBe(2)
+    expect(hungHealth?.healthy, `${row.id}: 超时肇事者不应健康`).toBe(false)
+    expect(hungHealth?.lastError, `${row.id}: 超时归因应可查询`).toMatch(/timeout|timed out|超时/iu)
+    for (const id of g3SiblingsOf(row.id)) {
+      expect(registry.getStatus(id), `${id}: 状态被超时肇事者连坐`).toBe(PluginStatus.ACTIVE)
+      expect(runGuard.getWatcher(id)?.getHealthStatus()?.healthy, `${id}: 应保持健康`).toBe(true)
+    }
+    expect(registry.getHealthReport().total).toBe(G3_IDS.length)
+
+    await registry.dispose()
+    for (const id of G3_IDS) runGuard.unwatch(id)
+  })
+})
+
+describe.each(G3_SPECTRUM)('G3-C4 畸形 manifest 形态（逐出厂件）：$id', (row) => {
+  it('dsh 段缺损/坏形件被 PreLoad 全链拒绝且归因清单族；同谱正常件零 G1 误杀', async () => {
+    // 卡面形态③「package.json dsh 段缺损/坏形」的 kernel 投影。分层判据以
+    // admission/guard 实际行为亲测为准（裁决④，臆测形禁写）：kernel PreLoad
+    // 面对三亚形均 fail-closed 拒绝；host admission 面对弱畸形宽容（见
+    // preinstall-chaos.spec.ts 分层腿）——两面都是真契约，各自锁定。
+    const guard = new LoadGuard()
+    const malformed: Array<[string, Partial<PluginManifest>]> = [
+      ['dsh 段缺损（无 compatible）', { dsh: {} as PluginManifest['dsh'] }],
+      ['dsh 段坏形（兼容段不可达）', { dsh: { ...testManifest().dsh, compatible: '>=99.0.0' } }],
+      ['capabilities 坏形（service 缺 factory）', {
+        capabilities: [{ type: 'service', service: { name: 'g3-broken' } }] as unknown as CapabilityDeclaration[],
+      }],
+    ]
+    for (const [label, overrides] of malformed) {
+      const rejected = await guard.preLoad(pluginOf(row.id, 'healthy', overrides), '0.1.1-rc.2')
+      // 拒绝 = fail-closed 预期行为（卡面条 3：畸形拒绝 = 守卫正确工作；
+      // 若 G1 symbol-isolation 以 fail-closed 参与拒绝亦属预期——拒绝本身
+      // 即断言，归因如实记录，绝不与「正常件误杀」红灯混同）。
+      expect(rejected.allowed, `${row.id}〔${label}〕必须被 PreLoad 链拒绝`).toBe(false)
+      expect(
+        rejected.failures.some(f => /missing required field|requires DSH|Invalid capability/iu.test(f.message)),
+        `${row.id}〔${label}〕拒绝归因应含清单族检查，实际: ${JSON.stringify(rejected.failures.map(f => f.message))}`,
+      ).toBe(true)
+    }
+    // G1 不误报复验（K-1.2.1 联动——chaos 面复证）：同谱全部正常件经 PreLoad
+    // 全链（含 SymbolIsolationCheck）必须放行且零 symbol-isolation 失败行——
+    // 正常件被误杀即红灯（Gate 级，禁改 G1 实现禁削断言）。
+    for (const id of G3_IDS) {
+      const good = await guard.preLoad(pluginOf(id), '0.1.1-rc.2')
+      expect(
+        good.failures.filter(f => f.message.startsWith('symbol-isolation')),
+        `G1 误报：正常件 ${id} 携带 symbol-isolation 失败行`,
+      ).toEqual([])
+      expect(
+        good.allowed,
+        `G1 误报：正常件 ${id} 被 PreLoad 全链误杀: ${JSON.stringify(good.failures.map(f => f.message))}`,
+      ).toBe(true)
+    }
+  })
+})
+
+describe('G3-C4 × G1 联动观测面 — SymbolIsolationCheck 真扫描/缓存契约（封恒过桩回归）', () => {
+  it('重置后七件首轮触发真实扫描且全过；次轮全缓存命中不再扫盘', async () => {
+    // 封两条逃逸：「恒过降级桩」（G1 前身形态，load-guard 旧 :222/:227/:229）
+    // 与「仅缓存假绿」——重置强迫一次真实扫盘发生（scans 增量=观测面证据），
+    // pass 结果按 §2.3 性能契约入缓存（次轮 cacheHits 增量、scans 不变）。
+    // K-1.2.1 出厂集零误杀硬门本体在 symbol-isolation.spec.ts（G1 产物，勿触）；
+    // 本腿为 chaos 面复证：扫描真实发生且七件正常清单全过。
+    resetSymbolIsolationCacheForTest()
+    const guard = new LoadGuard()
+    const before = getSymbolIsolationScanStats()
+    for (const row of G3_SPECTRUM) {
+      const result = await guard.preLoad(pluginOf(row.id), '0.1.1-rc.2')
+      expect(
+        result.allowed,
+        `G1 联动：出厂件 ${row.id} 正常清单被误杀: ${JSON.stringify(result.failures.map(f => f.message))}`,
+      ).toBe(true)
+    }
+    const afterFirst = getSymbolIsolationScanStats()
+    expect(
+      afterFirst.scans,
+      '首轮必须发生真实扫描（恒过桩/缓存假绿在此红灯）',
+    ).toBeGreaterThan(before.scans)
+    for (const row of G3_SPECTRUM) {
+      expect((await guard.preLoad(pluginOf(row.id), '0.1.1-rc.2')).allowed, `次轮 ${row.id} 应仍放行`).toBe(true)
+    }
+    const afterSecond = getSymbolIsolationScanStats()
+    expect(afterSecond.scans, '次轮应全缓存命中不再扫盘（§2.3 性能契约）').toBe(afterFirst.scans)
+    expect(afterSecond.cacheHits, '次轮应记缓存命中').toBeGreaterThan(afterFirst.cacheHits)
   })
 })
