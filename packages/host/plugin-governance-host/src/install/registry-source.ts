@@ -228,6 +228,26 @@ function pickVersion(
 }
 
 /**
+ * Whether `buffer` matches one declared `sha512-<base64>` integrity digest
+ * (constant-time comparison, same grammar as the download verification).
+ * Exported for the seed chain's independent pin check (FB6, TC-B4-H1 face 5):
+ * a downloaded tarball is already verified against the REGISTRY's own
+ * `dist.integrity` (correct inside the npm trust model, but a same-channel
+ * self-attestation); a seed-pinned digest is a second, independently declared
+ * value the bytes must also satisfy before a boot-time install is admitted.
+ * @param buffer - the downloaded tarball bytes.
+ * @param integrity - the declared `sha512-…` digest value.
+ * @returns `true` only when the digest is well-formed AND matches the buffer.
+ */
+export function matchesSha512Integrity(buffer: Buffer, integrity: string): boolean {
+  const digest = integrity.match(/^sha512-([A-Za-z0-9+/=]+)$/u)
+  if (digest === null || digest[1] === undefined) return false
+  const expected = Buffer.from(digest[1], 'base64')
+  const actual = createHash('sha512').update(buffer).digest()
+  return expected.length === actual.length && timingSafeEqual(expected, actual)
+}
+
+/**
  * Download the publish tarball with size caps and verify it against the
  * registry's declared sha512 digest. The buffer is only returned when
  * verification passed.

@@ -34,6 +34,7 @@ import {
   DEFAULT_REGISTRY_URL,
   NpmSourceError,
   downloadVerifiedTarball,
+  matchesSha512Integrity,
   parseNpmSpec,
   registryOriginFromConfig,
   resolveRegistryVersion,
@@ -555,8 +556,16 @@ export class PluginGovernanceGateway extends TypertRemoteService {
   }
 
   /** Resolve, verify, extract, and admit one `npm:` install source. `seedChain`
-   * marks the factory preinstall channel (FB3 seed-chain admission grant). */
-  private async installFromNpm(source: string, seedChain = false): Promise<GovernanceResult<GovernanceAcknowledgement>> {
+   * marks the factory preinstall channel (FB3 seed-chain admission grant);
+   * `expectedIntegrity` (FB6, seed rows only) is the seed's own sha512 pin —
+   * an INDEPENDENT second verification basis the downloaded tarball must also
+   * satisfy (the registry-declared digest alone is a same-channel
+   * self-attestation inside the npm trust model). */
+  private async installFromNpm(
+    source: string,
+    seedChain = false,
+    expectedIntegrity?: string,
+  ): Promise<GovernanceResult<GovernanceAcknowledgement>> {
     const spec: NpmSpec | null = parseNpmSpec(source)
     if (spec === null) {
       return failed(
@@ -582,6 +591,16 @@ export class PluginGovernanceGateway extends TypertRemoteService {
       if (cause instanceof NpmSourceError && cause.kind === 'invalid') return failed('request-invalid', cause.message)
       if (cause instanceof NpmSourceError && cause.kind === 'not-found') return failed('request-invalid', cause.message)
       return failed('registry-unavailable', cause instanceof Error ? cause.message : describe(cause))
+    }
+    // FB6 (TC-B4-H1 face 5): the seed pin is an independent verification
+    // basis — the bytes must satisfy BOTH digests or the row is never
+    // admitted. Compared before extraction, so a rejected tarball never
+    // touches the storage area.
+    if (expectedIntegrity !== undefined && !matchesSha512Integrity(tarball, expectedIntegrity)) {
+      return failed(
+        'request-invalid',
+        'the downloaded tarball does not match the seed-pinned sha512 integrity value (the registry served different bytes than the seed pins)',
+      )
     }
     const destination = this.npmInstallDir(expectedId)
     try {
@@ -621,8 +640,10 @@ export class PluginGovernanceGateway extends TypertRemoteService {
    * public `install` @Remote contract is untouched: operator installs still
    * land disabled until `approve` records the operator's decision.
    */
-  private async installFromSeedChain(request: { source: string }): Promise<GovernanceResult<GovernanceAcknowledgement>> {
-    if (request.source.startsWith('npm:')) return this.installFromNpm(request.source, true)
+  private async installFromSeedChain(
+    request: { source: string; expectedIntegrity?: string },
+  ): Promise<GovernanceResult<GovernanceAcknowledgement>> {
+    if (request.source.startsWith('npm:')) return this.installFromNpm(request.source, true, request.expectedIntegrity)
     return this.admitManifest(manifestFromLocalSource(request.source), undefined, true)
   }
 

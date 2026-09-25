@@ -133,6 +133,15 @@ function registryDouble(): HttpLike {
   }
 }
 
+/**
+ * The REAL sha512 of the demo tarball. FB6 fixture honestization (declared
+ * conflict update, TC-B4-H1 face 5): the seed pin is now VERIFIED against the
+ * downloaded bytes, so the old `'A'.repeat(88)` placeholder would — correctly
+ * — fail the comparison; the honest digest keeps the byte-identical-restart
+ * test's subject intact while exercising the match leg of the new gate.
+ */
+const NPM_DEMO_INTEGRITY = `sha512-${createHash('sha512').update(npmDemoTarball()).digest('base64')}`
+
 // ---- seed / local fixtures ----
 
 /** A local plugin directory carrying a valid `dsh` manifest. */
@@ -267,10 +276,12 @@ describe('SeedPreinstaller through the gateway', () => {
     const localDir = localPluginDir('@demo/local')
     const seedPath = writeSeed([
       { id: 'demo/local', package: '@demo/local', version: '1.0.0', pin: 'b'.repeat(40), source: `local:${localDir}`, integrity: null, enabledAtBoot: true, family: 'demo', failPolicy: 'fail-open' },
-      // S2 made `npm:` integrity mandatory; the seed now carries the `sha512-`
-      // prefix (the executor's own guard, checked before the install channel
-      // resolves the tarball against the registry's stated digest).
-      { id: 'demo/plugin', package: '@demo/plugin', version: '1.0.0', pin: 'c'.repeat(40), source: 'npm:@demo/plugin@1.0.0', integrity: `sha512-${'A'.repeat(88)}=`, enabledAtBoot: false, family: 'demo', failPolicy: 'fail-open' },
+      // S2 made `npm:` integrity mandatory; FB6 made the pin VERIFIED against
+      // the downloaded tarball (an independent second basis beside the
+      // registry's self-declared digest) — so the row now carries the demo
+      // tarball's REAL sha512 (NPM_DEMO_INTEGRITY; the old 'A'×88 placeholder
+      // would correctly fail the new comparison).
+      { id: 'demo/plugin', package: '@demo/plugin', version: '1.0.0', pin: 'c'.repeat(40), source: 'npm:@demo/plugin@1.0.0', integrity: NPM_DEMO_INTEGRITY, enabledAtBoot: false, family: 'demo', failPolicy: 'fail-open' },
     ])
     const storageRoot = mkdtempSync(join(tmpdir(), 'gov-store-'))
     storageRoots.push(storageRoot)
@@ -744,5 +755,92 @@ describe('FB3 — the seed/pin chain is the governance-side admission decision',
       approvedAt: Record<string, number>
     }
     expect(typeof approvals.approvedAt['demo/local']).toBe('number')
+  })
+})
+
+// ============================================================================
+//   FB6（TC-B4-H1 面五，D1b §3-FB6）：seed npm: 通道契约锁+seed 钉值下载校验
+//   ——①契约锁：boot 行必须 @exact-version（无版本漂 latest=操作者语义非
+//   boot 语义，parse 期拒收为可查询 failed 行）；②消费面：seed 自带 sha512
+//   与实下 tarball 比对（独立于 registry 自报 dist.integrity 的第二校验基准，
+//   不符=failed 行绝不准入，比对先于解包=存储区零落盘）。
+// ============================================================================
+
+describe('FB6 — seed npm: exact-version contract lock + seed-pin download verification', () => {
+  const base = {
+    id: 'demo/plugin',
+    package: '@demo/plugin',
+    version: '1.0.0',
+    pin: 'c'.repeat(40),
+    source: 'npm:@demo/plugin@1.0.0',
+    integrity: `sha512-${'A'.repeat(88)}=`,
+    enabledAtBoot: false,
+    family: 'demo',
+    failPolicy: SUPPORTED_FAIL_POLICY,
+  }
+
+  it('contract: rejects an unversioned or non-exact npm: seed row, honors the pinned form', () => {
+    // 判别锁（漂移腿）：无版本 spec=boot 期漂 latest，拒收。
+    expect(seedEntryContractIssue({ ...base, source: 'npm:@demo/plugin' })).toMatch(/exact @<version>/)
+    // tag/范围形同拒（parseNpmSpec 单一语法真源，EXACT_VERSION 门）。
+    expect(seedEntryContractIssue({ ...base, source: 'npm:@demo/plugin@latest' })).toMatch(/exact @<version>/)
+    expect(seedEntryContractIssue({ ...base, source: 'npm:@demo/plugin@^1.0.0' })).toMatch(/exact @<version>/)
+    // 正对照：exact version + sha512 = honored（既有 S2 谱零回归）。
+    expect(seedEntryContractIssue({ ...base, source: 'npm:@demo/plugin@1.0.0' })).toBeNull()
+    // 操作者通道语义零触碰：parseNpmSpec 仍接受无版本形（types.ts JSDoc 文档化
+    // 「omitting the version picks the registry's latest stable」=install 语义）。
+  })
+
+  it('S2-style: an unversioned npm: seed row settles as a queryable failed row and never installs', async () => {
+    const storageRoot = mkdtempSync(join(tmpdir(), 'gov-store-'))
+    storageRoots.push(storageRoot)
+    const seedPath = writeSeed([
+      { id: 'demo/plugin', package: '@demo/plugin', version: '1.0.0', pin: 'c'.repeat(40), source: 'npm:@demo/plugin', integrity: `sha512-${'A'.repeat(88)}=`, enabledAtBoot: false, family: 'demo', failPolicy: 'fail-open' },
+    ])
+    const { gateway } = await boot({ storageRoot, seedPath })
+    await gateway.settlePreinstall()
+    const ledger = JSON.parse(readFileSync(join(storageRoot, 'data', 'preinstall-results.json'), 'utf8')) as {
+      entries: Record<string, { status: string; reason?: string }>
+    }
+    expect(ledger.entries['demo/plugin']?.status).toBe('failed')
+    expect(ledger.entries['demo/plugin']?.reason ?? '').toMatch(/exact @<version>/)
+    expect(gateway.list().plugins.some(p => p.pluginId === gid('demo/plugin'))).toBe(false)
+  })
+
+  it('discriminative: a seed pin mismatching the downloaded tarball fails the row, never admits, never extracts', async () => {
+    const storageRoot = mkdtempSync(join(tmpdir(), 'gov-store-'))
+    storageRoots.push(storageRoot)
+    // 形似而值非的 seed 钉值=「被攻陷镜像端出与 seed 钉值不同的字节」场景形。
+    // 判别锁（旧形复刻必红：门前 seed integrity 仅查存在性、从不与实下
+    // tarball 比对，本行会 installed）。
+    const wrongPin = `sha512-${'B'.repeat(87)}=`
+    const seedPath = writeSeed([
+      { id: 'demo/plugin', package: '@demo/plugin', version: '1.0.0', pin: 'c'.repeat(40), source: 'npm:@demo/plugin@1.0.0', integrity: wrongPin, enabledAtBoot: false, family: 'demo', failPolicy: 'fail-open' },
+    ])
+    const { gateway } = await boot({ storageRoot, seedPath })
+    await gateway.settlePreinstall()
+    const ledger = JSON.parse(readFileSync(join(storageRoot, 'data', 'preinstall-results.json'), 'utf8')) as {
+      entries: Record<string, { status: string; reason?: string }>
+    }
+    expect(ledger.entries['demo/plugin']?.status).toBe('failed')
+    expect(ledger.entries['demo/plugin']?.reason ?? '').toMatch(/seed-pinned sha512 integrity/)
+    expect(gateway.list().plugins.some(p => p.pluginId === gid('demo/plugin'))).toBe(false)
+    // 比对先于解包：存储区零落盘（被拒 tarball 不触存储树）。
+    expect(existsSync(join(storageRoot, 'installed', 'demo', 'plugin'))).toBe(false)
+  })
+
+  it('positive control: the honest seed pin installs (match leg; the byte-identical restart test exercises it end-to-end)', async () => {
+    const storageRoot = mkdtempSync(join(tmpdir(), 'gov-store-'))
+    storageRoots.push(storageRoot)
+    const seedPath = writeSeed([
+      { id: 'demo/plugin', package: '@demo/plugin', version: '1.0.0', pin: 'c'.repeat(40), source: 'npm:@demo/plugin@1.0.0', integrity: NPM_DEMO_INTEGRITY, enabledAtBoot: false, family: 'demo', failPolicy: 'fail-open' },
+    ])
+    const { gateway } = await boot({ storageRoot, seedPath })
+    await gateway.settlePreinstall()
+    const ledger = JSON.parse(readFileSync(join(storageRoot, 'data', 'preinstall-results.json'), 'utf8')) as {
+      entries: Record<string, { status: string; reason?: string }>
+    }
+    expect(ledger.entries['demo/plugin']?.status, JSON.stringify(ledger.entries['demo/plugin'])).toBe('installed')
+    expect(gateway.list().plugins.some(p => p.pluginId === gid('demo/plugin'))).toBe(true)
   })
 })

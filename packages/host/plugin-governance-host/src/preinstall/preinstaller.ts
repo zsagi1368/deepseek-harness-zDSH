@@ -74,8 +74,14 @@ export interface SeedPreinstallerHost {
   warn(message: string): void
   /** Whether the canonical id is already in the governed registry this process. */
   isRegistered(pluginId: string): boolean
-  /** Reuse the gateway's install admission channel verbatim. */
-  install(request: { source: string }): Promise<GovernanceResult<GovernanceAcknowledgement>>
+  /**
+   * Reuse the gateway's install admission channel. `expectedIntegrity` (FB6,
+   * TC-B4-H1 face 5; `npm:` rows only) carries the seed's own sha512 pin: the
+   * host verifies the downloaded tarball against it IN ADDITION to the
+   * registry-declared digest, so the seed pin is an independent verification
+   * basis rather than dead prose (a mismatch fails the row, never admits).
+   */
+  install(request: { source: string; expectedIntegrity?: string }): Promise<GovernanceResult<GovernanceAcknowledgement>>
   /**
    * Best-effort enable/disable of an installed artifact; the outcome never
    * fails the pass. `enabled=false` carries the §1.1 factory-off posture
@@ -329,7 +335,17 @@ export class SeedPreinstaller {
   /** Run the install action; a thrown host error is a fail-open `failed`. */
   private async installOne(entry: SeedEntry, id: string): Promise<InstallOutcome> {
     try {
-      const result = await this.host.install({ source: this.installSource(entry) })
+      const result = await this.host.install({
+        source: this.installSource(entry),
+        // FB6 (TC-B4-H1 face 5): the seed row's own sha512 pin rides along on
+        // `npm:` rows — the host compares the downloaded tarball against it as
+        // an INDEPENDENT second basis beside the registry's self-declared
+        // dist.integrity (same-channel self-attestation ≠ seed pin). The
+        // contract gate upstream already made integrity mandatory for npm:.
+        ...(entry.source.startsWith('npm:') && entry.integrity !== null
+          ? { expectedIntegrity: entry.integrity }
+          : {}),
+      })
       if (result.ok) return { status: 'installed' }
       // A plugin admitted earlier this same boot by a concurrent path already
       // occupies the id: treat that as satisfied, not a failure.

@@ -15,6 +15,11 @@
  * @module @deepseek-ai/dsh-plugin-governance-host/src/preinstall/seed
  */
 
+// FB6 (TC-B4-H1 face 5): the exact-version contract branch shares ONE spec
+// grammar with the install channel (parseNpmSpec) — no second npm: dialect.
+// No cycle: registry-source imports only node builtins.
+import { parseNpmSpec } from '../install/registry-source.ts'
+
 /** One whitelisted seed entry as the executor consumes it (§1.1 schema). */
 export interface SeedEntry {
   /** Canonical governance id (`namespace/name`, same key space as the registry). */
@@ -101,7 +106,15 @@ function parseEntry(value: unknown): SeedEntry | null {
  * - an `npm:` source without a mandatory `sha512-…` integrity value (§1.1-D1
  *   marks it required; the parser previously treated the constraint as prose
  *   only, so the executor now rejects the contract violation up front rather
- *   than downloading through an unpinned spec).
+ *   than downloading through an unpinned spec);
+ * - an `npm:` source without an exact `@<version>` pin (FB6, TC-B4-H1 face 5,
+ *   D1b §3-FB6): `parseNpmSpec` accepts an unversioned `npm:<name>` for
+ *   OPERATOR installs — the documented "omitting the version picks the
+ *   registry's latest stable" semantics — but a boot-time seed row floating
+ *   to whatever `latest` means today is a supply-chain drift window, so the
+ *   seed contract is stricter than the operator channel (V25 exact-version-
+ *   only policy) and rejects the row up front as a queryable failed ledger
+ *   entry instead of downloading through an unpinned spec.
  *
  * @param entry - one whitelist-accepted seed entry.
  * @returns a correction-oriented reason, or `null` when the entry is honored.
@@ -110,8 +123,16 @@ export function seedEntryContractIssue(entry: SeedEntry): string | null {
   if (entry.failPolicy !== SUPPORTED_FAIL_POLICY) {
     return `failPolicy ${JSON.stringify(entry.failPolicy)} is not implemented; the only supported value is ${JSON.stringify(SUPPORTED_FAIL_POLICY)}`
   }
-  if (entry.source.startsWith('npm:') && (entry.integrity === null || !entry.integrity.startsWith('sha512-'))) {
-    return 'npm: sources must declare a sha512- integrity value (§1.1-D1: mandatory for the npm: form)'
+  if (entry.source.startsWith('npm:')) {
+    if (entry.integrity === null || !entry.integrity.startsWith('sha512-')) {
+      return 'npm: sources must declare a sha512- integrity value (§1.1-D1: mandatory for the npm: form)'
+    }
+    // FB6: exact-version pin mandatory for boot rows (grammar shared with the
+    // install channel — one parseNpmSpec, no second spec dialect).
+    const spec = parseNpmSpec(entry.source)
+    if (spec === null || spec.version === undefined) {
+      return 'npm: sources must pin an exact @<version> in a seed row (boot-time installs never float to the registry latest; V25 exact-version-only policy)'
+    }
   }
   return null
 }
