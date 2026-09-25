@@ -41,6 +41,7 @@ import {
   type NpmSpec,
 } from './install/registry-source.ts'
 import { TarExtractionError, extractNpmPackageTarball } from './install/tarball.ts'
+import { writeFileAtomicSync } from './atomic-write-sync.ts'
 import { resolveContainedPath, resolveFactoryModulePath } from './path-containment.ts'
 import { SeedPreinstaller } from './preinstall/preinstaller.ts'
 import type {
@@ -1340,12 +1341,12 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     }
   }
 
-  /** Write the installed-source ledger; throws so the caller can compensate. */
+  /** Write the installed-source ledger as one atomic replacement (FB5,
+   * 0o600: user decision data); throws so the caller can compensate. */
   private saveInstalledSources(): void {
     const payload: PersistedInstalledSources = { version: 1, sources: {} }
     for (const [id, entry] of this.installedSources) payload.sources[String(id)] = entry
-    mkdirSync(this.persistence.dataDir, { recursive: true })
-    writeFileSync(this.installedSourcesPath, JSON.stringify(payload, null, 2))
+    writeFileAtomicSync(this.installedSourcesPath, JSON.stringify(payload, null, 2), 0o600)
   }
 
   /** Hydrate the approvals ledger once at init. */
@@ -1365,12 +1366,12 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     }
   }
 
-  /** Write the approvals ledger; throws so the caller can compensate. */
+  /** Write the approvals ledger as one atomic replacement (FB5, 0o600: user
+   * decision data); throws so the caller can compensate. */
   private saveApprovals(): void {
     const payload: PersistedApprovals = { version: 1, approvedAt: {} }
     for (const [id, at] of this.approvals) payload.approvedAt[String(id)] = at
-    mkdirSync(this.persistence.dataDir, { recursive: true })
-    writeFileSync(this.approvalsPath, JSON.stringify(payload, null, 2))
+    writeFileAtomicSync(this.approvalsPath, JSON.stringify(payload, null, 2), 0o600)
   }
 
   /**

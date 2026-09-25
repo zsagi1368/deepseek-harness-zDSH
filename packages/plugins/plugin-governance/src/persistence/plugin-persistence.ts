@@ -6,10 +6,75 @@
  * 环境变量 DSH_BRANCH_HOME 的覆盖优先级最高。
  */
 
-import { writeFileSync, readFileSync, existsSync, mkdirSync, rmSync } from 'node:fs'
+import { randomBytes } from 'node:crypto'
+import { writeFileSync, readFileSync, existsSync, mkdirSync, renameSync, rmSync } from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
 import os from 'node:os'
 import { PluginRegistry, PluginManifest } from '../spec/index.js'
+
+/* ------------------------------------------------------------------ *
+ * 注册表快照原子写（同步形私有件，TC-B4-H1 面四=FB5 清偿）
+ *
+ * 与 host 包 src/atomic-write-sync.ts 同语义的**文件内私有镜像**——内核保持
+ * 「零新增包依赖，纯 node 内建」纪律（load-guard.ts 头注同策；勘误见
+ * RECEIPT-H1 §2.2：@deepseek-ai/dsh-atomic-write 的 writeFileAtomic 为
+ * async 形且非本包依赖，直接换用需 async 化同步调用链=契约面扩展）。
+ * 语义逐条对齐原件：随机后缀 sibling temp + `wx` 独占创建（拒跟随 temp 位
+ * 种植链接）+ mode 0o600 随新 inode 过 rename（注册表快照含插件清单与操作者
+ * 启停决策）+ rename 原子提交（无锁读者只见完整旧内容或完整新内容）+
+ * win32 瞬态 EACCES/EBUSY/EPERM 有界退避重试（20ms 倍增封顶 200ms、8 次）+
+ * 失败清 temp 重抛（调用方补偿依赖原错误）。崩溃耐久性（fsync）与原包协议
+ * 同款不在范围。
+ * ------------------------------------------------------------------ */
+
+/** 注册表快照文件权限位（用户决策数据，D1b FB5 建议原文 mode）。 */
+const REGISTRY_FILE_MODE = 0o600
+
+/** win32 瞬态 rename 干扰错误码集（atomic-write 包镜像）。 */
+const TRANSIENT_RENAME_ERRORS: ReadonlySet<string> = new Set(['EACCES', 'EBUSY', 'EPERM'])
+
+/** 有界同步退避（Atomics.wait 一次性缓冲；镜像原件 async setTimeout 节奏）。 */
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+
+/** rename 原子提交腿：win32 瞬态干扰有界重试，其余错误即刻重抛。 */
+function renameAtomicTempSync(temp: string, filename: string): void {
+  let delay = 20
+  for (let retries = 0;; retries += 1) {
+    try {
+      renameSync(temp, filename)
+      return
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException | null)?.code ?? ''
+      const transient = process.platform === 'win32' && TRANSIENT_RENAME_ERRORS.has(code)
+      if (!transient) throw error
+      if (retries >= 8) throw error
+    }
+    sleepSync(delay)
+    delay = Math.min(delay * 2, 200)
+  }
+}
+
+/**
+ * 以单次原子替换把 `content` 落到 `filename`（创建父目录；失败时清除 temp、
+ * 目标文件保持旧内容完整、原错误重抛）。
+ */
+function writeFileAtomicSyncLocal(filename: string, content: string): void {
+  mkdirSync(dirname(filename), { recursive: true })
+  const temp = `${filename}.${randomBytes(6).toString('hex')}.tmp`
+  try {
+    writeFileSync(temp, content, { mode: REGISTRY_FILE_MODE, flag: 'wx' })
+    renameAtomicTempSync(temp, filename)
+  } catch (error) {
+    try {
+      rmSync(temp, { force: true })
+    } catch {
+      // 清理失败不得掩盖调用方补偿所依赖的主错误。
+    }
+    throw error
+  }
+}
 
 /**
  * 默认数据存储目录名称（位于用户主目录下，即 ~/.dsh-zdsh）
@@ -187,7 +252,10 @@ export class PluginPersistence {
   }
 
   /**
-   * 保存插件注册表到文件
+   * 保存插件注册表到文件（单次原子替换=FB5：崩溃于写中不再把快照损坏成
+   * load 侧空数组形——持久 disabled 决策/MM1b「不复活」语义的载体完整性
+   * 由 rename 提交承载；同步签名零变更，persistRegistryChange 同步补偿链
+   * 与 autoSave 定时器语义零触碰）。
    */
   save(): void {
     const plugins = this.registry.getAll()
@@ -204,8 +272,7 @@ export class PluginPersistence {
       })),
     }
 
-    mkdirSync(dirname(this.registryPath), { recursive: true })
-    writeFileSync(this.registryPath, JSON.stringify(data, null, 2))
+    writeFileAtomicSyncLocal(this.registryPath, JSON.stringify(data, null, 2))
   }
 
   /**

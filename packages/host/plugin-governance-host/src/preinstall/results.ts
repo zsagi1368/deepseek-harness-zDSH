@@ -15,8 +15,8 @@
  * @module @deepseek-ai/dsh-plugin-governance-host/src/preinstall/results
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { existsSync, readFileSync } from 'node:fs'
+import { writeFileAtomicSync } from '../atomic-write-sync.ts'
 import type {
   PreinstallEntryResult,
   PreinstallMountResult,
@@ -110,13 +110,21 @@ export function loadPreinstallResults(path: string): PersistedPreinstallResults 
 }
 
 /**
- * Commit the ledger to `path` (creating its parent directory). Throws so the
- * caller's lock-held cycle surfaces a write failure; no compensation is needed
- * because the in-memory model is rebuilt from disk on the next pass.
+ * Commit the ledger to `path` (creating its parent directory) as one atomic
+ * replacement (FB5, TC-B4-H1 face 4: a crash mid-write can no longer corrupt
+ * the tombstone carrier into the loader's fail-open empty shape — a lost
+ * `userUninstalled` tombstone resurrecting a removed preinstall — and the
+ * lock-free `report()` reader never observes half-written JSON, restoring the
+ * atomic-write module-head protocol "readers stay lock-free because the
+ * rename commit is atomic"). Mode `0o600`: the ledger carries user decision
+ * data. Throws so the caller's lock-held cycle surfaces a write failure; no
+ * compensation is needed because the in-memory model is rebuilt from disk on
+ * the next pass.
+ * @param path - the ledger file path (parent directories are created).
+ * @param payload - the complete ledger to commit (serialized as v1 JSON).
  */
 export function savePreinstallResults(path: string, payload: PersistedPreinstallResults): void {
-  mkdirSync(dirname(path), { recursive: true })
-  writeFileSync(path, JSON.stringify(payload, null, 2))
+  writeFileAtomicSync(path, JSON.stringify(payload, null, 2), 0o600)
 }
 
 /** Project the durable ledger to the read-only client report. */
