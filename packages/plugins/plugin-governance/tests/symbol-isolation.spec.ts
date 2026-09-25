@@ -682,3 +682,57 @@ describe('SymbolIsolationCheck acceptance-7: (hostRoot,mtime) pass cache, no rep
     expect(afterThird.cacheHits - base.cacheHits).toBe(2)
   }, 60_000)
 })
+
+/* ------------------------------------------------------------------ *
+ * FB2 缓存双腿加固（TC-B4-H1 面一，D1b §3-FB2 加固建议①③；定级口径
+ * 原文维持 [建议]：加固≠消除，对抗位阶论证不变，签名加固维持不做）
+ * ------------------------------------------------------------------ */
+
+describe('SymbolIsolationCheck FB2 hardening: ns 粒度失效腿 + 代数上限腿', () => {
+  it('幕 b 同形：既有 ns 下植入真实副本经 ns mtime 腿失效 pass 缓存，重扫必检出（判据3）', async () => {
+    const root = buildKitchenSink()
+    vi.stubEnv('DSH_HOME', root)
+    vi.stubEnv('DSH_BRANCH_HOME', '')
+    const guard = new LoadGuard()
+    const first = await guard.preLoad(pluginFor('demo/clean-plugin'), '0.1.5-rc.2')
+    expect(first.allowed).toBe(true)
+    const mid = getSymbolIsolationScanStats()
+    // D1b 幕 b 同形植入：既有 ns（demo）下新增插件目录+FAKE_STORE_PKG 同形真实
+    // 副本。installed/ 顶层 mtime 不动=旧键面（顶层三根）失明、恒 cacheHits 过；
+    // ns 粒度腿在位后 demo 目录 mtime 变→键失效→真重扫。
+    const fake = join(root, 'zdsh', 'installed', 'demo', 'b-plugin', 'node_modules', '@deepseek-ai', 'dsh-client-store')
+    pkgJson(fake, '@deepseek-ai/dsh-client-store', '9.9.9-fake-tc-b0')
+    write(join(fake, 'index.js'), "export const marker = 'FAKE'\n")
+    const second = await guard.preLoad(pluginFor('demo/b-plugin'), '0.1.5-rc.2')
+    const after = getSymbolIsolationScanStats()
+    // 判别锁（旧形复刻必红：旧键面此处 cacheHits+1 且 allowed=true）：
+    // ns 腿保证真重扫，且重扫必检出存储区副本。
+    expect(after.scans - mid.scans).toBe(1)
+    expect(after.cacheHits - mid.cacheHits).toBe(0)
+    expect(second.allowed).toBe(false)
+    expect(symFailures(second)[0] ?? '').toContain('[判据3·存储区真实副本]')
+  }, 60_000)
+
+  it('代数上限：PASS_CACHE_MAX_HITS(64) 代命中满后下次 PreLoad 强制真重扫（清洁树仍绿）', async () => {
+    const root = buildKitchenSink()
+    vi.stubEnv('DSH_HOME', root)
+    vi.stubEnv('DSH_BRANCH_HOME', '')
+    const guard = new LoadGuard()
+    const base = getSymbolIsolationScanStats()
+    expect((await guard.preLoad(pluginFor('test/plugin'), '0.1.5-rc.2')).allowed).toBe(true)
+    for (let generation = 0; generation < 64; generation += 1) {
+      await guard.preLoad(pluginFor('test/plugin'), '0.1.5-rc.2')
+    }
+    const mid = getSymbolIsolationScanStats()
+    // 64 代全命中零重扫（性能契约保持：acceptance-7 语义不变）。
+    expect(mid.scans - base.scans).toBe(1)
+    expect(mid.cacheHits - base.cacheHits).toBe(64)
+    // 第 65 次：代数上限满→删键强制真重扫（对抗性 mtime 伪造的恒过窗压缩为
+    // ≤64 代；清洁树重扫结果不变=仍绿，红线不粘滞语义零触碰）。
+    const forced = await guard.preLoad(pluginFor('test/plugin'), '0.1.5-rc.2')
+    const after = getSymbolIsolationScanStats()
+    expect(forced.allowed).toBe(true)
+    expect(after.scans - mid.scans).toBe(1)
+    expect(after.cacheHits - mid.cacheHits).toBe(0)
+  }, 120_000)
+})

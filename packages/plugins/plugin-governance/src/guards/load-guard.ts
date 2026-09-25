@@ -257,7 +257,14 @@ class CapabilityValidityCheck implements PreLoadCheck {
  *   类型面不变=CE-4，message 即 detail 载体）。
  *
  * 性能（§2.3）：pass 结果按 (hostRoot, mtime) 模块级缓存——PreLoad 每插件不重复扫盘。
- * 缓存键 mtime 可伪造性=D1 深审已登记面，本卡按 §2.3 规格实现并在此登记，不做签名加固。
+ * 缓存键 mtime 可伪造性=D1 深审已登记面（G1 卡面登记+D1b FB2 统一定级 [建议]）。
+ * FB2 加固在位（TC-B4-H1 面一，D1b §3-FB2 加固建议①③）：①缓存键含
+ * installed/<ns> 命名空间粒度 mtime 腿（封「既有 ns 下新增插件目录而 installed/
+ * 顶层 mtime 不动」的事故性 staleness 窗=D1b 幕 b 实证面）；③pass 缓存条目带
+ * 命中代数上限，满即强制真重扫（把对抗性 mtime 伪造的恒过窗压缩为有界代数）。
+ * 加固≠消除（措辞纪律零夸大）：对宿主树持 FS 写权的对抗者仍可逐代恢复 mtime
+ * ——其位阶已越过本检查防护位阶（目标威胁=pnpm/npm 布局事故非对抗者，D1b FB2
+ * 定级依据原文不变）；签名加固维持不做（G1 卡面 :259-260 登记语义一致）。
  */
 class SymbolIsolationCheck implements PreLoadCheck {
   name = 'symbol-isolation'
@@ -269,8 +276,14 @@ class SymbolIsolationCheck implements PreLoadCheck {
       const cacheKey = symbolIsolationCacheKey(hostRoot, storageRoot)
       const cached = passCache.get(cacheKey)
       if (cached !== undefined) {
-        cacheHits += 1
-        return cached
+        if (cached.hits < PASS_CACHE_MAX_HITS) {
+          cached.hits += 1
+          cacheHits += 1
+          return cached.result
+        }
+        // FB2 ③代数上限：满 N 代命中强制一次真重扫（对抗性伪造窗有界化；
+        // 清洁树下重扫结果不变=仅性能契约的摊销放宽，scans 语义诚实计数）。
+        passCache.delete(cacheKey)
       }
       scanRuns += 1
       const findings: string[] = []
@@ -286,7 +299,7 @@ class SymbolIsolationCheck implements PreLoadCheck {
         )
       }
       const passed = new CheckPassed('symbol-isolation: 宿主树+治理存储区双扫描面清洁')
-      passCache.set(cacheKey, passed)
+      passCache.set(cacheKey, { result: passed, hits: 0 })
       return passed
     } catch (error) {
       // fail-closed（A-1.2.3）：扫描面任何异常都拒绝加载而非放行/逃逸。
@@ -350,8 +363,10 @@ const REMEDIATION_HINT = [
   '  3) 一切修复动作须遵循 safe-change 备份规程：先备份后改动，备份区删除权永久归用户。',
 ].join('\n')
 
-/** pass 结果模块级缓存（§2.3 性能契约）；仅缓存 pass——fail 结果每次重扫（红线不粘滞）。 */
-const passCache = new Map<string, CheckPassed>()
+/** pass 结果模块级缓存（§2.3 性能契约）；仅缓存 pass——fail 结果每次重扫（红线不粘滞）。
+ * FB2 ③：条目携带命中代数（hits），满 PASS_CACHE_MAX_HITS 即删键强制真重扫。 */
+const PASS_CACHE_MAX_HITS = 64
+const passCache = new Map<string, { result: CheckPassed; hits: number }>()
 let scanRuns = 0
 let cacheHits = 0
 
@@ -380,17 +395,41 @@ function defaultHostRoot(): string {
   return process.cwd()
 }
 
-/** (hostRoot, mtime) 缓存键：mtime 签名=三个扫描根目录 mtimeMs（装/卸/增删即变，缓存失效重扫）。 */
+/** (hostRoot, mtime) 缓存键：mtime 签名=三个扫描根目录 mtimeMs（装/卸/增删即变，缓存失效重扫）
+ * + FB2 ① installed/<ns> 命名空间粒度腿（封 D1b 幕 b：既有 ns 下新增插件目录时
+ * installed/ 顶层 mtime 不动、旧键面失明的事故性 staleness 窗）。 */
 function symbolIsolationCacheKey(hostRoot: string, storageRoot: string): string {
   return [hostRoot, storageRoot, scanRootMtimes(hostRoot, storageRoot)].join('|')
 }
 
 function scanRootMtimes(hostRoot: string, storageRoot: string): string {
+  const installedRoot = join(storageRoot, 'installed')
   return [
     dirMtimeOrZero(join(hostRoot, 'node_modules')),
     dirMtimeOrZero(join(hostRoot, FACTORY_BUNDLE_NM)),
-    dirMtimeOrZero(join(storageRoot, 'installed')),
+    dirMtimeOrZero(installedRoot),
+    installedNsMtimes(installedRoot),
   ].join(',')
+}
+
+/**
+ * installed/<ns> 各命名空间目录的 mtime 签名（name=mtimeMs 升序拼接）。仅真实
+ * 目录入键——junction/symlink 形 ns 条目跳过（保守方向：不入键=其变动不触发
+ * 失效，与判据3「链接不跟随」同形自洽）。缺席/不可读=空签名（缺席即正常，
+ * dirMtimeOrZero 同哲学；A-1.2.3 注入面由主扫描体的 fail-closed 承载，本
+ * 签名腿自吞异常绝不改变检查判定方向）。
+ */
+function installedNsMtimes(installedRoot: string): string {
+  try {
+    const parts: string[] = []
+    for (const entry of readdirSync(installedRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue
+      parts.push(`${entry.name}=${dirMtimeOrZero(join(installedRoot, entry.name))}`)
+    }
+    return parts.sort().join(';')
+  } catch {
+    return ''
+  }
 }
 
 function dirMtimeOrZero(dirPath: string): number {
