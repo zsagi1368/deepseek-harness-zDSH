@@ -1768,10 +1768,19 @@ export interface Config {
    * single origin.
    */
   registryUrl?: string
+  /**
+   * Absolute path to the factory seed manifest (`zdsh-factory/seed.json`) the
+   * preinstall pass consumes. When unset the executor falls back to the
+   * `DSH_FACTORY_SEED` environment variable, then to the nearest ancestor of
+   * this package holding `zdsh-factory/seed.json`. A seed file that is not
+   * present makes the whole pass a no-op, so non-factory deployments and test
+   * trees are never disturbed (DESIGN-intake-tech.md §1.2).
+   */
+  seedPath?: string
 }
 ```
 
-Source: [`packages/host/plugin-governance-host/src/index.ts:153`](../packages/host/plugin-governance-host/src/index.ts)
+Source: [`packages/host/plugin-governance-host/src/index.ts:183`](../packages/host/plugin-governance-host/src/index.ts)
 
 <a id="deepseek-aidsh-plugin-package-inventory-deepseek"></a>
 
