@@ -71,6 +71,11 @@ afterEach(async () => {
   await Promise.all(contexts.splice(0).map(ctx => ctx.fiber.dispose()))
   for (const root of storageRoots.splice(0)) rmSync(root, { recursive: true, force: true })
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true })
+  // REVIEW-G3 [建议]2（TC-B4-H1 面八）：挂起闸门会合点常规由各 it 内 finally
+  // 收敛（removeHangGate）；it 级超时杀 worker 时 finally 不执行，留有理论残留
+  // 窗口——这里在 dispose 与目录清理之后无条件全清，彻底封跨用例残留。纯防御
+  // 性加固：正常路径 map 已空，clear() 为零行为变化（G3 44 例语义零触碰）。
+  G3_GATES.clear()
 })
 
 /** A throwaway directory registered for cleanup. */
