@@ -877,7 +877,20 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     const previousDisabled = new Map<PluginGovernanceId, boolean>()
     for (const entry of preset.entries) {
       const pluginId = canonicalId(entry.pluginId)
-      if (this.registry.get(pluginId) === null) {
+      const plugin = this.registry.get(pluginId)
+      if (plugin === null) {
+        unknown.push(pluginId)
+        continue
+      }
+      // FB4 (TC-B4-H1 face 3, D1b §3-FB4): an `active` row re-checks the same
+      // server-side admission gate `enable` enforces — the preset file is
+      // storage-area input, not an approval decision, so an admission-
+      // required plugin without a recorded decision is left untouched and
+      // reported in the `unknown` column ("not applied"), never silently
+      // enabled. `disabled` rows take no gate: disabling is always safe
+      // (disable-only discipline, symmetric with the MM1b replay — the two
+      // gates never fight over the same row).
+      if (entry.status !== 'disabled' && requiresAdmission(plugin) && !this.approvals.has(pluginId)) {
         unknown.push(pluginId)
         continue
       }

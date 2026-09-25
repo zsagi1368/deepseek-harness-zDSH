@@ -170,6 +170,11 @@ describe('PluginGovernanceGateway', () => {
 
     await registry.enable(normalizePluginId('test/beta'))
     await registry.disable(normalizePluginId('test/alpha'))
+    // FB4 (TC-B4-H1 face 3) — card-mandated conflict update (PC2「严格增强零
+    // 削弱」先例形)：presetLoad 的 active 行现镜像 enable 服务端门，未审批的
+    // admission-required 插件不再被 preset 静默 enable。补操作者审批前置以保留
+    // round-trip 全部既有断言语义（applied 顺序/unknown 空/delete/not-found）。
+    expect(gateway.approve({ pluginId: gid('test/alpha') }).ok).toBe(true)
     const applied = await gateway.presetLoad({ name: 'focus-alpha' })
     expect(applied.ok).toBe(true)
     if (applied.ok) {
@@ -285,6 +290,11 @@ describe('PluginGovernanceGateway', () => {
     // Diverge the live registry, then apply: the snapshot must land on disk.
     await registry.enable(normalizePluginId('test/beta'))
     await registry.disable(normalizePluginId('test/alpha'))
+    // FB4 (TC-B4-H1 face 3) — card-mandated conflict update: the preset's
+    // alpha `active` row now re-checks the admission gate; approve records the
+    // decision so the persistence/rollback semantics under test stay the
+    // subject (the gate itself is locked in the FB4 describe below).
+    expect(gateway.approve({ pluginId: gid('test/alpha') }).ok).toBe(true)
     expect((await gateway.presetLoad({ name: 'alpha-only' })).ok).toBe(true)
     const persisted = JSON.parse(readFileSync(registryPathOf(gateway), 'utf8')) as {
       plugins: Array<{ id: string; status: string }>
@@ -462,5 +472,52 @@ describe('FB3 install-channel trust-field clamp', () => {
     })
     expect((await gateway.install({ source })).ok).toBe(true)
     expect(gateway.list().plugins.find(p => p.pluginId === gid('fixtures/operator-row'))?.approved).toBe(false)
+  })
+})
+
+// ============================================================================
+//   FB4（TC-B4-H1 面三，D1b §3-FB4）：presetLoad 准入门复查判别锁——手编
+//   preset 的 active 行对未审批 admission-required 插件必不静默 enable
+//   （计入 unknown 列），disabled 行不设门（禁双门互踩），审批后正对照放行。
+// ============================================================================
+
+describe('FB4 presetLoad admission re-check', () => {
+  it('counts an unapproved active row into unknown, leaves it disabled, and still applies disabled rows', async () => {
+    const registry = await seededRegistry()
+    const gateway = gatewayWith(registry)
+    // 存 preset 时：alpha active、beta disabled（两列都进快照）。
+    await registry.enable(normalizePluginId('test/alpha'))
+    await registry.disable(normalizePluginId('test/beta'))
+    expect(gateway.presetSave({ name: 'gated' }).ok).toBe(true)
+    // 现态：alpha 被禁且无审批记录（手编/回放 preset 的攻击面姿态）。
+    await registry.disable(normalizePluginId('test/alpha'))
+    const loaded = await gateway.presetLoad({ name: 'gated' })
+    expect(loaded.ok).toBe(true)
+    if (loaded.ok) {
+      // 判别锁（旧形复刻必红：门前 alpha 被静默 enable 且列 applied）。
+      expect(loaded.value.applied).toEqual([gid('test/beta')])
+      expect(loaded.value.unknown).toEqual([gid('test/alpha')])
+    }
+    expect(registry.getStatus(normalizePluginId('test/alpha'))).toBe(PluginStatus.DISABLED)
+    // disabled 行不经准入门照旧应用（门只镜像 enable=禁双门互踩）。
+    expect(registry.getStatus(normalizePluginId('test/beta'))).toBe(PluginStatus.DISABLED)
+  })
+
+  it('applies the active row once approve records the decision (正对照：合法 preset 零回归)', async () => {
+    const registry = await seededRegistry()
+    const gateway = gatewayWith(registry)
+    await registry.enable(normalizePluginId('test/alpha'))
+    await registry.disable(normalizePluginId('test/beta'))
+    expect(gateway.presetSave({ name: 'approved' }).ok).toBe(true)
+    await registry.disable(normalizePluginId('test/alpha'))
+    expect(gateway.approve({ pluginId: gid('test/alpha') }).ok).toBe(true)
+    const loaded = await gateway.presetLoad({ name: 'approved' })
+    expect(loaded.ok).toBe(true)
+    if (loaded.ok) {
+      // alpha=已审批 active 行→应用；beta=disabled 行→无门应用（preset 序）。
+      expect(loaded.value.applied).toEqual([gid('test/alpha'), gid('test/beta')])
+      expect(loaded.value.unknown).toEqual([])
+    }
+    expect(registry.getStatus(normalizePluginId('test/alpha'))).toBe(PluginStatus.ACTIVE)
   })
 })

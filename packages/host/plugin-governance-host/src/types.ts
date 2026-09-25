@@ -151,7 +151,13 @@ export interface GovernanceAcknowledgement {
 export interface PresetApplicationReport {
   /** Plugins the preset re-enabled or disabled, in preset order. */
   readonly applied: readonly PluginGovernanceId[]
-  /** Preset entries naming no registered plugin; left untouched. */
+  /**
+   * Preset entries left untouched: naming no registered plugin, or — FB4
+   * (TC-B4-H1 face 3) — an `active` row whose plugin still requires an
+   * admission decision none was recorded for. The preset file is not an
+   * approval: the load path mirrors the server-side `enable` gate and
+   * reports the skipped row here instead of silently enabling it.
+   */
   readonly unknown: readonly PluginGovernanceId[]
 }
 
