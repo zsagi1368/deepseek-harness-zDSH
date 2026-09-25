@@ -10,11 +10,24 @@ vi.mock('node:child_process', () => ({
   spawnSync: vi.fn(),
 }))
 
+// TC-B4-H1 face 7: the lookup probe itself reaches the spawn seam by absolute
+// path (candidate-chain locks live in system-probe.host.spec.ts; here the
+// seam contract is locked — absolute probe file, pinned cwd, and the
+// ComSpec fall-through when the probe cannot be resolved).
+vi.mock('../src/system-probe.ts', () => ({
+  resolveLookupProbe: vi.fn(),
+}))
+
 import { spawnSync } from 'node:child_process'
+import { resolveLookupProbe } from '../src/system-probe.ts'
 import { PtyRegistry, resolveShell, validateShellResolution } from '../src/pty-registry.ts'
 import type { PtyProcess } from '../src/pty-registry.ts'
 
 const mockSpawnSync = vi.mocked(spawnSync)
+const mockResolveLookupProbe = vi.mocked(resolveLookupProbe)
+
+/** The absolute probe resolveShell must hand the spawn seam. */
+const ABS_WHERE = 'C:\\Windows\\System32\\where.exe'
 
 const noEvents = { onData: vi.fn(), onExit: vi.fn() }
 
@@ -31,6 +44,8 @@ function withPlatform(platform: string, fn: () => void): void {
 describe('resolveShell absolute-path resolution', () => {
   beforeEach(() => {
     mockSpawnSync.mockReset()
+    mockResolveLookupProbe.mockReset()
+    mockResolveLookupProbe.mockReturnValue(ABS_WHERE)
     delete process.env.DSH_WORKBENCH_SHELL
     delete process.env.ComSpec
     delete process.env.SHELL
@@ -46,7 +61,9 @@ describe('resolveShell absolute-path resolution', () => {
         stdout: 'C:\\Program Files\\PowerShell\\7\\pwsh.exe\r\n',
       } as never)
       expect(resolveShell()).toEqual({ file: 'C:\\Program Files\\PowerShell\\7\\pwsh.exe', args: ['-NoLogo'] })
-      expect(mockSpawnSync).toHaveBeenCalledWith('where.exe', ['pwsh.exe'], { encoding: 'utf8', cwd: 'C:\\Windows' })
+      expect(mockSpawnSync).toHaveBeenCalledWith(ABS_WHERE, ['pwsh.exe'], { encoding: 'utf8', cwd: 'C:\\Windows' })
+      // 负对照（PC2 :263 同款）：裸名探针复刻必红——spawn file 恒非裸名。
+      expect(mockSpawnSync).not.toHaveBeenCalledWith('where.exe', expect.anything(), expect.anything())
     })
   })
 
@@ -54,7 +71,7 @@ describe('resolveShell absolute-path resolution', () => {
     withPlatform('win32', () => {
       mockSpawnSync.mockReturnValue({ status: 0, stdout: 'C:\\pwsh\\pwsh.exe\n' } as never)
       resolveShell()
-      expect(mockSpawnSync).toHaveBeenCalledWith('where.exe', ['pwsh.exe'], { encoding: 'utf8', cwd: 'C:\\Windows' })
+      expect(mockSpawnSync).toHaveBeenCalledWith(ABS_WHERE, ['pwsh.exe'], { encoding: 'utf8', cwd: 'C:\\Windows' })
     })
   })
 
@@ -64,7 +81,7 @@ describe('resolveShell absolute-path resolution', () => {
       process.env.WINDIR = 'C:\\Windows'
       mockSpawnSync.mockReturnValue({ status: 0, stdout: 'C:\\pwsh\\pwsh.exe\n' } as never)
       resolveShell()
-      expect(mockSpawnSync).toHaveBeenCalledWith('where.exe', ['pwsh.exe'], { encoding: 'utf8', cwd: 'C:\\Windows' })
+      expect(mockSpawnSync).toHaveBeenCalledWith(ABS_WHERE, ['pwsh.exe'], { encoding: 'utf8', cwd: 'C:\\Windows' })
     })
   })
 
@@ -74,7 +91,19 @@ describe('resolveShell absolute-path resolution', () => {
       delete process.env.WINDIR
       mockSpawnSync.mockReturnValue({ status: 0, stdout: 'C:\\pwsh\\pwsh.exe\n' } as never)
       resolveShell()
-      expect(mockSpawnSync).toHaveBeenCalledWith('where.exe', ['pwsh.exe'], { encoding: 'utf8', cwd: undefined })
+      // 探针自身仍恒绝对（cwd 腿与探针绝对化腿正交：cwd 缺 env 不退回裸名探针）。
+      expect(mockSpawnSync).toHaveBeenCalledWith(ABS_WHERE, ['pwsh.exe'], { encoding: 'utf8', cwd: undefined })
+    })
+  })
+
+  it('skips the lookup leg with zero spawn when the probe cannot be resolved (ComSpec fall-through intact)', () => {
+    withPlatform('win32', () => {
+      // 判别锁：探针候选全缺（resolveLookupProbe=null）→ 查找腿整体跳过、
+      // 零子进程，落 ComSpec 兜底=既有 blocked-or-missing 语义保留。
+      mockResolveLookupProbe.mockReturnValue(null)
+      process.env.ComSpec = 'C:\\Windows\\System32\\cmd.exe'
+      expect(resolveShell()).toEqual({ file: 'C:\\Windows\\System32\\cmd.exe', args: [] })
+      expect(mockSpawnSync).not.toHaveBeenCalled()
     })
   })
 

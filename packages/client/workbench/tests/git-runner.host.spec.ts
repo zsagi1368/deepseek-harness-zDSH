@@ -13,7 +13,15 @@ vi.mock('node:child_process', () => ({
   spawnSync: vi.fn(),
 }))
 
+// TC-B4-H1 face 7: the lookup probe reaches the spawn seam by absolute path
+// (candidate-chain locks live in system-probe.host.spec.ts; here the seam
+// contract is locked — absolute probe file, pinned cwd, fail-closed null).
+vi.mock('../src/system-probe.ts', () => ({
+  resolveLookupProbe: vi.fn(),
+}))
+
 import { spawn, spawnSync } from 'node:child_process'
+import { resolveLookupProbe } from '../src/system-probe.ts'
 import {
   resetBinaryResolver,
   resolveBinary,
@@ -23,6 +31,10 @@ import {
 
 const mockSpawn = vi.mocked(spawn)
 const mockSpawnSync = vi.mocked(spawnSync)
+const mockResolveLookupProbe = vi.mocked(resolveLookupProbe)
+
+/** The absolute probe the resolver must hand the spawn seam (win32 default leg). */
+const ABS_WHERE = 'C:\\Windows\\System32\\where.exe'
 
 function fakeChildProcess(): EventEmitter & {
   stdout: EventEmitter
@@ -57,6 +69,10 @@ describe('binary resolution seam', () => {
     resetBinaryResolver()
     mockSpawn.mockReset()
     mockSpawnSync.mockReset()
+    mockResolveLookupProbe.mockReset()
+    // The probe resolves to its absolute system path on every host (the
+    // candidate chain itself is locked in system-probe.host.spec.ts).
+    mockResolveLookupProbe.mockReturnValue(ABS_WHERE)
     // Deterministic probe cwd for the where.exe assertions below.
     process.env.SystemRoot = 'C:\\Windows'
     delete process.env.WINDIR
@@ -71,7 +87,9 @@ describe('binary resolution seam', () => {
         stdout: 'C:\\Program Files\\Git\\cmd\\git.exe\r\nC:\\other\\git.exe\r\n',
       } as never)
       expect(resolveBinary('git')).toBe('C:\\Program Files\\Git\\cmd\\git.exe')
-      expect(mockSpawnSync).toHaveBeenCalledWith('where.exe', ['git'], { encoding: 'utf8', cwd: 'C:\\Windows' })
+      expect(mockSpawnSync).toHaveBeenCalledWith(ABS_WHERE, ['git'], { encoding: 'utf8', cwd: 'C:\\Windows' })
+      // 负对照（PC2 :263 同款）：裸名探针复刻必红——spawn file 恒非裸名。
+      expect(mockSpawnSync).not.toHaveBeenCalledWith('where.exe', expect.anything(), expect.anything())
       // Cached: a second lookup must not re-run the PATH probe.
       expect(resolveBinary('git')).toBe('C:\\Program Files\\Git\\cmd\\git.exe')
       expect(mockSpawnSync).toHaveBeenCalledTimes(1)
@@ -86,7 +104,7 @@ describe('binary resolution seam', () => {
     try {
       mockSpawnSync.mockReturnValueOnce({ status: 0, stdout: 'C:\\git\\git.exe\n' } as never)
       expect(resolveBinary('git')).toBe('C:\\git\\git.exe')
-      expect(mockSpawnSync).toHaveBeenCalledWith('where.exe', ['git'], { encoding: 'utf8', cwd: 'C:\\Windows' })
+      expect(mockSpawnSync).toHaveBeenCalledWith(ABS_WHERE, ['git'], { encoding: 'utf8', cwd: 'C:\\Windows' })
     } finally {
       Object.defineProperty(process, 'platform', { value: originalPlatform })
     }
@@ -100,7 +118,7 @@ describe('binary resolution seam', () => {
       process.env.WINDIR = 'C:\\Windows'
       mockSpawnSync.mockReturnValueOnce({ status: 0, stdout: 'C:\\git\\git.exe\n' } as never)
       expect(resolveBinary('git')).toBe('C:\\git\\git.exe')
-      expect(mockSpawnSync).toHaveBeenCalledWith('where.exe', ['git'], { encoding: 'utf8', cwd: 'C:\\Windows' })
+      expect(mockSpawnSync).toHaveBeenCalledWith(ABS_WHERE, ['git'], { encoding: 'utf8', cwd: 'C:\\Windows' })
     } finally {
       Object.defineProperty(process, 'platform', { value: originalPlatform })
     }
@@ -114,7 +132,22 @@ describe('binary resolution seam', () => {
       delete process.env.WINDIR
       mockSpawnSync.mockReturnValueOnce({ status: 0, stdout: 'C:\\git\\git.exe\n' } as never)
       expect(resolveBinary('git')).toBe('C:\\git\\git.exe')
-      expect(mockSpawnSync).toHaveBeenCalledWith('where.exe', ['git'], { encoding: 'utf8', cwd: undefined })
+      // 探针自身仍恒绝对（cwd 腿与探针绝对化腿正交：cwd 缺 env 不退回裸名探针）。
+      expect(mockSpawnSync).toHaveBeenCalledWith(ABS_WHERE, ['git'], { encoding: 'utf8', cwd: undefined })
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform })
+    }
+  })
+
+  it('fails closed with zero spawn when the win32 lookup probe cannot be resolved', () => {
+    const originalPlatform = process.platform
+    Object.defineProperty(process, 'platform', { value: 'win32' })
+    try {
+      // 判别锁：探针候选全缺（resolveLookupProbe=null）→ 零子进程、解析拒绝，
+      // 绝不裸名回退。
+      mockResolveLookupProbe.mockReturnValue(null)
+      expect(resolveBinary('git')).toBeNull()
+      expect(mockSpawnSync).not.toHaveBeenCalled()
     } finally {
       Object.defineProperty(process, 'platform', { value: originalPlatform })
     }
@@ -164,9 +197,24 @@ describe('binary resolution seam', () => {
     const originalPlatform = process.platform
     Object.defineProperty(process, 'platform', { value: 'linux' })
     try {
+      mockResolveLookupProbe.mockReturnValue('/usr/bin/which')
       mockSpawnSync.mockReturnValueOnce({ status: 0, stdout: '/usr/bin/git\n' } as never)
       expect(resolveBinary('git')).toBe('/usr/bin/git')
-      expect(mockSpawnSync).toHaveBeenCalledWith('which', ['git'], { encoding: 'utf8' })
+      expect(mockSpawnSync).toHaveBeenCalledWith('/usr/bin/which', ['git'], { encoding: 'utf8' })
+      // 负对照（PC2 :263 同款）：裸名 which 复刻必红。
+      expect(mockSpawnSync).not.toHaveBeenCalledWith('which', expect.anything(), expect.anything())
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform })
+    }
+  })
+
+  it('fails closed with zero spawn when the POSIX lookup probe cannot be resolved', () => {
+    const originalPlatform = process.platform
+    Object.defineProperty(process, 'platform', { value: 'linux' })
+    try {
+      mockResolveLookupProbe.mockReturnValue(null)
+      expect(resolveBinary('git')).toBeNull()
+      expect(mockSpawnSync).not.toHaveBeenCalled()
     } finally {
       Object.defineProperty(process, 'platform', { value: originalPlatform })
     }
@@ -215,6 +263,8 @@ describe('runGit with resolution', () => {
     resetBinaryResolver()
     mockSpawn.mockReset()
     mockSpawnSync.mockReset()
+    mockResolveLookupProbe.mockReset()
+    mockResolveLookupProbe.mockReturnValue(ABS_WHERE)
   })
 
   it('spawns the resolved absolute path, never a bare name', async () => {

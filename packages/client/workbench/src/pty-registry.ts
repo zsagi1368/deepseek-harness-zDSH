@@ -20,6 +20,7 @@ import { accessSync, constants as fsConstants } from 'node:fs'
 // The shell basename whitelist likewise needs win32 splitting so a Windows
 // path is judged identically on every host.
 import { win32 } from 'node:path'
+import { resolveLookupProbe } from './system-probe.ts'
 
 /** A live terminal process face: write, resize, and kill. */
 export interface PtyProcess {
@@ -148,29 +149,41 @@ export function resolveShell(): ShellResolution {
   if (process.platform === 'win32') {
     const configured = process.env.DSH_WORKBENCH_SHELL?.trim()
     if (configured !== undefined && configured !== '') return { file: configured, args: ['-NoLogo'] }
-    try {
-      for (const candidate of ['pwsh.exe', 'powershell.exe']) {
-        // `where.exe` is a SystemRoot-protected system binary; keep it as the
-        // lookup mechanism, but hand the SPAWN seam its absolute-path result
-        // rather than the bare candidate name (a bare name would re-enter the
-        // PATH dependency this lookup exists to pin down). The probe cwd is
-        // pinned to the neutral system root because `where.exe` searches the
-        // current directory before PATH — the server's cwd must never decide
-        // which shell wins.
-        const whereResult = spawnSync('where.exe', [candidate], {
-          encoding: 'utf8',
-          cwd: process.env.SystemRoot ?? process.env.WINDIR ?? undefined,
-        })
-        if (whereResult.status === 0) {
-          const resolved = firstOutputLine(whereResult.stdout)
-          // Fail closed: a relative/bare result is a lookup miss, never a
-          // usable shell path.
-          if (resolved !== null && win32.isAbsolute(resolved)) return { file: resolved, args: ['-NoLogo'] }
+    // The lookup probe itself is spawned by ABSOLUTE path (TC-B4-H1 face 7,
+    // FB1-family defense-in-depth hardening): a bare `where.exe` spawn would
+    // let a same-named binary planted in the server CWD run before the real
+    // system one (win32 CreateProcess searches the app dir and the parent CWD
+    // before System32, and the `cwd` pin below does not take part in
+    // executable lookup). Candidate construction/existence checks live in
+    // resolveLookupProbe, outside the try; an unresolvable probe skips the
+    // lookup leg and falls through to the ComSpec fallback — the documented
+    // blocked-or-missing semantics below stay intact.
+    const probe = resolveLookupProbe()
+    if (probe !== null) {
+      try {
+        for (const candidate of ['pwsh.exe', 'powershell.exe']) {
+          // `where.exe` is a SystemRoot-protected system binary; keep it as the
+          // lookup mechanism, but hand the SPAWN seam its absolute-path result
+          // rather than the bare candidate name (a bare name would re-enter the
+          // PATH dependency this lookup exists to pin down). The probe cwd is
+          // pinned to the neutral system root because `where.exe` searches the
+          // current directory before PATH — the server's cwd must never decide
+          // which shell wins.
+          const whereResult = spawnSync(probe, [candidate], {
+            encoding: 'utf8',
+            cwd: process.env.SystemRoot ?? process.env.WINDIR ?? undefined,
+          })
+          if (whereResult.status === 0) {
+            const resolved = firstOutputLine(whereResult.stdout)
+            // Fail closed: a relative/bare result is a lookup miss, never a
+            // usable shell path.
+            if (resolved !== null && win32.isAbsolute(resolved)) return { file: resolved, args: ['-NoLogo'] }
+          }
         }
+      } catch {
+        // A blocked or missing where.exe must not abort shell resolution; fall
+        // through to the ComSpec fallback below.
       }
-    } catch {
-      // A blocked or missing where.exe must not abort shell resolution; fall
-      // through to the ComSpec fallback below.
     }
     const comspec = process.env.ComSpec?.trim()
     // ComSpec must be an absolute path: a bare/relative value would re-enter

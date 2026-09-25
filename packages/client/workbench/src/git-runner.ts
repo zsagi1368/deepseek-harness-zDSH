@@ -14,6 +14,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { win32 } from 'node:path'
 import type { RootCache } from './fs-routes.ts'
 import { ensureRealPathInside } from './path-guard.ts'
+import { resolveLookupProbe } from './system-probe.ts'
 
 /**
  * Resolve a bare executable name to an absolute path. Returns the first match
@@ -23,14 +24,26 @@ export type BinaryResolver = (name: string) => string | null
 
 /**
  * Platform default: `where.exe <name>` on Windows (a protected system binary
- * whose PATH is pinned under SystemRoot), `which <name>` on POSIX.
+ * whose PATH is pinned under SystemRoot), `which <name>` on POSIX. The probe
+ * itself is spawned by ABSOLUTE path (TC-B4-H1 face 7, FB1-family
+ * defense-in-depth hardening): a bare `where.exe`/`which` spawn would let a
+ * same-named binary planted in the host CWD run before the system one on
+ * win32 (CreateProcess searches the app dir and CWD before System32, and the
+ * `cwd` option below does not take part in executable lookup). Probe
+ * resolution fails closed — no candidate on disk means no spawn at all, never
+ * a bare-name fallback.
  * @param name - the executable name to resolve.
  * @returns the first absolute path found, or null when resolution fails.
  */
 function defaultBinaryResolver(name: string): string | null {
+  // Candidate construction/existence checks live in resolveLookupProbe,
+  // deliberately outside the try below: only spawn failures may be laundered
+  // into "not found".
+  const probe = resolveLookupProbe()
+  if (probe === null) return null
   try {
     if (process.platform === 'win32') {
-      const result = spawnSync('where.exe', [name], {
+      const result = spawnSync(probe, [name], {
         encoding: 'utf8',
         // `where.exe` searches the current directory before PATH; pin the
         // probe to the neutral system root so a stray binary in the runner's
@@ -48,7 +61,7 @@ function defaultBinaryResolver(name: string): string | null {
     }
     // `command` is a shell builtin with no standalone binary; `spawnSync`
     // cannot run it directly (ENOENT), so probe through the `which` utility.
-    const result = spawnSync('which', [name], { encoding: 'utf8' })
+    const result = spawnSync(probe, [name], { encoding: 'utf8' })
     if (result.status === 0) return firstLine(result.stdout)
     return null
   } catch {
