@@ -66,11 +66,14 @@ import { SEED_SCHEMA_VERSION } from '../src/preinstall/seed.ts'
 const storageRoots: string[] = []
 const dirs: string[] = []
 const contexts: Context[] = []
+const seedFiles: string[] = []
+let seedSeq = 0
 
 afterEach(async () => {
   await Promise.all(contexts.splice(0).map(ctx => ctx.fiber.dispose()))
   for (const root of storageRoots.splice(0)) rmSync(root, { recursive: true, force: true })
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true })
+  for (const file of seedFiles.splice(0)) rmSync(file, { force: true })
   // REVIEW-G3 [建议]2（TC-B4-H1 面八）：挂起闸门会合点常规由各 it 内 finally
   // 收敛（removeHangGate）；it 级超时杀 worker 时 finally 不执行，留有理论残留
   // 窗口——这里在 dispose 与目录清理之后无条件全清，彻底封跨用例残留。纯防御
@@ -111,9 +114,14 @@ if (FULL_SEED.length === 0) {
   throw new Error('G3 preinstall chaos premise: zdsh-factory/seed.json declares no entries')
 }
 
-/** A seed document over given rows, written to a scratch dir. */
+/** A seed document over given rows. F7 fixture root-posture migration
+ * (TC-B4-H1 face 6): written directly under the tmpdir root so deriveRepoRoot
+ * anchors repoRoot=tmpdir — the forged artifact dirs every row points at
+ * (also under tmpdir, `local:` absolute) stay strictly inside the containment
+ * root. Row shapes and assertions untouched; cleanup is per-file. */
 function writeSeed(rows: readonly FullSeedRow[]): string {
-  const path = join(scratch(), 'seed.json')
+  const path = join(tmpdir(), `gov-chaos-seed-${process.pid}-${seedSeq++}.json`)
+  seedFiles.push(path)
   writeFileSync(path, JSON.stringify({ version: SEED_SCHEMA_VERSION, entries: rows }))
   return path
 }

@@ -24,11 +24,14 @@ import PluginGovernanceGateway, { type PluginGovernanceId } from '../src/index.t
 const storageRoots: string[] = []
 const dirs: string[] = []
 const contexts: Context[] = []
+const seedFiles: string[] = []
+let seedSeq = 0
 
 afterEach(async () => {
   await Promise.all(contexts.splice(0).map(ctx => ctx.fiber.dispose()))
   for (const root of storageRoots.splice(0)) rmSync(root, { recursive: true, force: true })
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true })
+  for (const file of seedFiles.splice(0)) rmSync(file, { force: true })
 })
 
 /** Brand a raw id for gateway calls. */
@@ -57,8 +60,13 @@ function localPluginDir(name: string): string {
   return dir
 }
 
+// F7 fixture root-posture migration (TC-B4-H1 face 6): seed file sits
+// directly under the tmpdir root so deriveRepoRoot anchors repoRoot=tmpdir —
+// the scratch plugin dirs (also under tmpdir) stay strictly inside the
+// containment root. Row shapes and assertions untouched.
 function writeSeed(entries: unknown[]): string {
-  const path = join(scratch(), 'seed.json')
+  const path = join(tmpdir(), `preinstall-lock-seed-${process.pid}-${seedSeq++}.json`)
+  seedFiles.push(path)
   writeFileSync(path, JSON.stringify({ version: 1, entries }))
   return path
 }

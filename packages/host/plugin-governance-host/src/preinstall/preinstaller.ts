@@ -40,9 +40,10 @@
  */
 
 import { existsSync, mkdirSync, readFileSync } from 'node:fs'
-import { dirname, isAbsolute, resolve } from 'node:path'
+import { dirname } from 'node:path'
 import { normalizePluginId } from '@deepseek-ai/dsh-plugin-governance'
 import { withFileLock } from '@deepseek-ai/dsh-atomic-write'
+import { resolveContainedPath } from '../path-containment.ts'
 import type {
   GovernanceAcknowledgement,
   GovernanceResult,
@@ -343,12 +344,18 @@ export class SeedPreinstaller {
    * Map a seed entry's two-state source onto the gateway install() face:
    * `npm:` passes through for the registry branch; `local:<path>` strips the
    * scheme and resolves a relative path against the repository root (the B4
-   * artifact lives in `node_modules/`, bare-resolved from the repo).
+   * artifact lives in `node_modules/`, bare-resolved from the repo) through
+   * the F7 containment gate (TC-B4-H1 face 6; D1a F7 / D1b §4: the seed is an
+   * UNTRUSTED declarative file — a `..` escape, an outside-root absolute, a
+   * cross-drive value, or a junction/symlink escaping the root throws here and
+   * settles as a queryable `failed` row via installOne's catch; a legal
+   * in-root row returns the identical value as before = zero drift for the
+   * factory seven, K-1.2.1 zero-false-kill discipline).
    */
   private installSource(entry: SeedEntry): string {
     if (entry.source.startsWith('npm:')) return entry.source
     const rest = entry.source.slice('local:'.length)
-    return isAbsolute(rest) ? rest : resolve(this.repoRoot, rest)
+    return resolveContainedPath(this.repoRoot, rest, 'local: seed source')
   }
 
   /**

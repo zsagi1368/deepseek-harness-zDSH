@@ -30,11 +30,14 @@ import {
 const storageRoots: string[] = []
 const dirs: string[] = []
 const contexts: Context[] = []
+const seedFiles: string[] = []
+let seedSeq = 0
 
 afterEach(async () => {
   await Promise.all(contexts.splice(0).map(ctx => ctx.fiber.dispose()))
   for (const root of storageRoots.splice(0)) rmSync(root, { recursive: true, force: true })
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true })
+  for (const file of seedFiles.splice(0)) rmSync(file, { force: true })
 })
 
 /** Brand a raw id for gateway calls. */
@@ -148,9 +151,16 @@ function localPluginDir(name: string): string {
   return dir
 }
 
-/** Write a seed manifest to a scratch dir and return its path. */
+/**
+ * Write a seed manifest and return its path. F7 fixture root-posture
+ * migration (TC-B4-H1 face 6): the seed file sits directly under the tmpdir
+ * root so deriveRepoRoot anchors repoRoot=tmpdir — every scratch plugin dir
+ * this suite walks (also under tmpdir) is strictly inside the containment
+ * root. Row shapes and assertions are untouched; cleanup is per-file.
+ */
 function writeSeed(entries: unknown[], extra: Record<string, unknown> = {}): string {
-  const path = join(scratch(), 'seed.json')
+  const path = join(tmpdir(), `preinstall-seed-${process.pid}-${seedSeq++}.json`)
+  seedFiles.push(path)
   writeFileSync(path, JSON.stringify({ version: SEED_SCHEMA_VERSION, entries, ...extra }))
   return path
 }
@@ -656,5 +666,49 @@ describe('EXEC7 S1 + S2 + S3 through the gateway', () => {
     expect(pre).toBeDefined()
     expect(pre).not.toHaveProperty('dir')
     expect(rows.some(r => r.installedAt === 'nope')).toBe(false)
+  })
+})
+
+// ============================================================================
+//   F7（TC-B4-H1 面六，D1a F7/D1b §4）：seed 路径包含门——逃逸行在 installSource
+//   即 throw，经 installOne catch 落为可查询 failed 台账行，注册面零接触。
+//   （单元腿三雷判别锁在 path-containment.spec.ts；此处为执行器集成腿。）
+// ============================================================================
+
+describe('F7 — installSource containment gate settles escaping rows as failed', () => {
+  it('records a failed row for a "../" escape seed row and never registers the id', async () => {
+    const storageRoot = mkdtempSync(join(tmpdir(), 'gov-store-'))
+    storageRoots.push(storageRoot)
+    const seedPath = writeSeed([
+      { id: 'demo/escape', package: '@demo/escape', version: '1.0.0', pin: 'e'.repeat(40), source: 'local:../escaped-plugin', integrity: null, enabledAtBoot: true, family: 'demo', failPolicy: 'fail-open' },
+    ])
+    const { gateway } = await boot({ storageRoot, seedPath })
+    await gateway.settlePreinstall()
+    const ledger = JSON.parse(readFileSync(join(storageRoot, 'data', 'preinstall-results.json'), 'utf8')) as {
+      entries: Record<string, { status: string; reason?: string }>
+    }
+    const row = ledger.entries['demo/escape']
+    // 判别锁（旧形复刻必红：门前该行把解析值直接交 install，reason 为
+    // 「not an existing local directory」类安装面语义，不含包含性语义）。
+    expect(row?.status).toBe('failed')
+    expect(row?.reason ?? '').toMatch(/escapes its containment root/)
+    expect(gateway.list().plugins.some(p => p.pluginId === gid('demo/escape'))).toBe(false)
+  })
+
+  it('records a failed row for an outside-root absolute seed row (absolute-path escape form)', async () => {
+    const storageRoot = mkdtempSync(join(tmpdir(), 'gov-store-'))
+    storageRoots.push(storageRoot)
+    // tmpdir 的父目录侧绝对值（无须在盘：文本腿先于存在性判定）。
+    const outside = join(tmpdir(), '..', `f7-outside-${process.pid}`)
+    const seedPath = writeSeed([
+      { id: 'demo/outside', package: '@demo/outside', version: '1.0.0', pin: 'f'.repeat(40), source: `local:${outside}`, integrity: null, enabledAtBoot: false, family: 'demo', failPolicy: 'fail-open' },
+    ])
+    const { gateway } = await boot({ storageRoot, seedPath })
+    await gateway.settlePreinstall()
+    const ledger = JSON.parse(readFileSync(join(storageRoot, 'data', 'preinstall-results.json'), 'utf8')) as {
+      entries: Record<string, { status: string; reason?: string }>
+    }
+    expect(ledger.entries['demo/outside']?.status).toBe('failed')
+    expect(ledger.entries['demo/outside']?.reason ?? '').toMatch(/escapes its containment root/)
   })
 })

@@ -40,11 +40,16 @@ import { SEED_SCHEMA_VERSION } from '../src/preinstall/seed.ts'
 const storageRoots: string[] = []
 const dirs: string[] = []
 const contexts: Context[] = []
+const seedFiles: string[] = []
+const repoSeedFiles: string[] = []
+let seedSeq = 0
 
 afterEach(async () => {
   await Promise.all(contexts.splice(0).map(ctx => ctx.fiber.dispose()))
   for (const root of storageRoots.splice(0)) rmSync(root, { recursive: true, force: true })
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true })
+  for (const file of seedFiles.splice(0)) rmSync(file, { force: true })
+  for (const file of repoSeedFiles.splice(0)) rmSync(file, { force: true })
 })
 
 /** A throwaway directory registered for cleanup. */
@@ -112,9 +117,32 @@ function declaredFactories(sourceDir: string): string[] {
     .filter((factory): factory is string => typeof factory === 'string' && factory.length > 0)
 }
 
-/** A seed document over given rows, written to a scratch dir. */
+/**
+ * A seed document over given rows, written directly under the tmpdir root.
+ * F7 fixture root-posture migration (TC-B4-H1 face 6): with the seed at
+ * `<tmpdir>/<unique>.json`, deriveRepoRoot anchors repoRoot=tmpdir, so the
+ * scratch fixture dirs this file walks (also under tmpdir) are strictly
+ * inside the containment root — row shapes and assertions untouched.
+ */
 function writeSeed(rows: unknown[]): string {
-  const path = join(scratch(), 'seed.json')
+  const path = join(tmpdir(), `gov-mount-seed-${process.pid}-${seedSeq++}.json`)
+  seedFiles.push(path)
+  writeFileSync(path, JSON.stringify({ version: SEED_SCHEMA_VERSION, entries: rows }))
+  return path
+}
+
+/**
+ * A seed document for rows whose `local:` sources point at the REAL in-repo
+ * artifacts (rowOf shape). F7: those absolute in-repo sources are only inside
+ * the containment root when repoRoot=REPO_ROOT, which deriveRepoRoot gives
+ * exactly for a seed under `<REPO_ROOT>/zdsh-factory/`. The REAL seed.json is
+ * never touched; the temp file is PID-keyed and removed in afterEach (a
+ * worker killed mid-test would leave a visible untracked residue — delete it
+ * by hand; it never merges silently).
+ */
+function writeRepoSeed(rows: unknown[]): string {
+  const path = join(REPO_ROOT, 'zdsh-factory', `seed.mountfixture-${process.pid}-${seedSeq++}.json`)
+  repoSeedFiles.push(path)
   writeFileSync(path, JSON.stringify({ version: SEED_SCHEMA_VERSION, entries: rows }))
   return path
 }
@@ -179,7 +207,7 @@ describe('mount channel contract — fake loader records every create() arg', ()
 
     // The three REAL seed rows (absolute sources), production postures kept:
     // verticals stays boot-off and must never reach create().
-    const gateway = await bootGateway(ctx, writeSeed([
+    const gateway = await bootGateway(ctx, writeRepoSeed([
       rowOf('core/webstack-verticals'),
       rowOf('core/omnivision'),
       rowOf('core/webstack-bridge'),
@@ -225,7 +253,7 @@ describe('mount channel contract — fake loader records every create() arg', ()
     // green, ONLY the mount column goes red, and the pass never throws (§9.4).
     const ctx = new Context()
     contexts.push(ctx)
-    const gateway = await bootGateway(ctx, writeSeed([
+    const gateway = await bootGateway(ctx, writeRepoSeed([
       rowOf('core/webstack-verticals'),
       rowOf('core/omnivision'),
       rowOf('core/webstack-bridge'),
@@ -319,7 +347,7 @@ describe('mount channel over the REAL cordis loader — tmpdir fixtures', () => 
 
 describe('mount channel over the REAL cordis loader — the three real artifacts', () => {
   it('LIVE smoke (TC-B2-23A): bridge really mounts via ctx.loader.create and the bridge service resolves', async () => {
-    const { ctx, gateway } = await bootGatewayWithRealLoader(writeSeed([rowOf('core/webstack-bridge')]))
+    const { ctx, gateway } = await bootGatewayWithRealLoader(writeRepoSeed([rowOf('core/webstack-bridge')]))
     await gateway.settlePreinstall()
 
     expect(gateway.preinstallReport().entries['core/webstack-bridge']?.status).toBe('installed')
@@ -346,7 +374,7 @@ describe('mount channel over the REAL cordis loader — the three real artifacts
     // forced posture (enabledAtBoot=true) to prove mountability — its PRODUCTION
     // seed row stays `false` (FIX9), asserted skipped in the fake-loader track
     // and the restart byte-identity below.
-    const { ctx, gateway } = await bootGatewayWithRealLoader(writeSeed([
+    const { ctx, gateway } = await bootGatewayWithRealLoader(writeRepoSeed([
       rowOf('core/webstack-verticals', { enabledAtBoot: true }),
       rowOf('core/omnivision'),
       rowOf('core/webstack-bridge'),
@@ -385,7 +413,7 @@ describe('mount channel over the REAL cordis loader — the three real artifacts
   })
 
   it('restart byte-identity covers the new mount column (gate-p P1 discipline)', async () => {
-    const seedPath = writeSeed([
+    const seedPath = writeRepoSeed([
       rowOf('core/webstack-verticals'),
       rowOf('core/omnivision'),
       rowOf('core/webstack-bridge'),

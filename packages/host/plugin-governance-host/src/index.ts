@@ -7,7 +7,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync, type Stats } from 'node:fs'
-import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
+import { basename, dirname, join, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { Context, Service, type Fiber, type FiberState } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
@@ -41,6 +41,7 @@ import {
   type NpmSpec,
 } from './install/registry-source.ts'
 import { TarExtractionError, extractNpmPackageTarball } from './install/tarball.ts'
+import { resolveContainedPath, resolveFactoryModulePath } from './path-containment.ts'
 import { SeedPreinstaller } from './preinstall/preinstaller.ts'
 import type {
   DisablePluginRequest,
@@ -1062,7 +1063,10 @@ export class PluginGovernanceGateway extends TypertRemoteService {
    * manifest (`dsh.capabilities[].service.factory`), never from a lookup
    * table keyed by plugin. `[]` when nothing is loadable: an unregistered
    * id, a manifest without a service factory, or a provenance row that
-   * names no source directory.
+   * names no source directory. An escaping factory value (the manifest is
+   * an untrusted artifact declaration, F7 third point / D1b §4.1) throws
+   * with a queryable reason — the executor's per-item fail-open settles it
+   * as a `failed` mount row, siblings untouched.
    */
   private factoryModuleUrls(pluginId: PluginGovernanceId): string[] {
     const plugin = this.registry.get(pluginId)
@@ -1073,7 +1077,7 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     if (factories.length === 0) return []
     const sourceDir = this.artifactSourceDir(pluginId)
     if (sourceDir === null) return []
-    return factories.map(factory => pathToFileURL(resolve(sourceDir, factory.trim())).href)
+    return factories.map(factory => pathToFileURL(resolveFactoryModulePath(sourceDir, factory)).href)
   }
 
   /**
@@ -1081,7 +1085,10 @@ export class PluginGovernanceGateway extends TypertRemoteService {
    * row owns its extracted tree under the governance storage area, and a
    * preinstall `local:` row keeps the seed source verbatim — resolved
    * against the repository root exactly like the executor's installSource,
-   * so both faces agree on one absolute dir.
+   * so both faces agree on one absolute dir. The F7 containment gate runs
+   * on this face too (TC-B4-H1 face 6): a rewritten ledger row whose `local:`
+   * spec escapes the repository root (textually or through a link) throws a
+   * queryable reason instead of handing an outside dir to the mount chain.
    */
   private artifactSourceDir(pluginId: PluginGovernanceId): string | null {
     const row = this.installedSources.get(pluginId)
@@ -1089,7 +1096,7 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     if (row.kind === 'npm') return row.dir
     if (!row.spec.startsWith('local:')) return null
     const rest = row.spec.slice('local:'.length)
-    return isAbsolute(rest) ? rest : resolve(this.repoRoot, rest)
+    return resolveContainedPath(this.repoRoot, rest, 'local: provenance spec')
   }
 
   /** Structural read view of the project plugin layer service (no package import). */

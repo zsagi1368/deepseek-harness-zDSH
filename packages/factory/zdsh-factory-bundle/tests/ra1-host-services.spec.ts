@@ -82,11 +82,14 @@ import { provideHostServices, type HostServicesFixture, type WebServerRouteCaptu
 const storageRoots: string[] = []
 const scratchDirs: string[] = []
 const contexts: Context[] = []
+const repoSeedFiles: string[] = []
+let mountSeedSeq = 0
 
 afterEach(async () => {
   await Promise.all(contexts.splice(0).map(ctx => ctx.fiber.dispose()))
   for (const root of storageRoots.splice(0)) rmSync(root, { recursive: true, force: true })
   for (const dir of scratchDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
+  for (const file of repoSeedFiles.splice(0)) rmSync(file, { force: true })
 })
 
 // The repository's frozen factory seed is the single source of truth for the
@@ -131,9 +134,19 @@ function mountRow(id: string, overrides: Partial<FullSeedRow> = {}): FullSeedRow
   return { ...merged, source: `local:${localSourceDir(merged)}` }
 }
 
-/** A seed document over given rows, written to a scratch dir. */
+/**
+ * A seed document over given rows. F7 fixture root-posture migration
+ * (TC-B4-H1 face 6, gate-p homologous): mountRow rows carry ABSOLUTE in-repo
+ * `local:` sources, which the containment gate only accepts when
+ * repoRoot=REPO_ROOT — exactly what deriveRepoRoot gives for a seed under
+ * `<REPO_ROOT>/zdsh-factory/`. The REAL seed.json is never touched; the temp
+ * file is PID-keyed and removed in afterEach (a worker killed mid-test would
+ * leave a visible untracked residue under zdsh-factory/ — delete it by hand;
+ * it never merges silently).
+ */
 function writeMountSeed(rows: FullSeedRow[]): string {
-  const path = join(scratch(), 'seed.json')
+  const path = join(REPO_ROOT, 'zdsh-factory', `seed.ra1-fixture-${process.pid}-${mountSeedSeq++}.json`)
+  repoSeedFiles.push(path)
   writeFileSync(path, JSON.stringify({ version: 1, entries: rows }))
   return path
 }

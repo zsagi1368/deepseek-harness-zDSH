@@ -93,11 +93,14 @@ import PluginGovernanceGateway, { type PluginGovernanceId } from '../../../host/
 const storageRoots: string[] = []
 const scratchDirs: string[] = []
 const contexts: Context[] = []
+const repoSeedFiles: string[] = []
+let mountSeedSeq = 0
 
 afterEach(async () => {
   await Promise.all(contexts.splice(0).map(ctx => ctx.fiber.dispose()))
   for (const root of storageRoots.splice(0)) rmSync(root, { recursive: true, force: true })
   for (const dir of scratchDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
+  for (const file of repoSeedFiles.splice(0)) rmSync(file, { force: true })
 })
 
 /** Brand a raw id for gateway calls. */
@@ -535,13 +538,6 @@ interface FullSeedRow {
 }
 const FULL_SEED = (JSON.parse(readFileSync(SEED_PATH, 'utf8')) as { entries: FullSeedRow[] }).entries
 
-/** A throwaway directory registered for cleanup. */
-function scratch(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'gate-p-p5-'))
-  scratchDirs.push(dir)
-  return dir
-}
-
 /** Copy a real seed row onto its absolute in-repo `local:` source (with overrides). */
 function mountRow(id: string, overrides: Partial<FullSeedRow> = {}): FullSeedRow {
   const base = FULL_SEED.find(entry => entry.id === id)
@@ -550,9 +546,18 @@ function mountRow(id: string, overrides: Partial<FullSeedRow> = {}): FullSeedRow
   return { ...merged, source: `local:${localSourceDir(merged)}` }
 }
 
-/** A seed document over given rows, written to a scratch dir. */
+/**
+ * A seed document over given rows. F7 fixture root-posture migration
+ * (TC-B4-H1 face 6): mountRow rows carry ABSOLUTE in-repo `local:` sources,
+ * which the containment gate only accepts when repoRoot=REPO_ROOT — exactly
+ * what deriveRepoRoot gives for a seed under `<REPO_ROOT>/zdsh-factory/`. The
+ * REAL seed.json is never touched; the temp file is PID-keyed and removed in
+ * afterEach (a worker killed mid-test would leave a visible untracked
+ * residue under zdsh-factory/ — delete it by hand; it never merges silently).
+ */
 function writeMountSeed(rows: FullSeedRow[]): string {
-  const path = join(scratch(), 'seed.json')
+  const path = join(REPO_ROOT, 'zdsh-factory', `seed.gatep-fixture-${process.pid}-${mountSeedSeq++}.json`)
+  repoSeedFiles.push(path)
   writeFileSync(path, JSON.stringify({ version: 1, entries: rows }))
   return path
 }
@@ -728,7 +733,14 @@ describe('Gate-P P5 — real mount spectrum over the seed rows + fail-open + lif
     // §9.5-D②: inject a library-only barrel (no apply → cordis `invalid plugin`)
     // beside the two real boot-enabled artifacts. The broken row's ADMISSION
     // still lands installed, its MOUNT is failed, and both real siblings mount.
-    const brokenDir = scratch()
+    //
+    // F7 fixture root-posture (TC-B4-H1 face 6): this pass MIXES real in-repo
+    // rows (writeMountSeed anchors repoRoot=REPO_ROOT) with the broken
+    // fixture row — so the fixture dir must live inside REPO_ROOT too, else
+    // the containment gate (correctly) rejects it as an escape. node_modules/
+    // is gitignored territory: a crash residue never pollutes the porcelain.
+    const brokenDir = mkdtempSync(join(REPO_ROOT, 'node_modules', '.gate-p-p5-broken-'))
+    scratchDirs.push(brokenDir)
     writeFileSync(join(brokenDir, 'package.json'), JSON.stringify({
       name: '@fixture/p5-barrel',
       version: '1.0.0',
