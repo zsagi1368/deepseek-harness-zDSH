@@ -153,7 +153,13 @@ describe('project source distinction (C-01)', () => {
     expect(mirrorRow?.approvalRequired).toBe(false)
     expect(mirrorRow?.projectRoot).toBeUndefined()
     expect(nativeRow?.source).toBe('native')
-    expect(nativeRow?.approvalRequired).toBe(false)
+    // FB3 (TC-B4-H1 face 2) — card-mandated conflict update (PC2 precedent:
+    // 既有锁更新=严格增强零削弱): the fixture's self-reported
+    // `permissionLevel: 'workspace'` was pre-clamp elevation material — the
+    // install channel no longer consumes self-reported trust fields, so the
+    // native row projects approvalRequired=true (CONFIRM_REQUIRED 起步).
+    // project/mirror 两腿断言零触碰（各自通道的信任语义与安装通道正交）。
+    expect(nativeRow?.approvalRequired).toBe(true)
     expect(nativeRow?.projectRoot).toBeUndefined()
 
     // Detail projection: project plugins carry no OFFICIAL badge and expose

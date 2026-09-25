@@ -712,3 +712,37 @@ describe('F7 — installSource containment gate settles escaping rows as failed'
     expect(ledger.entries['demo/outside']?.reason ?? '').toMatch(/escapes its containment root/)
   })
 })
+
+// ============================================================================
+//   FB3（TC-B4-H1 面二）：seed/pin 链=治理侧准入判定正对照——装件自报
+//   autoApprove 已钳制（fixture 保留自报形=漏洞面原料），准入授予来自
+//   seed 链本身并耐久记录（信任来自供应链钉定而非自报，D1b §3-FB3 建议原文）。
+// ============================================================================
+
+describe('FB3 — the seed/pin chain is the governance-side admission decision', () => {
+  it('grants admission at seed-chain install: ACTIVE + approved with a durable approvals entry', async () => {
+    // localPluginDir 的 dsh 段自报 autoApprove:true——钳制面下该自报不消费。
+    const localDir = localPluginDir('@demo/local')
+    const seedPath = writeSeed([
+      { id: 'demo/local', package: '@demo/local', version: '1.0.0', pin: 'b'.repeat(40), source: `local:${localDir}`, integrity: null, enabledAtBoot: true, family: 'demo', failPolicy: 'fail-open' },
+    ])
+    const storageRoot = mkdtempSync(join(tmpdir(), 'gov-store-'))
+    storageRoots.push(storageRoot)
+    const { gateway } = await boot({ storageRoot, seedPath })
+    await gateway.settlePreinstall()
+    const row = gateway.list().plugins.find(p => p.pluginId === gid('demo/local'))
+    // 准入姿态与旧 autoApprove 路径逐点一致：admission 即 ACTIVE
+    // （无中间 disabled、无 fire-and-forget enable 竞态=时序零回归）。
+    expect(row?.status).toBe('active')
+    // 钳制投影：manifest 不再携带自报信任字段（approvalRequired=true），
+    // 但治理侧判定已授予（approved=true）——两字段共同表达「信任来自 seed 链」。
+    expect(row?.approvalRequired).toBe(true)
+    expect(row?.approved).toBe(true)
+    // 耐久记录：approvals.json 条目（重启后 admission 直接 ACTIVE；uninstall
+    // 时随既有 purge-stale-grants 纪律清除）。
+    const approvals = JSON.parse(readFileSync(join(storageRoot, 'data', 'approvals.json'), 'utf8')) as {
+      approvedAt: Record<string, number>
+    }
+    expect(typeof approvals.approvedAt['demo/local']).toBe('number')
+  })
+})

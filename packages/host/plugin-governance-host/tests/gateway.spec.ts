@@ -192,7 +192,11 @@ describe('PluginGovernanceGateway', () => {
 
   it('installs a plugin from a local directory and persists the snapshot', async () => {
     const gateway = gatewayWith(await seededRegistry())
-    // A workspace-level manifest needs no admission decision, so it lands active.
+    // FB3 (TC-B4-H1 face 2) — card-mandated conflict update, PC2「既有锁更新=
+    // 严格增强零削弱」先例形：旧断言（自报 WORKSPACE→免审 ACTIVE）锁定的正是
+    // D1b §3-FB3 漏洞本体；钳制后自报 permissionLevel 一律不消费，安装通道行
+    // 恒 CONFIRM_REQUIRED 起步=disabled 待准入。fixture 与其余断言
+    // （displayName/version/source/快照落盘）原样保留，另补操作者准入腿。
     const source = pluginSourceDir({
       name: '@fixtures/local-plugin',
       version: '1.2.3',
@@ -205,10 +209,15 @@ describe('PluginGovernanceGateway', () => {
     expect(row).toMatchObject({
       displayName: 'Local Plugin',
       version: '1.2.3',
-      status: 'active',
-      approvalRequired: false,
+      status: 'disabled',
+      approvalRequired: true,
+      approved: false,
       source: 'native',
     })
+    // The clamped row activates through the operator's own admission decision.
+    expect(gateway.approve({ pluginId: gid('fixtures/local-plugin') }).ok).toBe(true)
+    expect((await gateway.enable({ pluginId: gid('fixtures/local-plugin') })).ok).toBe(true)
+    expect(gateway.list().plugins.find(p => p.pluginId === gid('fixtures/local-plugin'))?.status).toBe('active')
     // The acknowledged receipt implies the registry.json snapshot landed on disk.
     const persisted = JSON.parse(readFileSync(registryPathOf(gateway), 'utf8')) as {
       plugins: Array<{ id: string }>
@@ -388,5 +397,70 @@ describe('PluginGovernanceGateway Loader mirroring', () => {
     await expect(gateway.syncMountedPlugins()).resolves.toBeUndefined()
     // Direct instantiation never mirrors anything; no crash, no dupes.
     expect(gateway.list().plugins).toHaveLength(2)
+  })
+})
+
+// ============================================================================
+//   FB3（TC-B4-H1 面二，D1b §3-FB3）：安装通道自报信任字段钳制判别锁——
+//   「信任字段只认治理侧判定，不认装件自报」。漏洞形复刻（自报
+//   autoApprove/permissionLevel 自我提权至免审 ACTIVE）必红；钳制后恒
+//   CONFIRM_REQUIRED 起步=disabled 待操作者 approve+enable。
+// ============================================================================
+
+describe('FB3 install-channel trust-field clamp', () => {
+  it('never consumes a self-reported autoApprove: the row lands disabled and enable stays gated until approve', async () => {
+    const gateway = gatewayWith(await seededRegistry())
+    const source = pluginSourceDir({
+      name: '@fixtures/self-approving',
+      version: '9.9.9',
+      dsh: { autoApprove: true, capabilities: [toolCapability('evil_tool')] },
+    })
+    expect((await gateway.install({ source })).ok).toBe(true)
+    const row = gateway.list().plugins.find(p => p.pluginId === gid('fixtures/self-approving'))
+    // 判别锁（旧形复刻必红：钳制前该行免审直落 ACTIVE+approvalRequired=false）。
+    expect(row?.status).toBe('disabled')
+    expect(row?.approvalRequired).toBe(true)
+    expect(row?.approved).toBe(false)
+    // enable 门照旧 gated（服务端强制，非仅 UI）。
+    const denied = await gateway.enable({ pluginId: gid('fixtures/self-approving') })
+    expect(denied.ok).toBe(false)
+    if (!denied.ok) expect(denied.error.code).toBe('approval-required')
+    expect(gateway.list().plugins.find(p => p.pluginId === gid('fixtures/self-approving'))?.status).toBe('disabled')
+    // 操作者准入决策后正常激活（钳制不阻合法审批流）。
+    expect(gateway.approve({ pluginId: gid('fixtures/self-approving') }).ok).toBe(true)
+    expect((await gateway.enable({ pluginId: gid('fixtures/self-approving') })).ok).toBe(true)
+    expect(gateway.list().plugins.find(p => p.pluginId === gid('fixtures/self-approving'))?.status).toBe('active')
+  })
+
+  it('projects the clamped permission level: get() reports CONFIRM_REQUIRED regardless of the self-report', async () => {
+    const gateway = gatewayWith(await seededRegistry())
+    const source = pluginSourceDir({
+      name: '@fixtures/self-workspace',
+      version: '1.0.0',
+      dsh: { permissionLevel: PluginPermissionLevel.WORKSPACE, capabilities: [toolCapability('ws_tool')] },
+    })
+    expect((await gateway.install({ source })).ok).toBe(true)
+    const detail = gateway.get({ pluginId: gid('fixtures/self-workspace') })
+    expect(detail.ok).toBe(true)
+    if (detail.ok) {
+      // 钳制投影：自报 WORKSPACE 不入 manifest，恒 CONFIRM_REQUIRED 起步。
+      expect(detail.value.permissionLevel).toBe(PluginPermissionLevel.CONFIRM_REQUIRED)
+      expect(detail.value.summary.approvalRequired).toBe(true)
+      expect(detail.value.summary.approved).toBe(false)
+    }
+  })
+
+  it('keeps the seed-chain grant out of the operator install channel (npm: rows stay unapproved)', async () => {
+    // 负对照（seed 链授予面不泄漏到操作者通道）：npm-install.spec :261 同判据
+    // 的本地目录形——非 seed 链安装恒 approved=false，授予仅发生在
+    // installFromSeedChain（preinstaller 专用接线）。
+    const gateway = gatewayWith(await seededRegistry())
+    const source = pluginSourceDir({
+      name: '@fixtures/operator-row',
+      version: '1.0.0',
+      dsh: { capabilities: [toolCapability('op_tool')] },
+    })
+    expect((await gateway.install({ source })).ok).toBe(true)
+    expect(gateway.list().plugins.find(p => p.pluginId === gid('fixtures/operator-row'))?.approved).toBe(false)
   })
 })

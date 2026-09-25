@@ -319,7 +319,10 @@ export class PluginGovernanceGateway extends TypertRemoteService {
         now: () => Date.now(),
         warn: message => this.warn(message),
         isRegistered: id => this.registry.get(canonicalId(id)) !== null,
-        install: request => this.install(request),
+        // FB3 (TC-B4-H1 face 2): the seed rows install through the dedicated
+        // seed-chain channel — admission trust from the seed/pin supply chain
+        // (governance-side grant), never from the artifact's self-report.
+        install: request => this.installFromSeedChain(request),
         setBootState: (id, enabled) => enabled
           ? this.enable({ pluginId: canonicalId(id) })
           : this.disable({
@@ -463,11 +466,15 @@ export class PluginGovernanceGateway extends TypertRemoteService {
    * Shared admission tail for both install sources: duplicate check, registry
    * registration, server-side fail-closed gate, durable snapshot — plus, for
    * registry installs, the provenance ledger entry that lets a later
-   * uninstall remove the extracted tree.
+   * uninstall remove the extracted tree. `seedChain` marks the factory
+   * preinstall channel (FB3): its admission trust is the seed/pin supply
+   * chain itself — a governance-side decision recorded as an approvals-ledger
+   * grant — instead of the clamped package self-report.
    */
   private async admitManifest(
     manifest: GovernanceResult<GovernedManifest>,
     provenance?: PersistedInstalledSource,
+    seedChain = false,
   ): Promise<GovernanceResult<GovernanceAcknowledgement>> {
     if (!manifest.ok) return manifest
     const pluginId = canonicalId(manifest.value.id)
@@ -488,9 +495,19 @@ export class PluginGovernanceGateway extends TypertRemoteService {
       return failed('request-invalid', `the manifest built from package.json was rejected: ${reasons || 'unknown validation failure'}`)
     }
     // Fail-closed admission gate (server-side, mirroring the `enable` remote):
-    // registered but disabled until an approval decision exists.
+    // registered but disabled until an approval decision exists. Seed-chain
+    // exception (FB3): the grant is recorded here — the seed/pin chain IS the
+    // governance-side admission decision for factory rows, durably queryable
+    // in the approvals ledger; operator installs stay disabled until
+    // `approve` records the operator's own decision.
+    let seedAdmissionGranted = false
     if (requiresAdmission(plugin) && !this.approvals.has(pluginId)) {
-      await this.registry.disable(pluginId, 'installed without a recorded admission decision')
+      if (seedChain) {
+        this.approvals.set(pluginId, Date.now())
+        seedAdmissionGranted = true
+      } else {
+        await this.registry.disable(pluginId, 'installed without a recorded admission decision')
+      }
     }
     // TC-B3-MM1b (restart boot-posture drift): replay a persisted `disabled`
     // decision INSIDE this admission, before the snapshot save below. The
@@ -525,18 +542,21 @@ export class PluginGovernanceGateway extends TypertRemoteService {
       // the next install overwrites it), whereas the reverse order could leave
       // the snapshot advertising a plugin this process no longer has in memory.
       if (provenance !== undefined) this.saveInstalledSources()
+      if (seedAdmissionGranted) this.saveApprovals()
       this.persistence.save()
     } catch (cause) {
       // Compensate so memory and disk never disagree behind a failed call.
       await this.registry.unregister(pluginId)
       if (provenance !== undefined) this.installedSources.delete(pluginId)
+      if (seedAdmissionGranted) this.approvals.delete(pluginId)
       return failed('persistence-failed', `the registry snapshot could not be written: ${describe(cause)}`)
     }
     return succeeded(Object.freeze({ acknowledged: true }))
   }
 
-  /** Resolve, verify, extract, and admit one `npm:` install source. */
-  private async installFromNpm(source: string): Promise<GovernanceResult<GovernanceAcknowledgement>> {
+  /** Resolve, verify, extract, and admit one `npm:` install source. `seedChain`
+   * marks the factory preinstall channel (FB3 seed-chain admission grant). */
+  private async installFromNpm(source: string, seedChain = false): Promise<GovernanceResult<GovernanceAcknowledgement>> {
     const spec: NpmSpec | null = parseNpmSpec(source)
     if (spec === null) {
       return failed(
@@ -589,7 +609,21 @@ export class PluginGovernanceGateway extends TypertRemoteService {
       version: resolvedVersion,
       installedAt: Date.now(),
       dir: destination,
-    })
+    }, seedChain)
+  }
+
+  /**
+   * Seed-chain install channel (FB3, TC-B4-H1 face 2): the preinstaller's
+   * dedicated wiring. Admission trust for these installs is the seed/pin
+   * supply chain — a governance-side decision recorded as an approvals-ledger
+   * grant inside admitManifest — never the artifact's own package.json, whose
+   * self-reported trust fields are clamped at manifest construction. The
+   * public `install` @Remote contract is untouched: operator installs still
+   * land disabled until `approve` records the operator's decision.
+   */
+  private async installFromSeedChain(request: { source: string }): Promise<GovernanceResult<GovernanceAcknowledgement>> {
+    if (request.source.startsWith('npm:')) return this.installFromNpm(request.source, true)
+    return this.admitManifest(manifestFromLocalSource(request.source), undefined, true)
   }
 
   /**
@@ -1566,10 +1600,17 @@ function manifestFromLocalSource(source: unknown): GovernanceResult<GovernedMani
         : '>=0.0.0',
     },
     capabilities,
-    ...(typeof dsh.permissionLevel === 'string'
-      ? { permissionLevel: dsh.permissionLevel as PluginPermissionLevel }
-      : {}),
-    ...(typeof dsh.autoApprove === 'boolean' ? { autoApprove: dsh.autoApprove } : {}),
+    // FB3 (TC-B4-H1 face 2, D1b §3-FB3): the install channel's trust fields
+    // are governance-side decisions ONLY — the package's own
+    // `dsh.permissionLevel` / `dsh.autoApprove` are never consumed (any npm
+    // publisher or local directory could otherwise self-elevate to
+    // admission-free ACTIVE; the project-source adapter already clamps the
+    // same way, cordis-adapter autoApprove 恒 false). Every installed
+    // manifest starts at CONFIRM_REQUIRED; the factory seed rows' admission
+    // is granted governance-side by the seed/pin chain (admitManifest's
+    // seedChain grant) — trust from supply-chain pinning, not self-report.
+    // (`certification` was never consumed on this channel: nothing to strip.)
+    permissionLevel: PluginPermissionLevel.CONFIRM_REQUIRED,
     sandbox: isRecord(dsh.sandbox) ? (dsh.sandbox as unknown as GovernedManifest['sandbox']) : denyAllSandbox(),
   }
   return succeeded(manifest)
