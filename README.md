@@ -10,6 +10,15 @@ It is built on an **everything-is-a-plugin** architecture and powered by [Cordis
 
 This repository (`zsagi1368/deepseek-harness-zDSH`) is the zDSH fork. The active development branch is `zdsh-latest`, kept in sync with the latest official release.
 
+## Versions
+
+| Component | Version |
+| --- | --- |
+| Official base ([DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)) | `0.1.5-rc.2` |
+| zDSH release | `v0.1.5-rc.2-zDSH20260926a` |
+
+zDSH tracks the official `dsh-v0.1.5-rc.2` baseline and re-syncs on every official release. zDSH version rule: `<official-version>-zDSH<date><revision-letter>`, where the date is the zDSH campaign close date (`20260926`) and the letter counts same-day revisions (`a`). The root `package.json` keeps the official base version untouched; the zDSH version is declared on this README surface and on the matching release tag.
+
 ## Developer preview
 
 zDSH tracks a harness that is in _developer preview_ and iterating rapidly. **THERE WILL BE COMPATIBILITY-BREAKING CHANGES.**
@@ -31,10 +40,12 @@ git checkout zdsh-latest
 ./scripts/install.sh
 ```
 
-The installer checks the prerequisites (`Node.js ^22.19.0 || >=24` and `pnpm`), runs `pnpm install --frozen-lockfile` and `pnpm run build`, and generates:
+The installer checks the prerequisites (`Node.js ^22.19.0 || >=24.0.0` and `pnpm`), runs `pnpm install --frozen-lockfile` and `pnpm run build`, and generates:
 
 - `data/` — the data home (`DSH_HOME`). Official module data and zDSH governance data (plugin registry, approval ledger, and installed plugins under `data/zdsh/`) are both kept here.
 - `env.ps1` / `env.sh` — environment loaders that define `DSH_HOME`, `DSH_AGENTS_HOME`, and a `dsh` command pointing at the built CLI.
+
+On the first boot, the governance preinstall hook automatically installs the factory plugin roster (see below).
 
 ## Run
 
@@ -74,9 +85,33 @@ Run the uninstaller for your platform from a repository checkout:
 
 By default it removes every gitignored artifact inside the checkout (`node_modules`, build output, `data/`, `env.ps1` / `env.sh`), restoring a pristine checkout state — it never touches anything outside the repository directory. Additional options: `--purge` (PowerShell: `-Purge`) also deletes the whole repository directory afterwards; `--clean-legacy` (PowerShell: `-CleanLegacy`) also removes the legacy zDSH home directories (`~/.dsh-zdsh`, `~/.zdsh-workbench`, `~/.zdsh-plugin-center`). `~/.dsh` belongs to the official release and is only touched after explicit confirmation; the script never deletes `~/.agents` and only reports its presence.
 
+## Factory plugin roster
+
+zDSH ships in an **installed state**: the seven plugins below come pre-installed from the factory seed manifest ([`zdsh-factory/seed.json`](zdsh-factory/seed.json)) — the governance preinstall hook (`SeedPreinstaller`) installs and registers them automatically on the first boot. The governance surface can query, manage, and uninstall them, and an uninstalled factory plugin never resurrects on later boots (durable `userUninstalled` tombstone). Roster final state: **5 mounted / 2 skipped**.
+
+| Plugin (id) | Package | Version | Enabled at boot | Role |
+| --- | --- | --- | --- | --- |
+| `core/webstack` | `dsh-webstack` | `0.2.0` | `true` | Three search tools (`web_backend_status` / `web_batch_search` / `web_history`) registered and callable out of the box; the coexist data plane sleeps on the host selector |
+| `core/webstack-bridge` | `dsh-webstack-bridge` | `0.2.0` | `true` | Data-plane bridge of the webstack family |
+| `core/omnivision` | `dsh-omnivision` | `0.1.0-alpha` | `true` | Vision capabilities |
+| `core/filehub` | `dsh-filehub` | `0.1.0` | `true` | File hub |
+| `core/plugin-center` | `dsh-plugin-center` | `0.2.0` | `true` | Plugin management center |
+| `core/webstack-verticals` | `dsh-webstack-verticals` | `0.2.0` | `false` | Vertical-domain pack, opt-in by its own package description |
+| `core/autopilot` | `dsh-autopilot` | `0.1.0` | `false` | Off by product design — the user opts in explicitly; a final factory posture, not pending wiring |
+
 ## zDSH enhancements
 
-zDSH adds version-adaptive features on top of the official harness; each one probes the installed core and disables itself cleanly when the environment does not match, so an upstream drift never breaks the base product. Highlights include the model-slot routing system, project-level plugin roots with host-clamped sandboxes, plugin governance, and a self-contained install layout. See the [zDSH subsystems guide](docs/subsystems/zdsh.md).
+zDSH adds version-adaptive features on top of the official harness; each one probes the installed core and disables itself cleanly when the environment does not match, so an upstream drift never breaks the base product. Highlights:
+
+- Model-slot routing system (`ctx.modelSlots`).
+- Project-level plugin roots with host-clamped sandboxes (`ctx.projectPluginLayer`).
+- Plugin governance (`ctx.pluginGovernance`).
+- Self-contained install layout — all data stays inside the repository checkout.
+- Factory preinstall: the seed manifest plus the governance preinstall hook install the seven-plugin roster on the first boot, fail-open per entry.
+- Hardened plugin governance: `SymbolIsolationCheck` blocks governed-path plugin loads that resolve to duplicate physical copies (symbol-isolation breakage), preinstalls reuse the gateway admission channel, and the chaos matrix upholds the fail-open guarantee — a single crashing or malformed plugin never takes the others down.
+- Security-audit remediation in one line: outbound fetches pass a four-gate SSRF defense (static validation, DNS resolution verification, per-hop redirect re-verification, bounded response body) with per-hop DNS address classification, and command carriers are absolutized (no bare-name spawns).
+
+See the [zDSH subsystems guide](docs/subsystems/zdsh.md).
 
 ## Contributing
 

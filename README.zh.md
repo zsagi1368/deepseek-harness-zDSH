@@ -10,6 +10,15 @@ zDSH 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（�
 
 本仓库（`zsagi1368/deepseek-harness-zDSH`）即 zDSH 分支。活跃开发分支为 `zdsh-latest`，与官方最新发布保持同步。
 
+## 版本
+
+| 组成 | 版本 |
+| --- | --- |
+| 官方底座（[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)） | `0.1.5-rc.2` |
+| zDSH 版本 | `v0.1.5-rc.2-zDSH20260926a` |
+
+zDSH 跟踪官方 `dsh-v0.1.5-rc.2` 基线，随官方发布滚动同步。zDSH 版本规则：`<官方版本>-zDSH<日期><修订字母>`，日期为 zDSH 战役收官日（`20260926`），字母为当日修订序号（`a`）。根 `package.json` 保持官方底座版本零触碰；zDSH 版本以本 README 声明面与配套发布 tag 为准。
+
 ## 开发者预览
 
 zDSH 跟踪的 harness 处于 _开发者预览_ 阶段，正在快速迭代。**未来将出现破坏兼容性的变更。**
@@ -31,10 +40,12 @@ git checkout zdsh-latest
 ./scripts/install.sh
 ```
 
-安装脚本会检查前置条件（`Node.js ^22.19.0 || >=24` 与 `pnpm`），依次执行 `pnpm install --frozen-lockfile` 与 `pnpm run build`，并生成：
+安装脚本会检查前置条件（`Node.js ^22.19.0 || >=24.0.0` 与 `pnpm`），依次执行 `pnpm install --frozen-lockfile` 与 `pnpm run build`，并生成：
 
 - `data/` —— 数据主目录（`DSH_HOME`）。官方模块数据与 zDSH 治理数据（插件注册表、审批账本，以及 `data/zdsh/` 下的已装插件）都保存在这里。
 - `env.ps1` / `env.sh` —— 环境加载脚本，定义 `DSH_HOME`、`DSH_AGENTS_HOME`，以及指向已构建 CLI 的 `dsh` 命令。
+
+首次启动时，治理预装钩子会自动装好出厂插件七件谱（见下文谱表）。
 
 <a id="run"></a>
 
@@ -76,9 +87,33 @@ pnpm dsh web
 
 默认模式会移除检出版内所有被 gitignore 忽略的产物（`node_modules`、构建输出、`data/`、`env.ps1` / `env.sh`），恢复纯净检出版状态——它从不触碰仓库目录之外的任何东西。附加选项：`--purge`（PowerShell 为 `-Purge`）会在清理之后连整个仓库目录一并删除；`--clean-legacy`（PowerShell 为 `-CleanLegacy`）会同时删除 zDSH 旧版主目录（`~/.dsh-zdsh`、`~/.zdsh-workbench`、`~/.zdsh-plugin-center`）。`~/.dsh` 属于官方版本数据，仅在显式确认后才会处理；本脚本从不删除 `~/.agents`，仅在存在时报告。
 
+## 出厂插件七件谱
+
+zDSH 以**安装态**交付：下表七件插件出厂自带、由 seed 清单（[`zdsh-factory/seed.json`](zdsh-factory/seed.json)）经治理预装钩子（`SeedPreinstaller`）在首次启动时自动装好并入册。治理面对它们可查、可管、可卸载，且已卸载的出厂插件在后续启动中永不复活（持久 `userUninstalled` 墓碑）。谱终态：**5 mounted / 2 skipped**。
+
+| 插件（id） | 包名 | 版本 | 启动即启用 | 职能 |
+| --- | --- | --- | --- | --- |
+| `core/webstack` | `dsh-webstack` | `0.2.0` | `true` | 三件搜索工具（`web_backend_status` / `web_batch_search` / `web_history`）出厂注册可调；coexist 数据面随宿主选择器休眠 |
+| `core/webstack-bridge` | `dsh-webstack-bridge` | `0.2.0` | `true` | webstack 族数据面链路件 |
+| `core/omnivision` | `dsh-omnivision` | `0.1.0-alpha` | `true` | 视觉能力 |
+| `core/filehub` | `dsh-filehub` | `0.1.0` | `true` | 文件枢纽 |
+| `core/plugin-center` | `dsh-plugin-center` | `0.2.0` | `true` | 插件管理中心 |
+| `core/webstack-verticals` | `dsh-webstack-verticals` | `0.2.0` | `false` | 垂直域包，包自述 opt-in |
+| `core/autopilot` | `dsh-autopilot` | `0.1.0` | `false` | 产品设计默认关——由用户显式开启，属出厂最终形态，非待接线 |
+
 ## zDSH 增强功能
 
-zDSH 在官方 harness 之上加入版本自适应特性；每个特性都会探测已安装的核心，环境不匹配时干净地自我停用，因此上游漂移绝不会破坏基础产品。亮点包括模型槽位路由系统、带宿主钳制沙箱的项目级插件根、插件治理，以及自包含的安装布局。详见 [zDSH 子系统指南](docs/subsystems/zdsh.zh.md)。
+zDSH 在官方 harness 之上加入版本自适应特性；每个特性都会探测已安装的核心，环境不匹配时干净地自我停用，因此上游漂移绝不会破坏基础产品。亮点：
+
+- 模型槽位路由系统（`ctx.modelSlots`）。
+- 带宿主钳制沙箱的项目级插件根（`ctx.projectPluginLayer`）。
+- 插件治理（`ctx.pluginGovernance`）。
+- 自包含安装布局——所有数据都留在仓库检出目录内。
+- 出厂预装机制：seed 清单加治理预装钩子在首次启动时装好七件谱，逐件 fail-open。
+- 插件治理强化：`SymbolIsolationCheck` 在治理装载链上阻断解析为双物理副本（符号隔离破损）的插件，预装复用网关准入通道，chaos 矩阵守住 fail-open 保障——单插件崩溃或畸形绝不连坐其余插件。
+- 安全深审清偿一句带过：出站请求经 SSRF 四道闸（静态校验、DNS 解析核验、重定向逐跳复验、有界响应体）与逐跳 DNS 地址分类，命令载体一律绝对化（禁裸名 spawn）。
+
+详见 [zDSH 子系统指南](docs/subsystems/zdsh.zh.md)。
 
 ## 参与贡献
 
