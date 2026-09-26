@@ -1,0 +1,17 @@
+{
+  "name": "@deepseek-ai/zdsh-factory-bundle",
+  "version": "0.0.0",
+  "description": "Factory preinstall artifact bundle: pins the git-URL + commit for every zDSH factory-seeded plugin so `pnpm install` lands each artifact under this package's node_modules closure (B4 case, DESIGN-intake-tech.md §1.1). The governance SeedPreinstaller never moves artifacts; it installs them in place via `install({ source: 'local:<...>/node_modules/<pkg>' })`. Batch 2 current set = webstack-verticals (factory-off pilot) + omnivision (boot-enabled) + webstack-bridge (boot-enabled webstack data-plane link). TC-B3-MM1b adds the two harness-honest rows: dsh-filehub + dsh-plugin-center (both installed-at-boot-off until the R-A harness flips their posture). TC-B3-MM2 adds the sixth row, dsh-autopilot — a product-design-off plugin (ADJ-3: the whole engine ships disabled by default, unlike the two harness-honest rows), pinned installed-at-boot-off. TC-B4-W3 adds the seventh row, dsh-webstack — the aggregation-kernel package of the dsh-webstack monorepo (third key off the same repo alongside the verticals/bridge pins; same-repo multi-pin is the established precedent), boot-enabled per the W-DEC ruling: its three tools go live off the box while the coexist data plane stays dormant behind the host's pinned web selectors.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "dsh-webstack-verticals": "git+https://github.com/zsagi1368/dsh-webstack.git#956df1b0797127746039baee4ca26805b2f4ad4d",
+    "dsh-omnivision": "git+https://github.com/zsagi1368/dsh-omnivision.git#d2decb2c23d527f660c1a0b97fe637e82939c966",
+    "dsh-webstack-bridge": "git+https://github.com/zsagi1368/dsh-webstack.git#ffa036435d383edf577c47935f21cb1d7252ea93",
+    "dsh-filehub": "git+https://github.com/zsagi1368/zdsh-filehub.git#aab73d7ca4a3c57351a4810c611957da76838e8b",
+    "dsh-plugin-center": "git+https://github.com/zsagi1368/zdsh-plugin-center.git#b9e205c7e13c49ed6580d76e79f10304d7c71f40",
+    "dsh-autopilot": "git+https://github.com/zsagi1368/zdsh-autopilot.git#3bc49638bbdc102eccab644065f73e46298fcc61",
+    "dsh-webstack": "git+https://github.com/zsagi1368/dsh-webstack.git#d9ae62ab48da9ce5c3a5e0210ad952d22d2fbdaf"
+  }
+}

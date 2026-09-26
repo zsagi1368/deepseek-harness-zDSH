@@ -585,6 +585,13 @@ export function collectConfigCatalog(scanRoot: string = root): CatalogEntry[] {
   const manifests: { dir: string; pkg: string }[] = []
   for (const manifestRel of globSync('packages/*/*/package.json', { cwd: scanRoot }).map(path => path.split(sep).join('/')).sort()) {
     const dir = manifestRel.slice(0, -'/package.json'.length)
+    // 私有装配目录 packages/factory/* 不入 config catalog 成员面——纯清单/装配包
+    // （如 zdsh-factory-bundle：seed+pin 装配，无 src/index.ts 构建出口）没有可
+    // 分类的插件出口。政策来源与 check-workspace-constraints 的 P-8 Option 2
+    // 负向排除同源（DESIGN:261，主线 2026-09-15 裁定「私有装配目录」）；本豁免
+    // 清偿 F-V1-1（VERIFY-B4-GATES §7：--check 红=批次 1.2 既有债）。豁免面窄：
+    // 仅 packages/factory/ 前缀目录，其余成员的 entry 判违例语义原样保留。
+    if (dir.startsWith('packages/factory/')) continue
     const manifest = JSON.parse(readFileSync(resolve(scanRoot, manifestRel), 'utf8')) as { name?: string; os?: string[]; cpu?: string[] }
     const pkg = manifest.name
     if (!pkg) {
@@ -874,7 +881,6 @@ function main(): void {
   console.log(`gen-config-catalog: wrote ${OUT}.`)
 }
 
-// Run only when invoked as a script, not when imported by a test.
 if (process.argv[1] && import.meta.filename === resolve(process.argv[1])) {
   main()
 }
