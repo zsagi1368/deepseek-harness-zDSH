@@ -250,9 +250,10 @@ describe('ProcessSandbox environment filtering', () => {
         // win32 宿主必然提供系统临时目录名（TEMP/TMP 均在 runtime-required 名单内）。
         expect(filtered['TEMP'] ?? filtered['TMP']).toBeDefined()
       } else {
-        // posix 宿主不存在 TEMP/TMP（win32 专属名，派生名单按名复制、宿主没有即无产物，
-        // 属正确行为）；posix 侧的 runtime-required 宿主保证项是 HOME（同 PATH 一样由
-        // 运行环境必然提供），断言其穿透派生。
+        // 派生名单按名复制：宿主提供该名才有产物。posix 宿主通常不提供 TEMP/TMP
+        // （win32 习惯名），但本断言并不假设其必然缺失——WSL 等环境可经 WSLENV
+        // 把 win32 名透传进 posix 宿主——故这里只验证 posix 侧的 runtime-required
+        // 宿主保证项 HOME（同 PATH 一样由运行环境必然提供）穿透派生。
         expect(filtered['HOME']).toBeDefined()
       }
       expect(filtered['NODE_ENV']).toBe('production')

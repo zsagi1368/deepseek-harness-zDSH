@@ -12,7 +12,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
@@ -67,7 +67,7 @@ describe('cwdHitsProjectRoot', () => {
     expect(cwdHitsProjectRoot('   ', PROJECT)).toBe(false)
   })
 
-  it('handles case folding on Windows', () => {
+  it('handles case folding per platform (win32 folds, posix does not)', () => {
     const root = 'C:\\Users\\Test\\Project'
     const cwd = 'c:\\users\\test\\project\\src'
     if (process.platform === 'win32') {
@@ -87,10 +87,26 @@ describe('cwdHitsProjectRoot', () => {
     expect(cwdHitsProjectRoot('/workshop/src', '/work')).toBe(false)
   })
 
-  it('handles drive root on Windows', () => {
+  it('handles drive root per platform (win32 drive semantics, posix anchored literals)', () => {
     const root = 'C:\\'
     const cwd = 'C:\\Users\\test'
-    expect(cwdHitsProjectRoot(cwd, root)).toBe(true)
+    if (process.platform === 'win32') {
+      // win32: resolve('C:\') is the drive root; the trailing-separator strip
+      // leaves 'c:', so every path on that drive prefix-matches through the
+      // '\' branch — the original drive-root semantics this test was named for.
+      expect(cwdHitsProjectRoot(cwd, root)).toBe(true)
+    } else {
+      // posix has no drive letters and '\' is an ordinary filename character,
+      // so both literals are RELATIVE single-segment names that resolve()
+      // deterministically anchors under the same process cwd: root '<cwd>/C:\'
+      // strips to '<cwd>/C:' and cwd '<cwd>/C:\Users\test' then matches the
+      // '\' prefix branch (which exists for win32 drive roots). Pin that
+      // anchoring mechanism alongside the outcome so the green is asserted
+      // behavior, not an accident of resolve(); it deliberately claims NO
+      // drive-root semantics on posix — those are the win32 branch above.
+      expect(resolve(cwd).startsWith(resolve(root))).toBe(true)
+      expect(cwdHitsProjectRoot(cwd, root)).toBe(true)
+    }
   })
 })
 
