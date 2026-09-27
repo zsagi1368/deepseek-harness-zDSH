@@ -12,7 +12,7 @@
       "path": "../../../vendor/cordis"
     },
     {
-      "path": "../../host/plugin-governance-host"
+      "path": "../../zdsh/plugin-governance-host"
     },
     {
       "path": "../../api/remotes/tsconfig.client.json"

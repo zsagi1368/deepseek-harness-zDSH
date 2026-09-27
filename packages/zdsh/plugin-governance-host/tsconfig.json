@@ -24,7 +24,7 @@
       "path": "../../typert/protocol"
     },
     {
-      "path": "../../zdsh/plugin-governance"
+      "path": "../plugin-governance"
     },
     {
       "path": "../../util/atomic-write"

@@ -344,7 +344,7 @@
     { "path": "./packages/hooks/hook-protocol" },
     { "path": "./packages/hooks/hooks-claude-code" },
     { "path": "./packages/hooks/hooks-codex" },
-    { "path": "./packages/host/plugin-governance-host" },
+    { "path": "./packages/zdsh/plugin-governance-host" },
     { "path": "./packages/llm/model-slots" },
     { "path": "./packages/mcp/mcp-client" },
     { "path": "./packages/host/directory-picker" },

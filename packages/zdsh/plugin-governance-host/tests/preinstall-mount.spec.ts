@@ -71,7 +71,7 @@ async function bootGateway(ctx: Context, seedPath: string): Promise<PluginGovern
 
 // ---- the real repository seed and its pinned artifacts ----------------------
 
-// Repo root resolved from this spec's own location (…/packages/host/
+// Repo root resolved from this spec's own location (…/packages/zdsh/
 // plugin-governance-host/tests → up four), mirroring the gate-p discipline:
 // the seed and the installed artifacts are read back, never re-declared.
 const REPO_ROOT = resolve(dirname_of_spec(), '..', '..', '..', '..')

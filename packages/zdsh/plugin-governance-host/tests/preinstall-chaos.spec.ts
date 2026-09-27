@@ -4,7 +4,7 @@
  * 三形态注入机制（卡面定夺）= scratch seed 行 + tmpdir 伪造坏工件 `local:` 源：
  * 真 seed（zdsh-factory/seed.json）只读回枚举与行字段（单一真源，never
  * re-declared），伪造工件全部落在一次性 tmpdir——**禁触真装件**（真工件树
- * packages/factory/zdsh-factory-bundle/node_modules/** 零读写）。seed 行
+ * packages/zdsh/factory-bundle/node_modules/** 零读写）。seed 行
  * `enabledAtBoot` 沙箱强制 true（gate-p P5 verticals 先例）：生产 seed 姿态
  * 不动（seed=禁改面），混沌面以强制姿态驱动 mount 通道。
  *

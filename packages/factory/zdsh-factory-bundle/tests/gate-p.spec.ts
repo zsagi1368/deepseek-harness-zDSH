@@ -88,7 +88,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context, Service } from '@deepseek-ai/cordis'
-import PluginGovernanceGateway, { type PluginGovernanceId } from '../../../host/plugin-governance-host/src/index.ts'
+import PluginGovernanceGateway, { type PluginGovernanceId } from '../../../zdsh/plugin-governance-host/src/index.ts'
 
 const storageRoots: string[] = []
 const scratchDirs: string[] = []
