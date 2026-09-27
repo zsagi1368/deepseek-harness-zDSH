@@ -60,7 +60,7 @@ const repoRoot = resolve(import.meta.dirname, '..', '..', '..', '..')
 const factoryNmInRepo = join(repoRoot, 'packages', 'factory', 'zdsh-factory-bundle', 'node_modules')
 const tsxCli = join(repoRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs')
 const helperPath = join(import.meta.dirname, 'symbol-isolation-node-runtime.ts')
-const libEntry = join(repoRoot, 'packages', 'plugins', 'plugin-governance', 'lib', 'index.js')
+const libEntry = join(repoRoot, 'packages', 'zdsh', 'plugin-governance', 'lib', 'index.js')
 const seedPath = join(repoRoot, 'zdsh-factory', 'seed.json')
 
 const createdRoots: string[] = []

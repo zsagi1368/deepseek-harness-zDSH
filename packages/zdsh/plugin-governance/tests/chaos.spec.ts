@@ -294,7 +294,7 @@ describe('组合混沌：固定种子故障风暴下的核心不变式', () => {
 // 本文件 = kernel 面三形态（RunGuard timeoutMs = 治理域唯一现成超时 seam，
 // 超时切断在 kernel RunGuard 层兑现〔G3 裁决①〕；LoadGuard PreLoad 全链含
 // G1 SymbolIsolationCheck）；host 面 scratch seed 行 + tmpdir 伪造工件见
-// packages/host/plugin-governance-host/tests/preinstall-chaos.spec.ts。
+// packages/zdsh/plugin-governance-host/tests/preinstall-chaos.spec.ts。
 //
 // G1 语义分清（卡面条 3 + 裁决④）：正常件经全链**绝不得**被 symbol-isolation
 // 误杀（误杀=红灯，Gate 级停并报）；畸形件被拒=守卫正确工作（归因=清单族检查；

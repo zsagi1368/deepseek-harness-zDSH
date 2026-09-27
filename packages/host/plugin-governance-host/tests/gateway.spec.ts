@@ -18,7 +18,7 @@ import {
 } from '@deepseek-ai/dsh-plugin-governance'
 // Test-only relative reuse of the governance suite fixtures (not part of the
 // package exports); production code imports the package entry instead.
-import { testManifest } from '../../../plugins/plugin-governance/tests/fixtures.ts'
+import { testManifest } from '../../../zdsh/plugin-governance/tests/fixtures.ts'
 import PluginGovernanceGateway, { type PluginGovernanceId } from '../src/index.ts'
 
 const contexts: Context[] = []

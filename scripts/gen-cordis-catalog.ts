@@ -790,7 +790,7 @@ export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   MountResult: 'project plugin mount result is owned by packages/plugins/plugin-project-root/src/plugin.ts',
   ProjectPluginCandidate: 'project plugin discovery candidate is owned by packages/plugins/plugin-project-root/src/discover.ts',
   ProjectPluginProvenance: 'project plugin provenance record is owned by packages/plugins/plugin-project-root/src/plugin.ts',
-  PluginManifest: 'plugin manifest contract is owned by packages/plugins/plugin-governance/src/spec/index.ts',
+  PluginManifest: 'plugin manifest contract is owned by packages/zdsh/plugin-governance/src/spec/index.ts',
   SubprocessRuntime: 'subprocess runtime contract is owned by packages/plugins/plugin-project-root/src/subprocess-runtime.ts',
   WorkspaceFileScope: 'Host workspace file lookup contract is owned by packages/api/workspace-files/README.md',
   WorkspaceByteRange: 'Host workspace file endpoint contract is owned by packages/api/workspace-files/README.md',

@@ -6843,7 +6843,7 @@ importers:
         version: link:../../util/atomic-write
       '@deepseek-ai/dsh-plugin-governance':
         specifier: workspace:^
-        version: link:../../plugins/plugin-governance
+        version: link:../../zdsh/plugin-governance
       '@deepseek-ai/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
@@ -7665,18 +7665,6 @@ importers:
         specifier: workspace:^
         version: link:../../interaction/user-questions
 
-  packages/plugins/plugin-governance:
-    devDependencies:
-      '@deepseek-ai/cordis':
-        specifier: workspace:^
-        version: link:../../../vendor/cordis
-      '@deepseek-ai/dsh-compat':
-        specifier: workspace:^
-        version: link:../../zdsh/dsh-compat
-      '@deepseek-ai/dsh-invariants':
-        specifier: workspace:^
-        version: link:../../runtime-diagnostics/invariants
-
   packages/plugins/plugin-project-root:
     devDependencies:
       '@deepseek-ai/cordis':
@@ -7690,7 +7678,7 @@ importers:
         version: link:../../runtime-diagnostics/invariants
       '@deepseek-ai/dsh-plugin-governance':
         specifier: workspace:^
-        version: link:../plugin-governance
+        version: link:../../zdsh/plugin-governance
       '@deepseek-ai/dsh-tools':
         specifier: workspace:^
         version: link:../../core/tools
@@ -11153,6 +11141,18 @@ importers:
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-invariants':
+        specifier: workspace:^
+        version: link:../../runtime-diagnostics/invariants
+
+  packages/zdsh/plugin-governance:
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-compat':
+        specifier: workspace:^
+        version: link:../dsh-compat
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants

@@ -334,7 +334,7 @@
     { "path": "./packages/webhook/webhook-github" },
     { "path": "./packages/todo/tool-todo" },
     { "path": "./packages/plan/plan-mode" },
-    { "path": "./packages/plugins/plugin-governance" },
+    { "path": "./packages/zdsh/plugin-governance" },
     { "path": "./packages/plugins/plugin-project-root" },
     { "path": "./packages/preset/agent-presets" },
     { "path": "./packages/preset/persona" },

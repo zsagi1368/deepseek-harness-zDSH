@@ -21,7 +21,7 @@
       "path": "../../runtime-diagnostics/invariants"
     },
     {
-      "path": "../plugin-governance"
+      "path": "../../zdsh/plugin-governance"
     },
     {
       "path": "../../zdsh/dsh-compat"

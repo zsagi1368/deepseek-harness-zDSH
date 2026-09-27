@@ -15,7 +15,7 @@
       "path": "../../runtime-diagnostics/invariants"
     },
     {
-      "path": "../../zdsh/dsh-compat"
+      "path": "../dsh-compat"
     }
   ]
 }
