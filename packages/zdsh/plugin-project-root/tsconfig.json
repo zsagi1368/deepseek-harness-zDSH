@@ -21,10 +21,10 @@
       "path": "../../runtime-diagnostics/invariants"
     },
     {
-      "path": "../../zdsh/plugin-governance"
+      "path": "../plugin-governance"
     },
     {
-      "path": "../../zdsh/dsh-compat"
+      "path": "../dsh-compat"
     }
   ]
 }

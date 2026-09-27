@@ -4,7 +4,7 @@
 
 zDSH 增强服务层在官方 DeepSeek Harness 核心之上新增三个主机侧能力接缝：模型槽位路由（`ctx.modelSlots`）、插件治理（`ctx.pluginGovernance`）与项目插件层（`ctx.projectPluginLayer`）。三者均版本自适应——兼容守卫会探测已安装核心，当与官方表面冲突时自动停用增强。
 
-源接缝：[`packages/llm/model-slots`](../../packages/llm/model-slots)、[`packages/zdsh/plugin-governance-host`](../../packages/zdsh/plugin-governance-host)、[`packages/plugins/plugin-project-root`](../../packages/plugins/plugin-project-root)。
+源接缝：[`packages/llm/model-slots`](../../packages/llm/model-slots)、[`packages/zdsh/plugin-governance-host`](../../packages/zdsh/plugin-governance-host)、[`packages/zdsh/plugin-project-root`](../../packages/zdsh/plugin-project-root)。
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
@@ -264,5 +264,5 @@ subprocessEntryIds(): string[]
 dispose(): void
 ```
 
-Source: [`packages/plugins/plugin-project-root/src/plugin.ts`](../../packages/plugins/plugin-project-root/src/plugin.ts)
+Source: [`packages/zdsh/plugin-project-root/src/plugin.ts`](../../packages/zdsh/plugin-project-root/src/plugin.ts)
 <!-- END GENERATED cordis-surface -->

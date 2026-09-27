@@ -226,7 +226,7 @@ importers:
         version: link:../../packages/plan/plan-mode
       '@deepseek-ai/dsh-plugin-project-root':
         specifier: workspace:^
-        version: link:../../packages/plugins/plugin-project-root
+        version: link:../../packages/zdsh/plugin-project-root
       '@deepseek-ai/dsh-pwsh-local':
         specifier: workspace:^
         version: link:../../packages/shell/pwsh-local
@@ -7637,24 +7637,6 @@ importers:
         specifier: workspace:^
         version: link:../../interaction/user-questions
 
-  packages/plugins/plugin-project-root:
-    devDependencies:
-      '@deepseek-ai/cordis':
-        specifier: workspace:^
-        version: link:../../../vendor/cordis
-      '@deepseek-ai/dsh-compat':
-        specifier: workspace:^
-        version: link:../../zdsh/dsh-compat
-      '@deepseek-ai/dsh-invariants':
-        specifier: workspace:^
-        version: link:../../runtime-diagnostics/invariants
-      '@deepseek-ai/dsh-plugin-governance':
-        specifier: workspace:^
-        version: link:../../zdsh/plugin-governance
-      '@deepseek-ai/dsh-tools':
-        specifier: workspace:^
-        version: link:../../core/tools
-
   packages/preset/agent-presets:
     dependencies:
       '@deepseek-ai/schemastery':
@@ -11156,6 +11138,24 @@ importers:
       '@deepseek-ai/dsh-typert-protocol':
         specifier: workspace:^
         version: link:../../typert/protocol
+
+  packages/zdsh/plugin-project-root:
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-compat':
+        specifier: workspace:^
+        version: link:../dsh-compat
+      '@deepseek-ai/dsh-invariants':
+        specifier: workspace:^
+        version: link:../../runtime-diagnostics/invariants
+      '@deepseek-ai/dsh-plugin-governance':
+        specifier: workspace:^
+        version: link:../plugin-governance
+      '@deepseek-ai/dsh-tools':
+        specifier: workspace:^
+        version: link:../../core/tools
 
   python/sdk-runtime:
     dependencies:

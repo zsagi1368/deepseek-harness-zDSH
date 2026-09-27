@@ -335,7 +335,7 @@
     { "path": "./packages/todo/tool-todo" },
     { "path": "./packages/plan/plan-mode" },
     { "path": "./packages/zdsh/plugin-governance" },
-    { "path": "./packages/plugins/plugin-project-root" },
+    { "path": "./packages/zdsh/plugin-project-root" },
     { "path": "./packages/preset/agent-presets" },
     { "path": "./packages/preset/persona" },
     { "path": "./packages/guard/repeat-tool-reminder" },

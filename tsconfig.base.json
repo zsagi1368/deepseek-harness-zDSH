@@ -163,7 +163,7 @@
       // entry). Doc fences compile from the repository root, where no workspace
       // link exists, so the subpath needs an explicit source alias here — the
       // same seam as dsh-plugin-governance-host/types.
-      "@deepseek-ai/dsh-plugin-project-root/src/compat.ts": ["./packages/plugins/plugin-project-root/src/compat.ts"],
+      "@deepseek-ai/dsh-plugin-project-root/src/compat.ts": ["./packages/zdsh/plugin-project-root/src/compat.ts"],
       "@deepseek-ai/dsh-client-ui-slots": ["./packages/client/ui-slots/src"],
       "@deepseek-ai/dsh-client-ui-attachment": ["./packages/client/ui-attachment/src"],
       "@deepseek-ai/dsh-client-ui-primitives": ["./packages/client/ui-primitives/src"],
@@ -359,8 +359,8 @@
       "@deepseek-ai/dsh-plugin-governance/invariant": ["./packages/zdsh/plugin-governance/src/invariant.ts"],
       "@deepseek-ai/dsh-plugin-governance-host": ["./packages/zdsh/plugin-governance-host/src"],
       "@deepseek-ai/dsh-plugin-package-inventory-deepseek": ["./packages/llm/plugin-package-inventory-deepseek/src"],
-      "@deepseek-ai/dsh-plugin-project-root": ["./packages/plugins/plugin-project-root/src"],
-      "@deepseek-ai/dsh-plugin-project-root/invariant": ["./packages/plugins/plugin-project-root/src/invariant.ts"],
+      "@deepseek-ai/dsh-plugin-project-root": ["./packages/zdsh/plugin-project-root/src"],
+      "@deepseek-ai/dsh-plugin-project-root/invariant": ["./packages/zdsh/plugin-project-root/src/invariant.ts"],
       "@deepseek-ai/dsh-pwsh-sandbox": ["./packages/shell/pwsh-sandbox/src"],
       "@deepseek-ai/dsh-remote-mock": ["./packages/test-support/remote-mock/src"],
       "@deepseek-ai/dsh-repeat-tool-reminder": ["./packages/guard/repeat-tool-reminder/src"],

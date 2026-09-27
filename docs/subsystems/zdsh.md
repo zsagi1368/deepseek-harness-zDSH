@@ -4,7 +4,7 @@ English | [中文](zdsh.zh.md)
 
 The zDSH enhanced services layer adds three host-side capability seams on top of the official DeepSeek Harness core: model slot routing (`ctx.modelSlots`), plugin governance (`ctx.pluginGovernance`), and the project plugin layer (`ctx.projectPluginLayer`). Each is version-adaptive — a compatibility guard probes the installed core and disables the enhancement when it would conflict with the official surface.
 
-Source seams: [`packages/llm/model-slots`](../../packages/llm/model-slots), [`packages/zdsh/plugin-governance-host`](../../packages/zdsh/plugin-governance-host), [`packages/plugins/plugin-project-root`](../../packages/plugins/plugin-project-root).
+Source seams: [`packages/llm/model-slots`](../../packages/llm/model-slots), [`packages/zdsh/plugin-governance-host`](../../packages/zdsh/plugin-governance-host), [`packages/zdsh/plugin-project-root`](../../packages/zdsh/plugin-project-root).
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
@@ -264,5 +264,5 @@ subprocessEntryIds(): string[]
 dispose(): void
 ```
 
-Source: [`packages/plugins/plugin-project-root/src/plugin.ts`](../../packages/plugins/plugin-project-root/src/plugin.ts)
+Source: [`packages/zdsh/plugin-project-root/src/plugin.ts`](../../packages/zdsh/plugin-project-root/src/plugin.ts)
 <!-- END GENERATED cordis-surface -->
