@@ -9,7 +9,7 @@
  * legs（argv[2]）+ 配置 JSON（argv[3]，形如 {"ids":[...]}）：
  * - `release-fixture`：DSH_HOME=profiles 仿形（dsh-guard test/run.mjs T7 面2 同源共享
  *   设计）→ 出厂集 id 全绿（junction→官方层单一目标不误杀）。
- * - `repo-tree`：DSH_HOME=repoRoot → 七件 id 各自 reset 后真扫描全绿（K-1.2.1 面2腿）。
+ * - `repo-tree`：DSH_HOME=repoRoot → 八件 id 各自 reset 后真扫描全绿（K-1.2.1 面2腿）。
  * - `dual-red`：DSH_HOME=双副本底稿（T6 面A 同源）→ 必红（面2检查活体、非空绿对照）。
  * - `self-name`：裸自名 `import('@deepseek-ai/dsh-plugin-governance')` 解析面实测
  *   （R3-13 销项核心）：exports 自引用 → lib/index.js。三态诚实上报：

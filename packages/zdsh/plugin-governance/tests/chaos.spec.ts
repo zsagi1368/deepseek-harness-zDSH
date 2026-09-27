@@ -281,12 +281,12 @@ describe('组合混沌：固定种子故障风暴下的核心不变式', () => {
 
 // ============================================================================
 // TC-B4-G3（Gate-C C4，DESIGN §6.1:201 原文「chaos 套件扩展=逐插件『崩/超时/
-// 畸形 manifest』隔离用例（北极星 4 固化）」）——出厂七件谱×三形态隔离矩阵
+// 畸形 manifest』隔离用例（北极星 4 固化）」）——出厂八件谱×三形态隔离矩阵
 // + G1 检查位不误报复验（K-1.2.1 出厂集零误杀硬门的 chaos 面复证）。
 //
 // 枚举单一真源 = zdsh-factory/seed.json 读回（gate-p/preinstall-mount 同纪律：
 // read-back, never re-declared——seed 增项谱系自适，硬编码=漂移源）。
-// fail-open per-item 逐腿断言四件套：肇事者只伤己（谱内其余六件 ACTIVE 且照常
+// fail-open per-item 逐腿断言四件套：肇事者只伤己（谱内其余七件 ACTIVE 且照常
 // 应答）+ 台账逐项（kernel 面=健康报告/watcher 计数归因可查询）+ 核心读取面
 // 完好 + boot/处置面不受累。
 //
@@ -310,7 +310,7 @@ interface G3SeedRow {
   readonly enabledAtBoot: boolean
 }
 
-/** 出厂七件谱 = seed 读回（W3 已落：verticals/omnivision/bridge/filehub/plugin-center/autopilot/webstack）。 */
+/** 出厂八件谱 = seed 读回（O3 已落：verticals/omnivision/bridge/filehub/plugin-center/autopilot/webstack/workbench）。 */
 const G3_SPECTRUM: readonly G3SeedRow[] = (
   JSON.parse(readFileSync(G3_SEED_PATH, 'utf8')) as { entries: G3SeedRow[] }
 ).entries
@@ -325,7 +325,7 @@ function g3SiblingsOf(culprit: string): string[] {
 }
 
 describe.each(G3_SPECTRUM)('G3-C4 崩形态（逐出厂件）：$id', (row) => {
-  it('sync throw + async reject 只伤肇事者；谱内其余六件 ACTIVE 且照常应答；计数台账逐项', async () => {
+  it('sync throw + async reject 只伤肇事者；谱内其余七件 ACTIVE 且照常应答；计数台账逐项', async () => {
     const registry = new DefaultPluginRegistry()
     const runGuard = new RunGuard()
     const culprit = pluginOf(row.id, 'sync-throw')
@@ -380,7 +380,7 @@ describe.each(G3_SPECTRUM)('G3-C4 崩形态（逐出厂件）：$id', (row) => {
 })
 
 describe.each(G3_SPECTRUM)('G3-C4 超时形态（逐出厂件）：$id', (row) => {
-  it('挂起件被 timeoutMs 切断且仅肇事者担超时；其余六件立即应答零连坐', async () => {
+  it('挂起件被 timeoutMs 切断且仅肇事者担超时；其余七件立即应答零连坐', async () => {
     // 超时切断在 kernel RunGuard 层兑现（G3 裁决①）：挂起不返回的调用由
     // PluginWatcher 的 Promise.race + PluginTimeoutError 切断——治理域唯一
     // 现成超时 seam（host mount 层无切断=G3-F1，见回执专节；本腿即卡面
@@ -474,12 +474,12 @@ describe.each(G3_SPECTRUM)('G3-C4 畸形 manifest 形态（逐出厂件）：$id
 })
 
 describe('G3-C4 × G1 联动观测面 — SymbolIsolationCheck 真扫描/缓存契约（封恒过桩回归）', () => {
-  it('重置后七件首轮触发真实扫描且全过；次轮全缓存命中不再扫盘', async () => {
+  it('重置后八件首轮触发真实扫描且全过；次轮全缓存命中不再扫盘', async () => {
     // 封两条逃逸：「恒过降级桩」（G1 前身形态，load-guard 旧 :222/:227/:229）
     // 与「仅缓存假绿」——重置强迫一次真实扫盘发生（scans 增量=观测面证据），
     // pass 结果按 §2.3 性能契约入缓存（次轮 cacheHits 增量、scans 不变）。
     // K-1.2.1 出厂集零误杀硬门本体在 symbol-isolation.spec.ts（G1 产物，勿触）；
-    // 本腿为 chaos 面复证：扫描真实发生且七件正常清单全过。
+    // 本腿为 chaos 面复证：扫描真实发生且八件正常清单全过。
     resetSymbolIsolationCacheForTest()
     const guard = new LoadGuard()
     const before = getSymbolIsolationScanStats()

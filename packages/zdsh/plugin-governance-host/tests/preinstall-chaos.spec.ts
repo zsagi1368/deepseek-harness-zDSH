@@ -11,7 +11,7 @@
  * 三形态与断言（fail-open per-item 四件套：台账逐项记录 + 其余件照常装载 +
  * boot 完成 + 肇事者归因可查询）：
  *  - ① apply 崩（throw）：准入面 installed（崩发生在运行期 mount 面）+
- *    mount failed 行 + reason 含肇事标记；兄弟六件 installed+mounted+active。
+ *    mount failed 行 + reason 含肇事标记；兄弟七件 installed+mounted+active。
  *  - ② apply 挂起（bounded release 形制，G3 裁决②诚实标注——**本腿不证明
  *    超时切断：永久挂起在 host mount 层无切断 = G3-F1 已登记，生产修归
  *    批次 4.2+ 独立裁决〔与 governed mount §9.7 同域〕**。超时形态的真
@@ -44,7 +44,7 @@
  * 预装单项失败不阻断 boot 复验 = A-1.1.4/P2 既有探针**并入枚举，不重造**：
  * 探针本体在 preinstall.spec.ts（'records a fail-open row for a broken entry
  * and still installs the rest' + P2 regression）与 gate-p.spec.ts（P5
- * fail-open lock）；本文件把同一语义泛化到七件谱逐件枚举（describe.each
+ * fail-open lock）；本文件把同一语义泛化到八件谱逐件枚举（describe.each
  * 各腿的 boot-完成断言）+ 一条重启持久腿（台账逐项跨重启不漂移）。
  *
  * G1 联动：host 准入/mount 不经 PreLoad 五检链（preinstaller.ts:31-38 隔离
@@ -93,7 +93,7 @@ function cid(value: string): PluginGovernanceId {
   return normalizePluginId(value) as PluginGovernanceId
 }
 
-// ---- 七件谱单一真源：真 seed 读回（gate-p/preinstall-mount 同纪律） ----------
+// ---- 八件谱单一真源：真 seed 读回（gate-p/preinstall-mount 同纪律） ----------
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..')
 const SEED_PATH = join(REPO_ROOT, 'zdsh-factory', 'seed.json')
@@ -275,7 +275,7 @@ async function bootRealLoader(seedPath: string, storageRoot?: string): Promise<C
   return { ctx, gateway, storageRoot: root }
 }
 
-/** fail-open per-item 的「其余件照常装载」断言面：兄弟六件三列齐证。 */
+/** fail-open per-item 的「其余件照常装载」断言面：兄弟七件三列齐证。 */
 function expectSiblingsMounted(gateway: PluginGovernanceGateway, culpritId: string, context: string): void {
   const report = gateway.preinstallReport()
   const roster = gateway.list().plugins
@@ -291,11 +291,11 @@ function expectSiblingsMounted(gateway: PluginGovernanceGateway, culpritId: stri
 }
 
 // ============================================================================
-// 形态① apply 崩（throw）×七件谱
+// 形态① apply 崩（throw）×八件谱
 // ============================================================================
 
 describe.each(FULL_SEED)('G3-C4 host 崩形态（逐出厂件）：$id', (row) => {
-  it('apply throw 只落肇事件 mount failed 行（归因可查询）；兄弟六件照常装载；boot 完成', async () => {
+  it('apply throw 只落肇事件 mount failed 行（归因可查询）；兄弟七件照常装载；boot 完成', async () => {
     const { gateway } = await bootRealLoader(spectrumSeed(row.id, crashForge(row), validForge))
     // boot 完成（R-1.1.4）：pass settle 不抛——单项 apply 崩永不阻断 boot。
     await gateway.settlePreinstall()
@@ -311,13 +311,13 @@ describe.each(FULL_SEED)('G3-C4 host 崩形态（逐出厂件）：$id', (row) =
       gateway.list().plugins.some(plugin => plugin.pluginId === cid(row.id)),
       `${row.id}: 准入 roster 行应在场（mount 失败不改准入）`,
     ).toBe(true)
-    // 兄弟六件照常装载（不连坐）。
+    // 兄弟七件照常装载（不连坐）。
     expectSiblingsMounted(gateway, row.id, `${row.id} 崩腿`)
   })
 })
 
 // ============================================================================
-// 形态② apply 挂起 ×七件谱 —— bounded release 形制（G3 裁决②诚实标注：
+// 形态② apply 挂起 ×八件谱 —— bounded release 形制（G3 裁决②诚实标注：
 // 本腿**不证明超时切断**。永久挂起在 host mount 层无切断 = G3-F1 已登记，
 // 生产修归批次 4.2+ 独立裁决；超时切断的真 fail-open 证明在 kernel RunGuard
 // 层兑现（chaos.spec.ts G3-C4 超时腿）。本腿证明面 = 挂起期间 boot 不阻断 +
@@ -369,13 +369,13 @@ describe.each(FULL_SEED)('G3-C4 host 挂起形态（逐出厂件，bounded relea
 })
 
 // ============================================================================
-// 形态③ 畸形 manifest ×七件谱 —— 分层判据 = admission 实际行为亲测（裁决④）
+// 形态③ 畸形 manifest ×八件谱 —— 分层判据 = admission 实际行为亲测（裁决④）
 // ============================================================================
 
 describe.each(FULL_SEED)('G3-C4 host 畸形 manifest 形态（逐出厂件）：$id', (row) => {
   it('硬畸形/dsh 缺损=failed 行（fail-closed 于伪装成功）；dsh 退化=准入+mount skipped；兄弟照常 boot 完成', async () => {
     // 亚形 a：硬畸形——package.json 截断不可解析 ⇒ request-invalid failed 行 +
-    // 归因可查询；肇事件不入 roster；兄弟六件照常装载（A-1.1.4 语义的逐件
+    // 归因可查询；肇事件不入 roster；兄弟七件照常装载（A-1.1.4 语义的逐件
     // 枚举化：损坏工件 → boot 完成 + 台账原因 + 其余在位）。
     {
       const { gateway } = await bootRealLoader(spectrumSeed(row.id, hardMalformedForge(row), validForge))
@@ -430,11 +430,11 @@ describe.each(FULL_SEED)('G3-C4 host 畸形 manifest 形态（逐出厂件）：
 // A-1.1.4/P2 既有探针并入枚举——预装单项失败不阻断 boot 复验（重启持久腿）
 // ============================================================================
 
-describe('G3-C4 × A-1.1.4/P2 并入枚举 — 预装单项失败不阻断 boot 复验（七件谱）', () => {
-  it('硬畸形肇事 + 六件正常：boot 完成、台账逐项、跨重启逐字节持久且 failed 行不复活为假成功', async () => {
+describe('G3-C4 × A-1.1.4/P2 并入枚举 — 预装单项失败不阻断 boot 复验（八件谱）', () => {
+  it('硬畸形肇事 + 七件正常：boot 完成、台账逐项、跨重启逐字节持久且 failed 行不复活为假成功', async () => {
     // 探针语义 = preinstall.spec.ts 'records a fail-open row for a broken
     // entry and still installs the rest'（A-1.1.4/R-1.1.4）+ gate-p P5
-    // fail-open lock 的七件枚举化（并入不重造）；本腿增维度 = §9.4 重启
+    // fail-open lock 的八件枚举化（并入不重造）；本腿增维度 = §9.4 重启
     // 逐字节纪律覆盖混沌行（failed 行跨重启不漂移、不复活、不假成功）。
     const culprit = FULL_SEED[0]!
     const seedPath = spectrumSeed(culprit.id, hardMalformedForge(culprit), validForge)
@@ -455,7 +455,7 @@ describe('G3-C4 × A-1.1.4/P2 并入枚举 — 预装单项失败不阻断 boot 
     const bytes1 = readFileSync(resultsPath, 'utf8')
 
     // 重启（同 storage 同 seed）：failed 行重试仍 failed（同归因 ⇒ 行不变 ⇒
-    // 台账逐字节）；六件正常行 isRegistered 短路 ⇒ 零动作；无复活、无假成功。
+    // 台账逐字节）；七件正常行 isRegistered 短路 ⇒ 零动作；无复活、无假成功。
     const boot2 = await bootRealLoader(seedPath, storageRoot)
     await boot2.gateway.settlePreinstall() // 重启 boot 同样不被单项失败阻断
     expect(readFileSync(resultsPath, 'utf8'), '台账跨重启必须逐字节（§9.4 纪律覆盖混沌行）').toBe(bytes1)

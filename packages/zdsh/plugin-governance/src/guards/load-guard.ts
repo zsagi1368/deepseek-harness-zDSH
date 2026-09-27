@@ -343,8 +343,8 @@ const INLINED_CORE_PATH_PATTERN = /node_modules[\/\\]@deepseek-ai[\/\\]/
 /**
  * 证据 E2：cordis 运行时注册键指纹。vendor/cordis/lib/index.js 实测携带 18 枚
  * Symbol.for("cordis.*") 注册键（内嵌拷贝必携带其子集）；阈值 3=捆绑拷贝全键在身，
- * 而 interop 探针仅触 1-2 键不构成拷贝。K-1.2.1 校准：出厂七件 12 个 bundle 目录
- * 47 个运行时文件（2.0MB）E1/E2 双双零命中（本卡实测）。
+ * 而 interop 探针仅触 1-2 键不构成拷贝。K-1.2.1 校准：出厂八件 13 个 bundle 目录
+ * 49 个运行时文件（2.5MB）E1/E2 双双零命中（O3 卡重测）。
  */
 const CORDIS_RUNTIME_KEY_PATTERN = /Symbol\.for\(\s*["'](cordis\.[A-Za-z0-9_]+)["']\s*\)/g
 const CORDIS_EMBED_KEY_THRESHOLD = 3

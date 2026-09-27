@@ -95,7 +95,7 @@ function pluginFor(id: string): Plugin {
   return { manifest: testManifest({ id }), install(): void {} }
 }
 
-/** 出厂集七件（W3 后谱，seed.json=唯一真相源；≥7 断言防谱系静默缩水）。 */
+/** 出厂集八件（O3 后谱，seed.json=唯一真相源；≥8 断言防谱系静默缩水）。 */
 interface SeedEntry {
   id: string
   package: string
@@ -281,10 +281,10 @@ function buildReleaseProfile(): string {
   return root
 }
 
-/** 面3 存储底稿（T7 面3 同源 + K-1.2.1 七件 junction 工件腿）。 */
-function buildFace3Storage(seven: SeedEntry[]): string {
+/** 面3 存储底稿（T7 面3 同源 + K-1.2.1 八件 junction 工件腿）。 */
+function buildFace3Storage(seeded: SeedEntry[]): string {
   const root = makeRoot('face3-storage')
-  for (const entry of seven) {
+  for (const entry of seeded) {
     const parts = entry.id.split('/')
     const ns = parts[0] ?? 'core'
     const name = parts[1] ?? entry.package
@@ -527,18 +527,18 @@ describe('SymbolIsolationCheck A-1.2.3: injected scan failure => fail-closed Che
 })
 
 /* ------------------------------------------------------------------ *
- * A-1.2.2 三解析面 × K-1.2.1 出厂集七件零误杀硬门
+ * A-1.2.2 三解析面 × K-1.2.1 出厂集八件零误杀硬门
  * ------------------------------------------------------------------ */
 
-describe('SymbolIsolationCheck A-1.2.2 x K-1.2.1: three resolution faces, factory seven zero false kill', () => {
+describe('SymbolIsolationCheck A-1.2.2 x K-1.2.1: three resolution faces, factory eight zero false kill', () => {
   it('face 1 (in-tree vitest runtime): real repo tree, no DSH_HOME (cwd host), every seeded plugin truly scanned green', async () => {
     expect(process.cwd(), '面1 hostRoot=cwd 语义前提：vitest worker cwd 须为仓库根').toBe(repoRoot)
     vi.stubEnv('DSH_HOME', undefined) // 无 DSH_HOME → defaultHostRoot=cwd（树内宿主形）
     vi.stubEnv('DSH_BRANCH_HOME', join(makeRoot('face1-storage'), 'absent'))
-    const seven = readSeedEntries()
-    expect(seven.length, '出厂集 W3 后谱=七件（seed.json 真相源）').toBeGreaterThanOrEqual(7)
+    const seeded = readSeedEntries()
+    expect(seeded.length, '出厂集 O3 后谱=八件（seed.json 真相源）').toBeGreaterThanOrEqual(8)
     const guard = new LoadGuard()
-    for (const entry of seven) {
+    for (const entry of seeded) {
       resetSymbolIsolationCacheForTest()
       const before = getSymbolIsolationScanStats()
       const result = await guard.preLoad(pluginFor(entry.id), '0.1.5-rc.2')
@@ -549,13 +549,13 @@ describe('SymbolIsolationCheck A-1.2.2 x K-1.2.1: three resolution faces, factor
     }
   }, 240_000)
 
-  it('face 2 (release-installed node runtime): tsx isolated cwd, four legs (release-fixture green / repo-tree seven green / dual-red control / self-name resolution R3-13)', async () => {
+  it('face 2 (release-installed node runtime): tsx isolated cwd, four legs (release-fixture green / repo-tree eight green / dual-red control / self-name resolution R3-13)', async () => {
     const childCwd = makeRoot('face2-cwd')
     const emptyTsconfig = join(childCwd, 'tsconfig.json')
     write(emptyTsconfig, '{}\n')
     const absentStorage = join(makeRoot('face2-storage'), 'absent')
-    const seven = readSeedEntries()
-    const sevenIds = seven.map(e => e.id)
+    const seeded = readSeedEntries()
+    const seededIds = seeded.map(e => e.id)
 
     function spawnLeg(leg: string, ids: string[], dshHome: string | undefined, dshBranchHome: string): Face2Report {
       const childEnv: Record<string, string> = {}
@@ -581,16 +581,16 @@ describe('SymbolIsolationCheck A-1.2.2 x K-1.2.1: three resolution faces, factor
 
     // 腿 a：发布安装 profile 仿形（T7 面2 同源）全绿
     const releaseRoot = buildReleaseProfile()
-    const release = spawnLeg('release-fixture', sevenIds, releaseRoot, absentStorage)
-    expect(release.results).toHaveLength(sevenIds.length)
+    const release = spawnLeg('release-fixture', seededIds, releaseRoot, absentStorage)
+    expect(release.results).toHaveLength(seededIds.length)
     for (const run of release.results) {
       expect(run.symMessages, `${run.id}: ${run.symMessages.join('|')}`).toEqual([])
       expect(run.allowed, run.id).toBe(true)
       expect(run.scans, `${run.id} 须真扫描`).toBe(1)
     }
 
-    // 腿 b：真实仓库宿主树（K-1.2.1 面2腿：出厂七件在裸 node 解析面各真扫描全绿）
-    const repoTree = spawnLeg('repo-tree', sevenIds, repoRoot, absentStorage)
+    // 腿 b：真实仓库宿主树（K-1.2.1 面2腿：出厂八件在裸 node 解析面各真扫描全绿）
+    const repoTree = spawnLeg('repo-tree', seededIds, repoRoot, absentStorage)
     for (const run of repoTree.results) {
       expect(run.symMessages, `${run.id}: ${run.symMessages.join('|')}`).toEqual([])
       expect(run.allowed, run.id).toBe(true)
@@ -605,7 +605,7 @@ describe('SymbolIsolationCheck A-1.2.2 x K-1.2.1: three resolution faces, factor
     expect(dual.results[0]?.symMessages[0] ?? '').toContain('[判据1·双副本候选]')
 
     // 腿 d：裸自名 import 解析面实测（R3-13 销项核心）
-    const selfName = spawnLeg('self-name', [sevenIds[0] ?? 'core/webstack'], repoRoot, absentStorage)
+    const selfName = spawnLeg('self-name', [seededIds[0] ?? 'core/webstack'], repoRoot, absentStorage)
     const sn = selfName.selfName
     expect(sn, '自名腿报告缺失').toBeDefined()
     if (!existsSync(libEntry)) {
@@ -627,13 +627,13 @@ describe('SymbolIsolationCheck A-1.2.2 x K-1.2.1: three resolution faces, factor
     }
   }, 300_000)
 
-  it('face 3 (governance storage install): seven junction artifacts + T7-face-3 homologous peer-clean tree, all green', async () => {
-    const seven = readSeedEntries()
-    const storageRoot = buildFace3Storage(seven)
+  it('face 3 (governance storage install): eight junction artifacts + T7-face-3 homologous peer-clean tree, all green', async () => {
+    const seeded = readSeedEntries()
+    const storageRoot = buildFace3Storage(seeded)
     vi.stubEnv('DSH_HOME', repoRoot)
     vi.stubEnv('DSH_BRANCH_HOME', storageRoot)
     const guard = new LoadGuard()
-    for (const entry of seven) {
+    for (const entry of seeded) {
       resetSymbolIsolationCacheForTest()
       const before = getSymbolIsolationScanStats()
       const result = await guard.preLoad(pluginFor(entry.id), '0.1.5-rc.2')
@@ -643,7 +643,7 @@ describe('SymbolIsolationCheck A-1.2.2 x K-1.2.1: three resolution faces, factor
       expect(after.scans - before.scans, `${entry.id} 须真扫描（判据2 installed 腿经 junction 实扫工件）`).toBe(1)
     }
     // 清场安全性自检：junction 清理不跟随——真工件目标树必须在位
-    for (const entry of seven) {
+    for (const entry of seeded) {
       expect(existsSync(join(factoryNmInRepo, entry.package, 'package.json')), `面3 清理误伤目标树: ${entry.package}`).toBe(true)
     }
   }, 240_000)

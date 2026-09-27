@@ -15,9 +15,9 @@ This repository (`zsagi1368/deepseek-harness-zDSH`) is the zDSH fork. The active
 | Component | Version |
 | --- | --- |
 | Official base ([DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)) | `0.1.5-rc.2` |
-| zDSH release | `v0.1.5-rc.2-zDSH20260926a` |
+| zDSH release | `v0.1.5-rc.2-zDSH20260927a` |
 
-zDSH tracks the official `dsh-v0.1.5-rc.2` baseline and re-syncs on every official release. zDSH version rule: `<official-version>-zDSH<date><revision-letter>`, where the date is the zDSH campaign close date (`20260926`) and the letter counts same-day revisions (`a`). The root `package.json` keeps the official base version untouched; the zDSH version is declared on this README surface and on the matching release tag.
+zDSH tracks the official `dsh-v0.1.5-rc.2` baseline and re-syncs on every official release. zDSH version rule: `<official-version>-zDSH<date><revision-letter>`, where the date is the zDSH campaign close date (`20260927`) and the letter counts same-day revisions (`a`). The root `package.json` keeps the official base version untouched; the zDSH version is declared on this README surface and on the matching release tag.
 
 ## Developer preview
 
@@ -87,7 +87,7 @@ By default it removes every gitignored artifact inside the checkout (`node_modul
 
 ## Factory plugin roster
 
-zDSH ships in an **installed state**: the seven plugins below come pre-installed from the factory seed manifest ([`zdsh-factory/seed.json`](zdsh-factory/seed.json)) — the governance preinstall hook (`SeedPreinstaller`) installs and registers them automatically on the first boot. The governance surface can query, manage, and uninstall them, and an uninstalled factory plugin never resurrects on later boots (durable `userUninstalled` tombstone). Roster final state: **5 mounted / 2 skipped**.
+zDSH ships in an **installed state**: the eight plugins below come pre-installed from the factory seed manifest ([`zdsh-factory/seed.json`](zdsh-factory/seed.json)) — the governance preinstall hook (`SeedPreinstaller`) installs and registers them automatically on the first boot. The governance surface can query, manage, and uninstall them, and an uninstalled factory plugin never resurrects on later boots (durable `userUninstalled` tombstone). Roster final state: **6 mounted / 2 skipped**.
 
 | Plugin (id) | Package | Version | Enabled at boot | Role |
 | --- | --- | --- | --- | --- |
@@ -96,6 +96,7 @@ zDSH ships in an **installed state**: the seven plugins below come pre-installed
 | `core/omnivision` | `dsh-omnivision` | `0.1.0-alpha` | `true` | Vision capabilities |
 | `core/filehub` | `dsh-filehub` | `0.1.0` | `true` | File hub |
 | `core/plugin-center` | `dsh-plugin-center` | `0.2.0` | `true` | Plugin management center |
+| `core/workbench` | `zdsh-workbench` | `0.1.0-beta.1` | `true` | IDE-grade dock workspace (files / editor / terminal / git / tasks / browse); the dock UI injects into the browser roster through its dsh.client face |
 | `core/webstack-verticals` | `dsh-webstack-verticals` | `0.2.0` | `false` | Vertical-domain pack, opt-in by its own package description |
 | `core/autopilot` | `dsh-autopilot` | `0.1.0` | `false` | Off by product design — the user opts in explicitly; a final factory posture, not pending wiring |
 
@@ -107,7 +108,7 @@ zDSH adds version-adaptive features on top of the official harness; each one pro
 - Project-level plugin roots with host-clamped sandboxes (`ctx.projectPluginLayer`).
 - Plugin governance (`ctx.pluginGovernance`).
 - Self-contained install layout — all data stays inside the repository checkout.
-- Factory preinstall: the seed manifest plus the governance preinstall hook install the seven-plugin roster on the first boot, fail-open per entry.
+- Factory preinstall: the seed manifest plus the governance preinstall hook install the eight-plugin roster on the first boot, fail-open per entry.
 - Hardened plugin governance: `SymbolIsolationCheck` blocks governed-path plugin loads that resolve to duplicate physical copies (symbol-isolation breakage), preinstalls reuse the gateway admission channel, and the chaos matrix upholds the fail-open guarantee — a single crashing or malformed plugin never takes the others down.
 - Security-audit remediation in one line: outbound fetches pass a four-gate SSRF defense (static validation, DNS resolution verification, per-hop redirect re-verification, bounded response body) with per-hop DNS address classification, and command carriers are absolutized (no bare-name spawns).
 

@@ -425,7 +425,7 @@ describe('Gate-P pilot — restart idempotency over the whole seed', () => {
     }
 
     // Roster postures survive the restart for every row — 断言消息带 row.id
-    // （K-B2 改进并入，TC-B3-MM1b）：六件谱下漂移必须一眼定位到行。
+    // （K-B2 改进并入，TC-B3-MM1b）：八件谱下漂移必须一眼定位到行。
     for (const row of seed.entries) {
       const summary = boot2.gateway.list().plugins.find(plugin => plugin.pluginId === gid(row.id))
       expect(summary, `Gate-P restart: seed row ${row.id} missing from the roster after boot 2`).toBeDefined()
