@@ -5,6 +5,8 @@ kind: "package-reference"
 
 # zdsh-workbench（中文）
 
+> **构建镜像**：本目录为 vendored 构建镜像——权威源为 [zsagi1368/zdsh-workbench](https://github.com/zsagi1368/zdsh-workbench)（锚 `193af62`）。禁止在镜像上开发；单向同步纪律与 O-3 装件化后置卡见 [BUILD-MIRROR.md](BUILD-MIRROR.md)。
+
 [English](README.md) | 中文
 
 ## 概述

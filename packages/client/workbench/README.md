@@ -5,6 +5,8 @@ kind: "package-reference"
 
 # zdsh-workbench
 
+> **Build mirror**: this directory is a vendored build mirror — the authoritative source is [zsagi1368/zdsh-workbench](https://github.com/zsagi1368/zdsh-workbench) (anchor `193af62`). Never develop here; see [BUILD-MIRROR.md](BUILD-MIRROR.md) for the one-way sync discipline and the deferred O-3 packaging card.
+
 English | [中文](README.zh.md)
 
 ## Summary
