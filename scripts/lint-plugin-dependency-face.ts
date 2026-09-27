@@ -5,8 +5,9 @@
  * deep-path reaches) from recurring in the seven factory-seeded artifacts.
  *
  * Violation classes (only these fail; contract-face imports are legal):
- * - `deep-path`: a host-org specifier reaching into `/src/` or `/internal/`
- *   segments, or naming a source/artifact file directly (`.ts`, `.js`, …).
+ * - `deep-path`: a host-org specifier reaching into `/src/`, `/internal/`, or
+ *   build-output (`/dist/`, `/lib/`) segments, or naming a source/artifact
+ *   file directly (`.ts`, `.js`, …).
  * - `internal-face`: a host-org package explicitly listed as host-internal
  *   wiring in the manifest (zDSH base pieces, boot, test support).
  * - `non-contract-face`: any other host-org package — not on the published
@@ -28,6 +29,8 @@ import ts from 'typescript'
 
 const GATE = 'lint-plugin-dependency-face'
 const DEFAULT_MANIFEST = resolve(import.meta.dirname, 'plugin-dependency-face.manifest.json')
+/** Repository root; anchor for a relative manifest `pluginsRoot` (cwd-independent). */
+const REPO_ROOT = resolve(import.meta.dirname, '..')
 
 /** Directories never worth walking in a plugin repository. `del` is the zDSH
  * safe-change backup area: it mirrors historical src trees and must never be
@@ -37,8 +40,18 @@ const PRUNED_DIRECTORIES = new Set(['node_modules', '.git', 'dist', 'lib', 'cove
 /** Source file extensions scanned for import statements. */
 const SCANNED_EXTENSIONS = new Set(['.ts', '.tsx', '.mts', '.cts'])
 
-/** File-name segments that mark a direct reach into source or build output. */
-const DEEP_PATH_SEGMENTS = new Set(['src', 'internal'])
+/**
+ * Path segments that mark a direct reach into source or build output.
+ * `dist`/`lib` close the non-JS asset gap (REVIEW-T5 建议4): `dist/theme.css`
+ * slips past the extension criterion below, but no contract-face package
+ * exports a dist/lib subpath (verified against all 20 contract-face exports
+ * maps), so a build-output segment hit is a violation by definition.
+ * Evolution direction: match subpaths against each target package's exports
+ * map instead of a segment list — deferred because that needs the host
+ * manifests resolved inside the scanned external repositories (presence and
+ * version drift), disproportionate for the current zero-violation face.
+ */
+const DEEP_PATH_SEGMENTS = new Set(['src', 'internal', 'dist', 'lib'])
 
 /** File extensions that mark a direct source/artifact file reference. */
 const DEEP_PATH_EXTENSIONS = new Set(['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs'])
@@ -291,7 +304,11 @@ export function resolveScanTargets(options: {
   readonly cliTargets: readonly string[]
   readonly pluginsRoot: string | null
 }): readonly { readonly name: string; readonly root: string }[] {
-  const root = options.pluginsRoot ?? options.config.pluginsRoot
+  // The manifest pluginsRoot may be relative (portable default, REVIEW-T5
+  // 建议3): it anchors at the repository root, independent of the process
+  // cwd. Absolute manifest values pass through resolve() unchanged, and the
+  // --plugins-root CLI override keeps its cwd-relative CLI semantics.
+  const root = options.pluginsRoot ?? resolve(REPO_ROOT, options.config.pluginsRoot)
   if (options.cliTargets.length > 0) {
     return options.cliTargets.map((target) => {
       const named = options.config.defaultTargets.find(entry => entry.name === target)

@@ -63,13 +63,18 @@ describe('classifyHostSpecifier', () => {
     expect(classifyHostSpecifier('@deepseek-ai/dsh-client-ui-settings/client', CONFIG)).toBeNull()
   })
 
-  it('flags deep-path reaches into src, internal, and direct source files', () => {
+  it('flags deep-path reaches into src, internal, build-output dirs, and direct source files', () => {
     for (const specifier of [
       '@deepseek-ai/dsh-tools/src/index.ts',
       '@deepseek-ai/dsh-tools/src/schema',
       '@deepseek-ai/dsh-client-ui-settings/internal/registry',
       '@deepseek-ai/dsh-tools/lib/index.js',
       '@deepseek-ai/cordis/dist/cordis.mjs',
+      // REVIEW-T5 建议4: non-JS assets under build-output dirs slipped past
+      // the extension criterion; the dist/lib segment rule closes that gap.
+      '@deepseek-ai/dsh-tools/dist/theme.css',
+      '@deepseek-ai/dsh-tools/lib/style.css',
+      '@deepseek-ai/cordis/dist',
     ]) {
       expect(classifyHostSpecifier(specifier, CONFIG)?.kind, specifier).toBe('deep-path')
     }
@@ -190,6 +195,9 @@ describe('loadDependencyFaceConfig', () => {
   it('loads and cross-checks the shipped manifest', () => {
     const config = loadDependencyFaceConfig(join(import.meta.dirname, 'plugin-dependency-face.manifest.json'))
     expect(config.hostOrgPrefix).toBe('@deepseek-ai/')
+    // REVIEW-T5 建议3: the shipped default is RELATIVE (repo-root anchored),
+    // never a machine-specific absolute path; pinned here against regressions.
+    expect(config.pluginsRoot).toBe('../zDSH-plugins')
     expect(config.contractFace).toContain('@deepseek-ai/cordis')
     expect(config.internalFace).toContain('@deepseek-ai/dsh-compat')
     // The five true-source repos carry the seven seeded artifacts.
@@ -235,5 +243,23 @@ describe('resolveScanTargets', () => {
     expect(byName).toEqual([{ name: 'FakePlugin', root: resolve('/plugins', 'FakePlugin') }])
     const byPath = resolveScanTargets({ config: CONFIG, cliTargets: ['/elsewhere/repo'], pluginsRoot: '/plugins' })
     expect(byPath).toEqual([{ name: '/elsewhere/repo', root: resolve('/elsewhere/repo') }])
+  })
+
+  it('anchors a relative manifest pluginsRoot at the repository root (portability)', () => {
+    const config: DependencyFaceConfig = { ...CONFIG, pluginsRoot: '../sibling-plugins' }
+    const repoRoot = resolve(import.meta.dirname, '..')
+    expect(resolveScanTargets({ config, cliTargets: [], pluginsRoot: null })).toEqual([
+      { name: 'FakePlugin', root: resolve(repoRoot, '..', 'sibling-plugins', 'FakePlugin') },
+      { name: 'OtherPlugin', root: resolve(repoRoot, '..', 'sibling-plugins', 'OtherPlugin') },
+    ])
+  })
+
+  it('passes an absolute manifest pluginsRoot through unchanged', () => {
+    const absolute = join(tmpdir(), 'absolute-plugins-root')
+    const config: DependencyFaceConfig = { ...CONFIG, pluginsRoot: absolute }
+    expect(resolveScanTargets({ config, cliTargets: [], pluginsRoot: null })).toEqual([
+      { name: 'FakePlugin', root: resolve(absolute, 'FakePlugin') },
+      { name: 'OtherPlugin', root: resolve(absolute, 'OtherPlugin') },
+    ])
   })
 })
