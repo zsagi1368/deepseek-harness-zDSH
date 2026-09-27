@@ -1,0 +1,99 @@
+name: zDSH CI
+
+# zDSH overlay lane (upgrade process v2.0 §6 A1) — contract-gate CI.
+#
+# Why this file exists: the official lanes do not run for this fork.
+# ci.yml triggers on pull_request only and resolves its Linux jobs through
+# enterprise runner pools (dsh-ubuntu-24-04-16core / blacksmith / self-hosted
+# vm-backup) that this fork does not have, and ci-master.yml triggers on
+# pushes to master, a branch this fork does not develop on. zDSH work lands
+# as pushes to zdsh-latest, which had zero CI coverage, so the contract
+# gates (packages/zdsh factory-bundle gate-p / ra1 / governance-host
+# preinstall family) only ran manually. This workflow moves that loud
+# failure forward to "right after the push/merge" (P3 in the v2.0
+# pipeline). It is additive: no official workflow file is edited.
+#
+# Runner choice: hosted ubuntu-latest. windows-latest has in-repo precedent
+# (the zDSH-Go line) but that line needed patches/vitest@4.1.8.patch
+# (forks-pool cacheFs=false) after a runner-side tmp wipe cascaded 922
+# suite failures; this repo does not carry that patch, so the known trigger
+# is avoided instead of patched. Vitest per-project CLI --testTimeout is
+# used for the slow-runner budget (empirically propagates to projects on
+# vitest 4.1.8, unlike a root config testTimeout).
+#
+# Scope is deliberately minimal (build + contract-gate specs + static
+# verify-* gates + A6 residence map). The full 21954-test matrix stays a
+# local/pre-push discipline; A2 dependency-face lint scans external plugin
+# repositories and therefore also stays local (see the T5 gap analysis in
+# zDSH-docs Plan/campaigns/2026-09-27-upgrade-process-v2/).
+
+on:
+  push:
+    branches: [zdsh-latest]
+  pull_request:
+  workflow_dispatch:
+
+# A superseded push cancels the in-flight run of the same workflow/ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PRIMARY_NODE_VERSION: '24'
+  # CI runs must never report to the production telemetry endpoint.
+  DSH_TELEMETRY_DISABLED: '1'
+
+jobs:
+  zdsh-contract-gates:
+    name: zdsh / build + contract gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      # Runner-private pnpm destination, house pattern from ci.yml.
+      - uses: pnpm/action-setup@v4
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install (immutable)
+        run: pnpm install --frozen-lockfile
+
+      - name: Static workspace gates (constraints / tsconfig paths / config catalog)
+        run: |
+          pnpm run constraints
+          pnpm run verify-tsconfig-paths
+          pnpm run verify-config-catalog
+
+      - name: Fetch upstream ref (A6 residence map input)
+        run: |
+          git remote add upstream https://github.com/deepseek-ai/deepseek-harness.git
+          git fetch --no-tags upstream master
+
+      - name: zDSH residence map gate (A6)
+        run: pnpm exec tsx scripts/verify-zdsh-residence-map.ts --ref upstream/master
+
+      # Host build owns typert contract generation, the scripts/ typecheck,
+      # and the lib/ artifacts some contract specs consume (for example
+      # preinstall-lock.spec.ts imports util/atomic-write/lib/index.js), so
+      # it must settle before the spec lane.
+      - name: Host build (tsc -b + tsdown host face)
+        run: pnpm run build:lib:host
+
+      - name: Contract-gate specs (packages/zdsh) + A6/A2 script specs
+        run: >-
+          pnpm exec vitest run
+          packages/zdsh
+          scripts/verify-zdsh-residence-map.spec.ts
+          scripts/lint-plugin-dependency-face.spec.ts
+          --testTimeout=60000
