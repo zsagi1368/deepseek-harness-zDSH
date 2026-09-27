@@ -27,7 +27,7 @@
       "path": "../../core/system-prompt"
     },
     {
-      "path": "../../compat/dsh-compat"
+      "path": "../../zdsh/dsh-compat"
     },
     {
       "path": "../../util/atomic-write"

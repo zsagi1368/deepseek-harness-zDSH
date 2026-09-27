@@ -36,7 +36,7 @@ const NO_MODEL_EXPERIENCE_SECTION: Readonly<Record<string, string>> = {
   'packages/util/launch-environment': 'The package only resolves host environment values; model-facing consumers own any rendered use.',
   'packages/util/workspace-path': 'The package only formats Workspace paths for browser UI; it never constructs model input.',
   'packages/util/values': 'The package only validates, snapshots, compares, freezes, or rejects caller-owned values; consumers own every model-facing use.',
-  'packages/compat/dsh-compat': 'The package is a version-adaptive probing shim; it constructs no model input, and the features it guards own every model-facing registration.',
+  'packages/zdsh/dsh-compat': 'The package is a version-adaptive probing shim; it constructs no model input, and the features it guards own every model-facing registration.',
 }
 
 /**

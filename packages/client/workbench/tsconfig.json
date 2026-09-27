@@ -2,7 +2,7 @@
   "files": [],
   "references": [
     {
-      "path": "../../compat/dsh-compat"
+      "path": "../../zdsh/dsh-compat"
     },
     {
       "path": "./tsconfig.host.json"

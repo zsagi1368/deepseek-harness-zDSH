@@ -17,7 +17,7 @@
       "path": "../../host/webserver"
     },
     {
-      "path": "../../compat/dsh-compat"
+      "path": "../../zdsh/dsh-compat"
     }
   ]
 }

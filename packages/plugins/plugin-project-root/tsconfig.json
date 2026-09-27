@@ -24,7 +24,7 @@
       "path": "../plugin-governance"
     },
     {
-      "path": "../../compat/dsh-compat"
+      "path": "../../zdsh/dsh-compat"
     }
   ]
 }

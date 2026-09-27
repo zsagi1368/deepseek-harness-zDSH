@@ -36,7 +36,7 @@
       "path": "../../typert/protocol"
     },
     {
-      "path": "../../compat/dsh-compat"
+      "path": "../../zdsh/dsh-compat"
     }
   ]
 }

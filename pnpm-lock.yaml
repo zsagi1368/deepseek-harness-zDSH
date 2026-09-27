@@ -807,7 +807,7 @@ importers:
         version: link:../../attachment/attachment
       '@deepseek-ai/dsh-compat':
         specifier: workspace:^
-        version: link:../../compat/dsh-compat
+        version: link:../../zdsh/dsh-compat
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
@@ -1304,7 +1304,7 @@ importers:
         version: link:../../../vendor/timer
       '@deepseek-ai/dsh-compat':
         specifier: workspace:^
-        version: link:../../compat/dsh-compat
+        version: link:../../zdsh/dsh-compat
       '@deepseek-ai/dsh-home-paths':
         specifier: workspace:^
         version: link:../../util/home-paths
@@ -3727,7 +3727,7 @@ importers:
         version: link:../ui-slots
       '@deepseek-ai/dsh-compat':
         specifier: workspace:^
-        version: link:../../compat/dsh-compat
+        version: link:../../zdsh/dsh-compat
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
@@ -4659,7 +4659,7 @@ importers:
         version: link:../ui-slots
       '@deepseek-ai/dsh-compat':
         specifier: workspace:^
-        version: link:../../compat/dsh-compat
+        version: link:../../zdsh/dsh-compat
       '@deepseek-ai/dsh-host-webserver':
         specifier: workspace:^
         version: link:../../host/webserver
@@ -4855,15 +4855,6 @@ importers:
       '@deepseek-ai/dsh-token-meter':
         specifier: workspace:^
         version: link:../../llm/token-meter
-
-  packages/compat/dsh-compat:
-    devDependencies:
-      '@deepseek-ai/cordis':
-        specifier: workspace:^
-        version: link:../../../vendor/cordis
-      '@deepseek-ai/dsh-invariants':
-        specifier: workspace:^
-        version: link:../../runtime-diagnostics/invariants
 
   packages/context/agent-instructions:
     dependencies:
@@ -7200,7 +7191,7 @@ importers:
         version: link:../../attachment/attachment
       '@deepseek-ai/dsh-compat':
         specifier: workspace:^
-        version: link:../../compat/dsh-compat
+        version: link:../../zdsh/dsh-compat
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
@@ -7399,7 +7390,7 @@ importers:
         version: link:../../util/brand
       '@deepseek-ai/dsh-compat':
         specifier: workspace:^
-        version: link:../../compat/dsh-compat
+        version: link:../../zdsh/dsh-compat
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
@@ -7681,7 +7672,7 @@ importers:
         version: link:../../../vendor/cordis
       '@deepseek-ai/dsh-compat':
         specifier: workspace:^
-        version: link:../../compat/dsh-compat
+        version: link:../../zdsh/dsh-compat
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
@@ -7693,7 +7684,7 @@ importers:
         version: link:../../../vendor/cordis
       '@deepseek-ai/dsh-compat':
         specifier: workspace:^
-        version: link:../../compat/dsh-compat
+        version: link:../../zdsh/dsh-compat
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
@@ -11157,6 +11148,15 @@ importers:
         specifier: workspace:^
         version: link:../../typert/protocol
 
+  packages/zdsh/dsh-compat:
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-invariants':
+        specifier: workspace:^
+        version: link:../../runtime-diagnostics/invariants
+
   python/sdk-runtime:
     dependencies:
       '@deepseek-ai/cordis':
@@ -11242,7 +11242,7 @@ importers:
         version: link:../../packages/compaction/compaction-tool-result-pruner
       '@deepseek-ai/dsh-compat':
         specifier: workspace:^
-        version: link:../../packages/compat/dsh-compat
+        version: link:../../packages/zdsh/dsh-compat
       '@deepseek-ai/dsh-cordis-host-runner':
         specifier: workspace:^
         version: link:../../packages/extensions/cordis-host-runner

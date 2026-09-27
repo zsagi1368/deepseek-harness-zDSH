@@ -9,7 +9,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
-    "directory": "packages/compat/dsh-compat"
+    "directory": "packages/zdsh/dsh-compat"
   },
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
