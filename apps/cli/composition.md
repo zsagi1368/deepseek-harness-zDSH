@@ -176,6 +176,8 @@ flowchart LR
   cfg --> plugin_dsh_base_fs_sandbox
   plugin_dsh_base_llm_deepseek["llm-deepseek<br/>@deepseek-ai/dsh-llm-deepseek"]
   cfg --> plugin_dsh_base_llm_deepseek
+  plugin_dsh_base_plugin_governance["plugin-governance<br/>@deepseek-ai/dsh-plugin-governance-host"]
+  cfg --> plugin_dsh_base_plugin_governance
 ```
 
 | Plugin id | Package / module |
@@ -264,6 +266,7 @@ flowchart LR
 | `agent-loop` | `@deepseek-ai/dsh-agent-loop` |
 | `fs-sandbox` | `@deepseek-ai/dsh-fs-sandbox` |
 | `llm-deepseek` | `@deepseek-ai/dsh-llm-deepseek` |
+| `plugin-governance` | `@deepseek-ai/dsh-plugin-governance-host` |
 
 Source config: [`packages/bundle/base/cordis.patch.yml`](../../packages/bundle/base/cordis.patch.yml).
 

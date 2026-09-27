@@ -1782,7 +1782,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/host/plugin-governance-host/src/index.ts:186`](../packages/host/plugin-governance-host/src/index.ts)
+来源：[`packages/zdsh/plugin-governance-host/src/index.ts:186`](../packages/zdsh/plugin-governance-host/src/index.ts)
 
 <a id="deepseek-aidsh-plugin-package-inventory-deepseek"></a>
 
@@ -3671,7 +3671,7 @@ export interface Config {
 - `@deepseek-ai/dsh-client-ui-slots`（[`packages/client/ui-slots/src/index.ts`](../packages/client/ui-slots/src/index.ts)）
 - `@deepseek-ai/dsh-client-web`（[`packages/client/web/src/index.ts`](../packages/client/web/src/index.ts)）
 - `@deepseek-ai/dsh-cmdline`（[`packages/boot/cmdline/src/index.ts`](../packages/boot/cmdline/src/index.ts)）
-- `@deepseek-ai/dsh-compat`（[`packages/compat/dsh-compat/src/index.ts`](../packages/compat/dsh-compat/src/index.ts)）
+- `@deepseek-ai/dsh-compat`（[`packages/zdsh/dsh-compat/src/index.ts`](../packages/zdsh/dsh-compat/src/index.ts)）
 - `@deepseek-ai/dsh-deque`（[`packages/util/deque/src/index.ts`](../packages/util/deque/src/index.ts)）
 - `@deepseek-ai/dsh-experimental-agent-team-profile`（[`packages/experimental/agent-team-profile/src/index.ts`](../packages/experimental/agent-team-profile/src/index.ts)）
 - `@deepseek-ai/dsh-experimental-agent-team-web-profile`（[`packages/experimental/agent-team-web-profile/src/index.ts`](../packages/experimental/agent-team-web-profile/src/index.ts)）
@@ -3686,8 +3686,8 @@ export interface Config {
 - `@deepseek-ai/dsh-native-command`（[`packages/util/native-command/src/index.ts`](../packages/util/native-command/src/index.ts)）
 - `@deepseek-ai/dsh-output-retention`（[`packages/util/output-retention/src/index.ts`](../packages/util/output-retention/src/index.ts)）
 - `@deepseek-ai/dsh-package-manifest` ([`packages/util/package-manifest/src/index.ts`](../packages/util/package-manifest/src/index.ts))
-- `@deepseek-ai/dsh-plugin-governance`（[`packages/plugins/plugin-governance/src/index.ts`](../packages/plugins/plugin-governance/src/index.ts)）
-- `@deepseek-ai/dsh-plugin-project-root`（[`packages/plugins/plugin-project-root/src/index.ts`](../packages/plugins/plugin-project-root/src/index.ts)）
+- `@deepseek-ai/dsh-plugin-governance`（[`packages/zdsh/plugin-governance/src/index.ts`](../packages/zdsh/plugin-governance/src/index.ts)）
+- `@deepseek-ai/dsh-plugin-project-root`（[`packages/zdsh/plugin-project-root/src/index.ts`](../packages/zdsh/plugin-project-root/src/index.ts)）
 - `@deepseek-ai/dsh-remote-mock` ([`packages/test-support/remote-mock/src/index.ts`](../packages/test-support/remote-mock/src/index.ts))
 - `@deepseek-ai/dsh-sandbox-windows-acl`（[`packages/sandbox/sandbox-windows-acl/src/index.ts`](../packages/sandbox/sandbox-windows-acl/src/index.ts)）
 - `@deepseek-ai/dsh-scope`（[`packages/core/scope/src/index.ts`](../packages/core/scope/src/index.ts)）
