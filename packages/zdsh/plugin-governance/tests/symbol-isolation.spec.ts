@@ -57,7 +57,7 @@ vi.mock('node:fs', async (importOriginal) => {
  * ------------------------------------------------------------------ */
 
 const repoRoot = resolve(import.meta.dirname, '..', '..', '..', '..')
-const factoryNmInRepo = join(repoRoot, 'packages', 'factory', 'zdsh-factory-bundle', 'node_modules')
+const factoryNmInRepo = join(repoRoot, 'packages', 'zdsh', 'factory-bundle', 'node_modules')
 const tsxCli = join(repoRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs')
 const helperPath = join(import.meta.dirname, 'symbol-isolation-node-runtime.ts')
 const libEntry = join(repoRoot, 'packages', 'zdsh', 'plugin-governance', 'lib', 'index.js')
@@ -188,7 +188,7 @@ function buildKitchenSink(): string {
   linkDir(join(scope, 'dsh-tools'), join(root, 'profiles', 'web', 'node_modules', '@deepseek-ai', 'dsh-tools'))
 
   // 出厂 bundle 区仿形
-  const fnm = join(root, 'packages', 'factory', 'zdsh-factory-bundle', 'node_modules')
+  const fnm = join(root, 'packages', 'zdsh', 'factory-bundle', 'node_modules')
   write(join(fnm, '.modules.yaml'), 'hoist-pattern: []\n') // nm 根散文件
   mkdirSync(join(fnm, '.bin'), { recursive: true }) // 无 package.json 目录条目
   const demo = join(fnm, 'dsh-demo')
@@ -251,7 +251,7 @@ function buildRedDual(): string {
 /** 判据2 红底稿：factory 工件 E1+E2 双证据 + 存储区 installed 工件 E1（@ 前缀 id 翻转面）。 */
 function buildRedEmbed(): string {
   const root = makeRoot('red-embed')
-  const evil = join(root, 'packages', 'factory', 'zdsh-factory-bundle', 'node_modules', 'dsh-evil')
+  const evil = join(root, 'packages', 'zdsh', 'factory-bundle', 'node_modules', 'dsh-evil')
   pkgJson(evil, 'dsh-evil', '6.6.6')
   write(join(evil, 'dist', 'bundle.js'), 'const inlined = require("./node_modules/@deepseek-ai/cordis/dist/index.js");\nmodule.exports = inlined\n') // E1 内联源路径痕迹
   write(join(evil, 'lib', 'copy.js'), 'const a = Symbol.for("cordis.evilA"); const b = Symbol.for("cordis.evilB"); const c = Symbol.for("cordis.evilC"); export default [a,b,c]\n') // E2 注册键×3 ≥阈值
@@ -398,10 +398,10 @@ describe('SymbolIsolationCheck criterion 2: embedded core symbols in bundle arti
     const detail = (symFailures(result)[0] ?? '')
     expect(detail).toContain('[判据2·内嵌核心符号]')
     // factory 工件 E1（内联源路径痕迹）
-    expect(detail).toContain(join(root, 'packages', 'factory', 'zdsh-factory-bundle', 'node_modules', 'dsh-evil', 'dist', 'bundle.js'))
+    expect(detail).toContain(join(root, 'packages', 'zdsh', 'factory-bundle', 'node_modules', 'dsh-evil', 'dist', 'bundle.js'))
     expect(detail).toContain('E1')
     // factory 工件 E2（注册键指纹×3，键名可查询）
-    expect(detail).toContain(join(root, 'packages', 'factory', 'zdsh-factory-bundle', 'node_modules', 'dsh-evil', 'lib', 'copy.js'))
+    expect(detail).toContain(join(root, 'packages', 'zdsh', 'factory-bundle', 'node_modules', 'dsh-evil', 'lib', 'copy.js'))
     expect(detail).toContain('E2')
     expect(detail).toContain('cordis.evilA')
     expect(detail).toContain('cordis.evilC')

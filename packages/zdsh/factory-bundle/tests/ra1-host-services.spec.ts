@@ -76,7 +76,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context, Service } from '@deepseek-ai/cordis'
 import { SessionId } from '../../../core/session/src/types.ts'
-import PluginGovernanceGateway from '../../../zdsh/plugin-governance-host/src/index.ts'
+import PluginGovernanceGateway from '../../plugin-governance-host/src/index.ts'
 import { provideHostServices, type HostServicesFixture, type WebServerRouteCapture } from './host-services-fixture.ts'
 
 const storageRoots: string[] = []

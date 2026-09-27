@@ -6015,30 +6015,6 @@ importers:
         specifier: ^18.2.0
         version: 18.3.1
 
-  packages/factory/zdsh-factory-bundle:
-    dependencies:
-      dsh-autopilot:
-        specifier: git+https://github.com/zsagi1368/zdsh-autopilot.git#3bc49638bbdc102eccab644065f73e46298fcc61
-        version: https://codeload.github.com/zsagi1368/zdsh-autopilot/tar.gz/3bc49638bbdc102eccab644065f73e46298fcc61(@deepseek-ai/cordis@vendor+cordis)
-      dsh-filehub:
-        specifier: git+https://github.com/zsagi1368/zdsh-filehub.git#aab73d7ca4a3c57351a4810c611957da76838e8b
-        version: https://codeload.github.com/zsagi1368/zdsh-filehub/tar.gz/aab73d7ca4a3c57351a4810c611957da76838e8b(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/schemastery@vendor+schemastery)(react@18.3.1)
-      dsh-omnivision:
-        specifier: git+https://github.com/zsagi1368/dsh-omnivision.git#d2decb2c23d527f660c1a0b97fe637e82939c966
-        version: https://codeload.github.com/zsagi1368/dsh-omnivision/tar.gz/d2decb2c23d527f660c1a0b97fe637e82939c966(@deepseek-ai/schemastery@vendor+schemastery)(sharp@0.35.3(@types/node@22.20.0))
-      dsh-plugin-center:
-        specifier: git+https://github.com/zsagi1368/zdsh-plugin-center.git#b9e205c7e13c49ed6580d76e79f10304d7c71f40
-        version: https://codeload.github.com/zsagi1368/zdsh-plugin-center/tar.gz/b9e205c7e13c49ed6580d76e79f10304d7c71f40(@deepseek-ai/cordis@vendor+cordis)(react@18.3.1)
-      dsh-webstack:
-        specifier: git+https://github.com/zsagi1368/dsh-webstack.git#d9ae62ab48da9ce5c3a5e0210ad952d22d2fbdaf
-        version: dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/d9ae62ab48da9ce5c3a5e0210ad952d22d2fbdaf
-      dsh-webstack-bridge:
-        specifier: git+https://github.com/zsagi1368/dsh-webstack.git#ffa036435d383edf577c47935f21cb1d7252ea93
-        version: dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/ffa036435d383edf577c47935f21cb1d7252ea93
-      dsh-webstack-verticals:
-        specifier: git+https://github.com/zsagi1368/dsh-webstack.git#956df1b0797127746039baee4ca26805b2f4ad4d
-        version: dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/956df1b0797127746039baee4ca26805b2f4ad4d
-
   packages/feedback/command-feedback:
     dependencies:
       zod:
@@ -11099,6 +11075,30 @@ importers:
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
 
+  packages/zdsh/factory-bundle:
+    dependencies:
+      dsh-autopilot:
+        specifier: git+https://github.com/zsagi1368/zdsh-autopilot.git#3bc49638bbdc102eccab644065f73e46298fcc61
+        version: https://codeload.github.com/zsagi1368/zdsh-autopilot/tar.gz/3bc49638bbdc102eccab644065f73e46298fcc61(@deepseek-ai/cordis@vendor+cordis)
+      dsh-filehub:
+        specifier: git+https://github.com/zsagi1368/zdsh-filehub.git#aab73d7ca4a3c57351a4810c611957da76838e8b
+        version: https://codeload.github.com/zsagi1368/zdsh-filehub/tar.gz/aab73d7ca4a3c57351a4810c611957da76838e8b(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/schemastery@vendor+schemastery)(react@18.3.1)
+      dsh-omnivision:
+        specifier: git+https://github.com/zsagi1368/dsh-omnivision.git#d2decb2c23d527f660c1a0b97fe637e82939c966
+        version: https://codeload.github.com/zsagi1368/dsh-omnivision/tar.gz/d2decb2c23d527f660c1a0b97fe637e82939c966(@deepseek-ai/schemastery@vendor+schemastery)(sharp@0.35.3(@types/node@22.20.0))
+      dsh-plugin-center:
+        specifier: git+https://github.com/zsagi1368/zdsh-plugin-center.git#b9e205c7e13c49ed6580d76e79f10304d7c71f40
+        version: https://codeload.github.com/zsagi1368/zdsh-plugin-center/tar.gz/b9e205c7e13c49ed6580d76e79f10304d7c71f40(@deepseek-ai/cordis@vendor+cordis)(react@18.3.1)
+      dsh-webstack:
+        specifier: git+https://github.com/zsagi1368/dsh-webstack.git#d9ae62ab48da9ce5c3a5e0210ad952d22d2fbdaf
+        version: dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/d9ae62ab48da9ce5c3a5e0210ad952d22d2fbdaf
+      dsh-webstack-bridge:
+        specifier: git+https://github.com/zsagi1368/dsh-webstack.git#ffa036435d383edf577c47935f21cb1d7252ea93
+        version: dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/ffa036435d383edf577c47935f21cb1d7252ea93
+      dsh-webstack-verticals:
+        specifier: git+https://github.com/zsagi1368/dsh-webstack.git#956df1b0797127746039baee4ca26805b2f4ad4d
+        version: dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/956df1b0797127746039baee4ca26805b2f4ad4d
+
   packages/zdsh/plugin-governance:
     devDependencies:
       '@deepseek-ai/cordis':
@@ -15586,8 +15586,8 @@ packages:
     resolution: {integrity: sha512-svtcdpS8CgJyqAjEQIXdb3OjhFVVYjzGAPO8WGCmRbrml64SPw/jJD4GoE98aR7r25A0XcgrK3F02yw9R/vhQw==}
     engines: {node: '>=0.3.1'}
 
-  dingbat-to-unicode@1.0.1:
-    resolution: {integrity: sha512-98l0sW87ZT58pU4i61wa2OHwxbiYSbuxsCBozaVnYX2iCnr3bLM3fIes1/ej7h1YdOKuKt/MLs706TVnALA65w==}
+  dingbat-to-unicode@1.0.2:
+    resolution: {integrity: sha512-R0bRerYzy/EZP6QzD3Hkl6JjUDA1Mnn+pd928w0nWjPzihnbAR6dcjGJGiRyznj5E4S1duEKzWrTqw02DPcdzg==}
 
   dir-compare@4.2.0:
     resolution: {integrity: sha512-2xMCmOoMrdQIPHdsTawECdNPwlVFB9zGcz3kuhmBO6U3oU+UQjsue0i8ayLKpgBcm+hcXPMVSGUN9d+pvJ6+VQ==}
@@ -22421,7 +22421,7 @@ snapshots:
 
   diff@9.0.0: {}
 
-  dingbat-to-unicode@1.0.1: {}
+  dingbat-to-unicode@1.0.2: {}
 
   dir-compare@4.2.0:
     dependencies:
@@ -23826,7 +23826,7 @@ snapshots:
       argparse: 1.0.3
       base64-js: 1.5.1
       bluebird: 3.4.7
-      dingbat-to-unicode: 1.0.1
+      dingbat-to-unicode: 1.0.2
       jszip: 3.10.2
       lop: 0.4.2
       path-is-absolute: 1.0.1

@@ -6,17 +6,17 @@
  * `core/webstack-bridge` entries).
  *
  * This is the factory's OWN self-managed test surface (DESIGN-intake-tech.md §6
- * Gate-P row: "新 packages/factory（自管面）+ 根 vitest run"). It drives the real
+ * Gate-P row: "新 packages/zdsh（自管面）+ 根 vitest run"). It drives the real
  * governance gateway against the REAL repository seed (`zdsh-factory/seed.json`)
  * and the REAL cold-installed artifacts under
- * `packages/factory/zdsh-factory-bundle/node_modules/...`, over a throwaway
+ * `packages/zdsh/factory-bundle/node_modules/...`, over a throwaway
  * storage root standing in for a fresh `DSH_HOME`.
  *
  * Note on placement: the root vitest lane glob covers package tests at the path
  * form "packages/<group>/<package>/tests", which has no rule for a two-level
- * "packages/factory/tests", and the design forbids standing up a new lane /
+ * "packages/zdsh/tests", and the design forbids standing up a new lane /
  * editing the shared vitest config — so the matrix lives inside the bundle
- * package ("packages/factory/zdsh-factory-bundle/tests", the same self-managed
+ * package ("packages/zdsh/factory-bundle/tests", the same self-managed
  * assembly) and still runs under the existing "pnpm vitest run".
  *
  * What it proves (the batch-2 acceptance slice, per seed row):
@@ -88,7 +88,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context, Service } from '@deepseek-ai/cordis'
-import PluginGovernanceGateway, { type PluginGovernanceId } from '../../../zdsh/plugin-governance-host/src/index.ts'
+import PluginGovernanceGateway, { type PluginGovernanceId } from '../../plugin-governance-host/src/index.ts'
 
 const storageRoots: string[] = []
 const scratchDirs: string[] = []
@@ -109,7 +109,7 @@ function gid(value: string): PluginGovernanceId {
 }
 
 // The repository's frozen factory seed, resolved from this spec's own location
-// (…/packages/factory/zdsh-factory-bundle/tests → up four → repo root).
+// (…/packages/zdsh/factory-bundle/tests → up four → repo root).
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..')
 const SEED_PATH = join(REPO_ROOT, 'zdsh-factory', 'seed.json')
 

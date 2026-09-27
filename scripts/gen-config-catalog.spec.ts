@@ -1,9 +1,9 @@
 /**
- * gen-config-catalog factory/ 负向豁免锁（F-V1-1 清偿，TC-B4-H1 面九）。
+ * gen-config-catalog factory-bundle 负向豁免锁（F-V1-1 清偿，TC-B4-H1 面九）。
  *
- * 豁免面必须窄（卡面纪律）：packages/factory/* 纯清单/装配包无 src/index.ts
+ * 豁免面必须窄（卡面纪律）：packages/zdsh/factory-bundle 纯清单/装配包无 src/index.ts
  * 出口不再判违例（P-8 Option 2 同法，政策源 DESIGN:261/主线 2026-09-15 裁定），
- * 而非 factory 成员的 entry 判违例语义原样保留（负对照：豁免面扩张必红）。
+ * 豁免面之外成员的 entry 判违例语义原样保留（负对照：豁免面扩张必红）。
  */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -35,10 +35,10 @@ function manifestOnlyPackage(root: string, group: string, name: string, pkg: str
 }
 
 describe('collectConfigCatalog factory/ negative exemption (F-V1-1)', () => {
-  it('exempts a packages/factory/* manifest-only package: no entry violation, not catalogued', () => {
+  it('exempts the packages/zdsh/factory-bundle manifest-only package: no entry violation, not catalogued', () => {
     const root = fixture()
     // zdsh-factory-bundle 同形：纯清单/装配包，无 src/index.ts 构建出口。
-    manifestOnlyPackage(root, 'factory', 'fake-bundle', '@fixtures/fake-factory-bundle')
+    manifestOnlyPackage(root, 'zdsh', 'factory-bundle', '@fixtures/fake-factory-bundle')
     expect(() => collectConfigCatalog(root)).not.toThrow()
     expect(collectConfigCatalog(root).map(entry => entry.pkg)).not.toContain('@fixtures/fake-factory-bundle')
   })
@@ -53,7 +53,7 @@ describe('collectConfigCatalog factory/ negative exemption (F-V1-1)', () => {
 
   it('reports only the non-factory violation when both shapes coexist', () => {
     const root = fixture()
-    manifestOnlyPackage(root, 'factory', 'fake-bundle', '@fixtures/fake-factory-bundle')
+    manifestOnlyPackage(root, 'zdsh', 'factory-bundle', '@fixtures/fake-factory-bundle')
     manifestOnlyPackage(root, 'host', 'other-pkg', '@fixtures/other-pkg')
     expect(() => collectConfigCatalog(root)).toThrow(/1 violation/)
     expect(() => collectConfigCatalog(root)).toThrow(/@fixtures\/other-pkg/)

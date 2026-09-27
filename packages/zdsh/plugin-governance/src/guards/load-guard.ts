@@ -320,7 +320,7 @@ const CORE_SCOPE = '@deepseek-ai'
 const CORE_SCOPE_STORE_PREFIX = `${CORE_SCOPE}+`
 
 /** 出厂 bundle 区（W2/W3 整树入库事实布局；zdsh-factory/seed.json source 字段同根）。 */
-const FACTORY_BUNDLE_NM = join('packages', 'factory', 'zdsh-factory-bundle', 'node_modules')
+const FACTORY_BUNDLE_NM = join('packages', 'zdsh', 'factory-bundle', 'node_modules')
 
 /** DSH profiles 形（发布安装运行时）：官方层=profiles/node_modules，profile 层=profiles/<name>/node_modules。 */
 const PROFILES_DIR_NAME = 'profiles'
