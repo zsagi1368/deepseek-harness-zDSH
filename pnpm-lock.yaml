@@ -1302,9 +1302,6 @@ importers:
       '@deepseek-ai/cordis-plugin-timer':
         specifier: workspace:^
         version: link:../../../vendor/timer
-      '@deepseek-ai/dsh-compat':
-        specifier: workspace:^
-        version: link:../../zdsh/dsh-compat
       '@deepseek-ai/dsh-home-paths':
         specifier: workspace:^
         version: link:../../util/home-paths
