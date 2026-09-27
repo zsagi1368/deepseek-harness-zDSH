@@ -34,7 +34,7 @@ function manifestOnlyPackage(root: string, group: string, name: string, pkg: str
   write(root, join('packages', group, name, 'package.json'), JSON.stringify({ name: pkg, version: '1.0.0' }))
 }
 
-describe('collectConfigCatalog factory/ negative exemption (F-V1-1)', () => {
+describe('collectConfigCatalog packages/zdsh/factory-bundle negative exemption (F-V1-1)', () => {
   it('exempts the packages/zdsh/factory-bundle manifest-only package: no entry violation, not catalogued', () => {
     const root = fixture()
     // zdsh-factory-bundle 同形：纯清单/装配包，无 src/index.ts 构建出口。
@@ -51,7 +51,7 @@ describe('collectConfigCatalog factory/ negative exemption (F-V1-1)', () => {
     expect(() => collectConfigCatalog(root)).toThrow(expected)
   })
 
-  it('reports only the non-factory violation when both shapes coexist', () => {
+  it('reports only the violation outside packages/zdsh/factory-bundle when both shapes coexist', () => {
     const root = fixture()
     manifestOnlyPackage(root, 'zdsh', 'factory-bundle', '@fixtures/fake-factory-bundle')
     manifestOnlyPackage(root, 'host', 'other-pkg', '@fixtures/other-pkg')
