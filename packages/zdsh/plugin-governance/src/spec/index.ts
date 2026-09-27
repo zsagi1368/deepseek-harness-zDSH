@@ -562,9 +562,12 @@ export interface PluginRegistry {
 /**
  * 规范化插件 ID
  *
- * 支持三种格式：
+ * 支持四种格式：
  * - namespace/name（标准格式）
  * - dsh-xxx（旧格式）
+ * - zdsh-xxx（zDSH 装件命名世代，TC-O3 workbench 先例；与 dsh- 同折叠入
+ *   core/ 空间——id 空间按名折叠是既有语义〔dsh-filehub ≡ core/filehub〕，
+ *   出厂件的信任来自 seed/pin 链而非包名，非出厂渠道恒 CONFIRM_REQUIRED）
  * - @scope/name（npm 格式）
  * @param id - 原始插件 ID。
  * @returns 规范化后的插件 ID。
@@ -578,6 +581,13 @@ export function normalizePluginId(id: string): string {
   // 格式 2: dsh-xxx → core/xxx
   if (id.startsWith('dsh-')) {
     return `core/${id.slice(4)}`
+  }
+
+  // 格式 2b: zdsh-xxx → core/xxx（TC-O3：真源包名 zdsh-workbench 的准入
+  // 身份面；manifestFromLocalSource 以本函数派生治理 id，zdsh- 世代命名
+  // 不识别即 request-invalid——O3-S2 设计遗漏等量处理）
+  if (id.startsWith('zdsh-')) {
+    return `core/${id.slice(5)}`
   }
 
   // 格式 3: namespace/name（已经是标准格式）

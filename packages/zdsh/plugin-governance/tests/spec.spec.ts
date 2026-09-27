@@ -19,8 +19,12 @@ describe('PluginSpec', () => {
       expect(normalizePluginId('my-org/my-plugin')).toBe('my-org/my-plugin')
     })
 
-    it('should normalize dsh-xxx format', () => {
+    it('should normalize dsh-xxx / zdsh-xxx format', () => {
       expect(normalizePluginId('dsh-tools')).toBe('core/tools')
+      // TC-O3（O3-S2 设计遗漏等量处理）：zdsh- 命名世代同折叠入 core/ 空间
+      // （manifestFromLocalSource 以本函数派生准入身份；zdsh-workbench 先例）。
+      expect(normalizePluginId('zdsh-tools')).toBe('core/tools')
+      expect(normalizePluginId('zdsh-workbench')).toBe('core/workbench')
     })
 
     it('should normalize @scope/name format', () => {

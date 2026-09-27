@@ -28,7 +28,8 @@
  *    a port: the real `WebServer.[Service.init]` calls `server.listen`, which
  *    would drag an HTTP stack into the unit (DESIGN §10.6-3 downgrade, reason
  *    registered in the RA-1 receipt). It mirrors the real `register(route)`
- *    contract (exact/prefix tables, duplicate rejection, disposer) and adds
+ *    and — since TC-O3 — `registerUpgrade(route)` contracts (exact/prefix
+ *    tables + the upgrade table, duplicate rejection, disposers) and adds
  *    the runtime validation the real class leaves to its TypeScript types.
  *  - `web`            → REAL in-tree `WebRuntime` (TC-B4-W3, the eighth
  *    service): isolation-safe — no `[Service.init]` hook, constructor only
@@ -75,12 +76,20 @@ export interface CapturedRoute {
   readonly handler: (req: unknown, res: unknown) => unknown
 }
 
+/** One HTTP-upgrade route as recorded by {@link WebServerRouteCapture}. */
+export interface CapturedUpgradeRoute {
+  readonly path: string
+  readonly handler: (req: unknown, socket: unknown, head: unknown) => unknown
+}
+
 /** Validation + storage for registered routes; the capture table is assertable. */
 export class WebServerRouteCapture extends Service {
   /** Insertion-ordered capture table shared by both kinds. */
   private readonly table: CapturedRoute[] = []
   private readonly exact = new Map<string, CapturedRoute>()
   private readonly prefixes = new Map<string, CapturedRoute>()
+  /** Upgrade-route capture table (TC-O3), keyed by absolute pathname. */
+  private readonly upgrades = new Map<string, CapturedUpgradeRoute>()
 
   constructor(ctx: Context) {
     super(ctx, 'webServer')
@@ -128,6 +137,45 @@ export class WebServerRouteCapture extends Service {
   /** Every live route, in registration order. */
   routes(): readonly CapturedRoute[] {
     return [...this.table]
+  }
+
+  /**
+   * Register an exact-path HTTP upgrade route under the real host's contract
+   * (TC-O3; mirrors `@deepseek-ai/dsh-host-webserver` `registerUpgrade` and
+   * its `WebUpgradeRoute` shape): the real class rejects only duplicate paths
+   * at runtime (one socket, one protocol owner) and leaves "absolute pathname,
+   * no trailing slash" + the handler signature to its TypeScript types — this
+   * capture promotes that documented type contract to runtime validation,
+   * exactly like {@link register} does for HTTP routes. An always-accepting
+   * registrar would be the masking stub DESIGN §10.3 warns about.
+   * @returns the disposer removing exactly this registration.
+   */
+  registerUpgrade(route: { path?: unknown; handler?: unknown }): () => void {
+    if (route === null || typeof route !== 'object') {
+      throw new TypeError('webServer capture: upgrade route must be an object { path, handler }')
+    }
+    const { path, handler } = route
+    if (typeof path !== 'string' || path === '' || !path.startsWith('/') || path.endsWith('/')) {
+      throw new TypeError(`webServer capture: upgrade path must be a non-empty absolute pathname without a trailing slash, got ${JSON.stringify(path)}`)
+    }
+    if (typeof handler !== 'function') {
+      throw new TypeError(`webServer capture upgrade "${path}": handler must be a function`)
+    }
+    if (this.upgrades.has(path)) {
+      throw new Error(`webServer capture: duplicate upgrade route "${path}"`)
+    }
+    const captured: CapturedUpgradeRoute = Object.freeze({ path, handler }) as CapturedUpgradeRoute
+    this.upgrades.set(path, captured)
+    return () => {
+      if (this.upgrades.get(path) === captured) {
+        this.upgrades.delete(path)
+      }
+    }
+  }
+
+  /** One live upgrade route by absolute pathname, or undefined. */
+  findUpgrade(path: string): CapturedUpgradeRoute | undefined {
+    return this.upgrades.get(path)
   }
 
   /** One live route by (kind, path), or undefined. */

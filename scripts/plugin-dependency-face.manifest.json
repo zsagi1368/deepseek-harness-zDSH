@@ -1,5 +1,5 @@
 {
-  "$comment": "zDSH dependency-face lint configuration (A2, upgrade process v2.0 section 6). Contract face = the published host surface plugin repositories may import (bare package specifiers and their declared export subpaths such as /client). Anything under the host org outside the contract face is a violation: deep-path reaches into src/internal, build-output (dist, lib) segments, or direct source files; internal-face imports of host wiring packages; and non-contract-face imports of unpublished or non-plugin-facing host packages. defaultTargets = the five true-source repositories carrying the seven factory-seeded artifacts (seed.json entries: webstack-verticals/webstack-bridge/webstack live in WebStack; omnivision in Omnivision; filehub in FileHub; plugin-center in PluginCenter; autopilot in AutoPilot). pluginsRoot accepts a relative path, resolved against the repository root and therefore portable across workstations (the ../zDSH-plugins default assumes the plugins workspace is a sibling of the zDSH-main checkout), an absolute path, or the --plugins-root override. Exemptions are load-bearing records, not silencers: each needs a reason and is reported on every run.",
+  "$comment": "zDSH dependency-face lint configuration (A2, upgrade process v2.0 section 6). Contract face = the published host surface plugin repositories may import (bare package specifiers and their declared export subpaths such as /client). Anything under the host org outside the contract face is a violation: deep-path reaches into src/internal, build-output (dist, lib) segments, or direct source files; internal-face imports of host wiring packages; and non-contract-face imports of unpublished or non-plugin-facing host packages. defaultTargets = the six true-source repositories carrying the eight factory-seeded artifacts (seed.json entries: webstack-verticals/webstack-bridge/webstack live in WebStack; omnivision in Omnivision; filehub in FileHub; plugin-center in PluginCenter; autopilot in AutoPilot; workbench in Workbench). TC-O3 adds @deepseek-ai/dsh-host-webserver to the contract face: the published host route-contract surface, consumed type-only by workbench. pluginsRoot accepts a relative path, resolved against the repository root and therefore portable across workstations (the ../zDSH-plugins default assumes the plugins workspace is a sibling of the zDSH-main checkout), an absolute path, or the --plugins-root override. Exemptions are load-bearing records, not silencers: each needs a reason and is reported on every run.",
   "hostOrgPrefix": "@deepseek-ai/",
   "pluginsRoot": "../zDSH-plugins",
   "defaultTargets": [
@@ -7,7 +7,8 @@
     { "name": "Omnivision", "dir": "Omnivision" },
     { "name": "FileHub", "dir": "FileHub" },
     { "name": "PluginCenter", "dir": "PluginCenter" },
-    { "name": "AutoPilot", "dir": "AutoPilot" }
+    { "name": "AutoPilot", "dir": "AutoPilot" },
+    { "name": "Workbench", "dir": "Workbench" }
   ],
   "contractFace": [
     "@deepseek-ai/cordis",
@@ -23,6 +24,7 @@
     "@deepseek-ai/dsh-client-ui-settings",
     "@deepseek-ai/dsh-client-ui-slots",
     "@deepseek-ai/dsh-credentials",
+    "@deepseek-ai/dsh-host-webserver",
     "@deepseek-ai/dsh-invariants",
     "@deepseek-ai/dsh-llm",
     "@deepseek-ai/dsh-session",

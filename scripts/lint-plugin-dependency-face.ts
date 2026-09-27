@@ -2,7 +2,7 @@
  * Plugin dependency-face lint (A2, upgrade process v2.0 §6): scans plugin
  * true-source repositories for host imports that leave the contract face —
  * the guard that keeps the ContextManagement lesson (372 host imports / 15
- * deep-path reaches) from recurring in the seven factory-seeded artifacts.
+ * deep-path reaches) from recurring in the eight factory-seeded artifacts.
  *
  * Violation classes (only these fail; contract-face imports are legal):
  * - `deep-path`: a host-org specifier reaching into `/src/`, `/internal/`, or

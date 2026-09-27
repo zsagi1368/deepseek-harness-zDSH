@@ -67,13 +67,33 @@
  * `failed`, or the route leaks past dispose and the remount crashes — and
  * this spec goes red. That red is the defect asserting itself; fix the
  * plugin or the pin, never the assertion.
+ *
+ * ── TC-O3 (the workbench production-posture leg, it count 9→10): since O3 the
+ * production seed carries `core/workbench` enabledAtBoot=true (the user's O-3
+ * ruling「默认安装可停用」), so the new leg runs the row UNOVERRIDDEN (webstack
+ * W3 leg precedent): ACTIVE + ledger mounted + the four-face route family
+ * (api prefix / file media / events SSE / the terminal ws upgrade through the
+ * fixture's new `registerUpgrade` capture face) observed on the registrar,
+ * then the M1 half locking fiber-dispose withdrawal of every face (RA1d
+ * criterion, fourth plugin family — phase-1 wired pty disposeAll / watchers
+ * closeAll / ledger unsubscribe through the effect double-arrow form) and a
+ * clean remount restoring the surface. The leg stubs DSH_BRANCH_HOME to a
+ * scratch dir (the pinned tree's TaskLedger derives its storage root from that
+ * env) and the shared afterEach hook gained `vi.unstubAllEnvs()` for it.
+ * Fixture side (registerUpgrade 扩面理由): the real host webserver owns an
+ * exact-path HTTP-upgrade face (`registerUpgrade` / WebUpgradeRoute); the
+ * artifact's ws route registers through it, so without a capture method the
+ * mount effect would throw and the fiber could never reach ACTIVE. The fixture
+ * stays M2-generic: it mirrors the documented contract (runtime duplicate
+ * rejection + the type contract promoted to runtime validation, the register
+ * precedent) and names no artifact.
  */
 
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context, Service } from '@deepseek-ai/cordis'
 import { SessionId } from '../../../core/session/src/types.ts'
 import PluginGovernanceGateway from '../../plugin-governance-host/src/index.ts'
@@ -90,6 +110,10 @@ afterEach(async () => {
   for (const root of storageRoots.splice(0)) rmSync(root, { recursive: true, force: true })
   for (const dir of scratchDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
   for (const file of repoSeedFiles.splice(0)) rmSync(file, { force: true })
+  // TC-O3 (扩展既有钩子，非新建)：workbench 腿以 vi.stubEnv 隔离 TaskLedger 存储根
+  // （DSH_BRANCH_HOME env 派生，task-ledger.ts defaultFilePath），此处统一还原，防
+  // 泄漏进后续腿或写真实 HOME。置于 fiber dispose 之后＝teardown 期 env 读仍见 scratch。
+  vi.unstubAllEnvs()
 })
 
 // The repository's frozen factory seed is the single source of truth for the
@@ -399,6 +423,24 @@ describe('RA-1 sandbox mount proof (fixture + real loader.create; fixture is the
     expect(() => webServer.register(good)).toThrow()
     again()
 
+    // registerUpgrade 捕获面（TC-O3 扩既有 it，循上方 register 五连形制）：坏 path
+    // 必拒（相对形 + 尾斜杠形）、非函数 handler 必拒、好输入入表+findUpgrade 可观测、
+    // disposer 撤回、重复 path 拒——镜像真 WebServer.registerUpgrade 文档化契约
+    // （运行时仅重复拒；绝对无尾斜杠/handler 函数签名=WebUpgradeRoute 类型契约在
+    // fixture 面升为运行时校验，register 既有先例同款）。
+    expect(() => webServer.registerUpgrade({ path: 'ra1/relative-ws', handler: () => {} } as never)).toThrow()
+    expect(() => webServer.registerUpgrade({ path: '/ra1/trailing-slash/', handler: () => {} } as never)).toThrow()
+    expect(() => webServer.registerUpgrade({ path: '/ra1/no-handler-ws' } as never)).toThrow()
+    const goodUpgrade = { path: '/ra1/capture-ws', handler: () => {} }
+    const disposeUpgrade = webServer.registerUpgrade(goodUpgrade)
+    expect(webServer.findUpgrade('/ra1/capture-ws')).toBeDefined()
+    disposeUpgrade()
+    expect(webServer.findUpgrade('/ra1/capture-ws'), 'RA-1: upgrade disposer did not withdraw the route').toBeUndefined()
+    // 重复 path 与真 WebServer 同型必拒（一 socket 一协议 owner）。
+    const againUpgrade = webServer.registerUpgrade(goodUpgrade)
+    expect(() => webServer.registerUpgrade(goodUpgrade)).toThrow()
+    againUpgrade()
+
     // storage：KV 写→读回同一 unit（正），跨 reopen 持久（出厂分支实证）。
     const kv = fx.storage!.backend.get('json')!.kv!
     const unit = await kv.open({ name: 'ra1_probe', version: 1, tables: ['data'], hasGlobal: false } as never)
@@ -640,6 +682,74 @@ describe('RA-1 sandbox mount proof (fixture + real loader.create; fixture is the
     expect(fx.tools!.get('web_backend_status'), 'M1 W3: tools not restored after remount').toBeDefined()
     expect(web.searchProviders.has('webstack'), 'M1 W3: search provider not restored after remount').toBe(true)
     expect(web.fetchProviders.has('webstack'), 'M1 W3: fetch provider not restored after remount').toBe(true)
+  })
+
+  // ── TC-O3: workbench production-posture boot leg (it 计数 9→10). The
+  // production seed itself carries enabledAtBoot=true since O3 (the user's O-3
+  // ruling「默认安装可停用」, seeded only after the phase-1 source
+  // modernization went green), so this leg runs the row UNOVERRIDDEN — scratch
+  // posture and production posture are the same (webstack W3 leg precedent).
+  // `inject=['webServer']` is satisfied by the fixture's capture registrar;
+  // without the fixture's TC-O3 `registerUpgrade` capture face the terminal ws
+  // route effect would throw and the fiber could never reach ACTIVE.
+  //
+  // Environment isolation (R2 预置): the pinned tree's TaskLedger derives its
+  // storage root from DSH_BRANCH_HOME (task-ledger.ts defaultFilePath:
+  // DSH_BRANCH_HOME → <DSH_HOME>/zdsh → legacy ~/.zdsh-workbench) — stub it to
+  // a scratch dir BEFORE the boot so ledger init can never touch the real
+  // HOME; the shared afterEach hook restores envs (vi.unstubAllEnvs).
+  //
+  // RA1d criterion, fourth plugin family: phase-1 wired the domain teardown
+  // (ptyRegistry.disposeAll + watchers.closeAll + task-ledger unsubscribe)
+  // through ctx.effect's double-arrow form, and the four route faces
+  // (api prefix / file media / events SSE / terminal ws upgrade) were already
+  // effect-wired at the source. The M1 half below locks exactly that claim:
+  // dispose must withdraw the fiber AND every route face; remount must
+  // restore the full surface — a leak re-opens the RA1d class for this family.
+  it('workbench reaches ACTIVE at the production posture with the route family + upgrade capture; dispose withdraws the fiber-scoped surface (O3)', async () => {
+    vi.stubEnv('DSH_BRANCH_HOME', scratch())
+    const { ctx, gateway, fx } = await bootWithServices(writeMountSeed([
+      mountRow('core/workbench'),
+    ]))
+    await gateway.settlePreinstall()
+    const wbChannel = 'factory/core/workbench'
+    const report = gateway.preinstallReport()
+    expect(report.entries['core/workbench']?.status, 'RA-1 O3: workbench admission regressed').toBe('installed')
+    expect(report.entries['core/workbench']?.mount?.status, 'RA-1 O3: workbench must mount under the fixture (inject=[webServer] satisfied)').toBe('mounted')
+    expect(entryState(ctx, wbChannel), 'RA-1 O3: workbench entry not ACTIVE under the fixture').toBe(2)
+
+    // Four-face route family on the capture registrar (route literals captured
+    // from the pinned tree: apply's register×3 + registerUpgrade×1 over
+    // WORKBENCH_ROUTE_PREFIX='/workbench'; M2: artifact literals live ONLY here).
+    expect(fx.webServer!.find('prefix', '/workbench/api/'), 'RA-1 O3: workbench api prefix route absent after mount').toBeDefined()
+    expect(fx.webServer!.find('exact', '/workbench/file'), 'RA-1 O3: workbench file media route absent after mount').toBeDefined()
+    expect(fx.webServer!.find('exact', '/workbench/events'), 'RA-1 O3: workbench events SSE route absent after mount').toBeDefined()
+    expect(fx.webServer!.findUpgrade('/workbench/ws/terminal'), 'RA-1 O3: workbench terminal ws upgrade route absent after mount (registerUpgrade capture face)').toBeDefined()
+
+    // M1 half (RA1d criterion, workbench family): fiber dispose withdraws the
+    // entry and every route face; remount restores the full surface.
+    const loader = (ctx as unknown as {
+      loader: {
+        resolve: (id: string) => { fiber?: { state?: number; dispose?: () => Promise<unknown> | unknown } }
+        create: (o: { name: string; id?: string; disabled?: boolean | null }) => Promise<unknown>
+      }
+    }).loader
+    const stateOrGone = (): number | undefined => {
+      try { return entryState(ctx, wbChannel) } catch { return undefined }
+    }
+    await loader.resolve(wbChannel).fiber?.dispose?.()
+    expect(stateOrGone(), 'M1 O3: workbench still ACTIVE after dispose').not.toBe(2)
+    expect(fx.webServer!.find('prefix', '/workbench/api/'), 'M1 O3 RA1d: dispose leaked the api prefix route').toBeUndefined()
+    expect(fx.webServer!.find('exact', '/workbench/file'), 'M1 O3 RA1d: dispose leaked the file media route').toBeUndefined()
+    expect(fx.webServer!.find('exact', '/workbench/events'), 'M1 O3 RA1d: dispose leaked the events SSE route').toBeUndefined()
+    expect(fx.webServer!.findUpgrade('/workbench/ws/terminal'), 'M1 O3 RA1d: dispose leaked the terminal ws upgrade route').toBeUndefined()
+
+    await loader.create({ name: firstFactoryHref(mountRow('core/workbench')), id: wbChannel, disabled: false })
+    expect(entryState(ctx, wbChannel), 'M1 O3: workbench did not come back after remount').toBe(2)
+    expect(fx.webServer!.find('prefix', '/workbench/api/'), 'M1 O3: api prefix route not restored after remount').toBeDefined()
+    expect(fx.webServer!.find('exact', '/workbench/file'), 'M1 O3: file media route not restored after remount').toBeDefined()
+    expect(fx.webServer!.find('exact', '/workbench/events'), 'M1 O3: events SSE route not restored after remount').toBeDefined()
+    expect(fx.webServer!.findUpgrade('/workbench/ws/terminal'), 'M1 O3: terminal ws upgrade route not restored after remount').toBeDefined()
   })
   it('M1 filehub: dispose withdraws the full surface, remount restores it cleanly (RP2, aab73d7)', async () => {
     const { ctx, gateway, fx } = await bootWithServices(writeMountSeed([

@@ -117,6 +117,7 @@ External packages installed for runtime use or distributed inside the prebuilt b
 | [`use-sync-external-store`](https://github.com/facebook/react) | MIT |
 | [`ws`](https://github.com/websockets/ws) | MIT |
 | [`yaml`](https://github.com/eemeli/yaml) | ISC |
+| [`zdsh-workbench`](https://github.com/zsagi1368/zdsh-workbench) | MIT |
 | [`zod`](https://github.com/colinhacks/zod) | MIT |
 | [`zustand`](https://github.com/pmndrs/zustand) | MIT |
 

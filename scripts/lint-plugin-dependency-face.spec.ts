@@ -200,9 +200,9 @@ describe('loadDependencyFaceConfig', () => {
     expect(config.pluginsRoot).toBe('../zDSH-plugins')
     expect(config.contractFace).toContain('@deepseek-ai/cordis')
     expect(config.internalFace).toContain('@deepseek-ai/dsh-compat')
-    // The five true-source repos carry the seven seeded artifacts.
+    // The six true-source repos carry the eight seeded artifacts.
     expect(config.defaultTargets.map(target => target.name)).toEqual([
-      'WebStack', 'Omnivision', 'FileHub', 'PluginCenter', 'AutoPilot',
+      'WebStack', 'Omnivision', 'FileHub', 'PluginCenter', 'AutoPilot', 'Workbench',
     ])
     expect(config.exemptions.map(entry => entry.repo)).toEqual(['ContextManagement'])
   })

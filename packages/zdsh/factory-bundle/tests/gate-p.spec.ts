@@ -80,6 +80,24 @@
  *    real six-row spectrum is 2 mounted / 4 skipped (verticals + filehub +
  *    plugin-center + autopilot). The matrix is seed-driven and would fail any
  *    fabricated 3rd mount, so it asserts the truth.
+ *  - TC-O3 (this file's current extension): the seed grew to EIGHT rows with
+ *    `core/workbench`, enabledAtBoot=true per the user's O-3 ruling「默认安装
+ *    可停用」(the disable face = governance disable/uninstall + tombstone, same
+ *    as the seven siblings) — seeded only AFTER the phase-1 source
+ *    modernization (capabilities + dsh.client + factory-form client bundle +
+ *    RA1d-family teardown wiring) went green and was pushed (W3 discipline:
+ *    never seed a boot-enabled row ahead of its source fixes). Its P4 probe is
+ *    authored from the REAL pinned-tree export shape at pin 9467c65
+ *    (single-package repo, `lib/index.js` node half; phase-1 exit dump
+ *    ['apply','inject'] captured, never invented): apply function + inject
+ *    exactly ['webServer'] + no default (the filehub camp, interlocked with
+ *    plugin-center's default) + no canHandle (not a channel artifact). The
+ *    production-boot P5 test gains the sixth mounted row (6 mounted / 2
+ *    skipped); its bare-harness probe is the honest service-gated PENDING —
+ *    inject=['webServer'] only exists on the real host faces and the ra1
+ *    fixture (filehub/webstack precedent) — and the ACTIVE + route-family
+ *    positive proof lives in the ra1 spec's workbench leg, whose fixture
+ *    gained the registerUpgrade capture face for the ws upgrade route.
  */
 
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -313,6 +331,20 @@ const SHAPE_PROBES: Record<string, ShapeProbe> = {
     const bad = config['~standard'].validate({ layer: 'definitely-not-a-tier' })
     expect(Array.isArray(bad.issues), 'Gate-P P4: webstack Config accepted a bogus layer (always-valid stub)').toBe(true)
     expect(bad.value, 'Gate-P P4: webstack Config returned a coerced value for invalid input (always-valid stub)').toBeUndefined()
+  },
+  // TC-O3：workbench 服务出口 = 真源 9467c65 的 node 半 barrel（lib/index.js，单包仓无子路径）。
+  // 形制取实不造（阶段 1 出口 dump 留证 ['apply','inject']）：apply 函数（async，含
+  // guardWorkbench 短路语义）+ inject 恰 ['webServer']（src/index.ts:25 硬依赖，逐位
+  // 相符封「多声明/少声明接缝」两侧逃逸）+ 无 default（归 filehub/autopilot「无
+  // default」阵营，与 plugin-center「有 default」互锁）+ 无 canHandle 面（非通道件）。
+  // 不启动 apply()：零网络/零计时器纪律与 bridge/filehub/PC/webstack 同源
+  // （apply 会注册路由族+起 TaskLedger init——P4 只锁导出契约形状，挂载兑现归 P5/ra1）。
+  'core/workbench': (mod) => {
+    expect(typeof mod.apply, 'Gate-P P4: workbench factory exit exports no cordis apply()').toBe('function')
+    expect(Array.isArray(mod.inject), 'Gate-P P4: workbench inject is not an array').toBe(true)
+    expect(mod.inject, 'Gate-P P4: workbench hard deps drifted from the pinned manifest export face').toEqual(['webServer'])
+    expect('default' in mod, 'Gate-P P4: workbench exports a default (the pinned tree has none)').toBe(false)
+    expect(mod.canHandle, 'Gate-P P4: workbench is not a channel artifact; canHandle must be absent').toBeUndefined()
   },
 }
 
@@ -662,6 +694,14 @@ const MOUNT_PROBES: Record<string, MountProbe> = {
   'core/webstack': (ctx) => {
     expect(entryState(ctx, 'factory/core/webstack'), 'Gate-P P5: webstack fiber must be service-gated PENDING in the bare harness, not FAILED/ACTIVE — a FAILED state means the artifact broke').toBe(0)
   },
+  // TC-O3：workbench 唯一硬 inject 是 `webServer`，只存在于真实宿主面（web-app/
+  // headless CLI）与 ra1 host-services fixture——裸 harness 诚实形=service-gated
+  // PENDING（断 ACTIVE 即不诚实），ACTIVE+路由族（含 registerUpgrade 的
+  // /workbench/ws/terminal 升级面）正证在 ra1 spec workbench 腿（filehub/webstack
+  // 同款先例）。PENDING——never FAILED——是工件完整性锁：FAILED=工件本体在装载期破损。
+  'core/workbench': (ctx) => {
+    expect(entryState(ctx, 'factory/core/workbench'), 'Gate-P P5: workbench fiber must be service-gated PENDING in the bare harness, not FAILED/ACTIVE — a FAILED state means the artifact broke').toBe(0)
+  },
 }
 
 // §9.5-D①: a boot-enabled local: seed row with no P5 mount probe is a module-
@@ -675,17 +715,19 @@ for (const row of FULL_SEED) {
 }
 
 describe('Gate-P P5 — real mount spectrum over the seed rows + fail-open + lifecycle', () => {
-  it('production boot: bridge + omnivision + filehub + plugin-center + webstack mount LOADED; verticals + autopilot stay skipped (FIX9 / TC-B3-MM1b/MM2 → TC-B4-RA-2 → TC-B4-W3)', async () => {
-    // The shipped seed posture after TC-B4-W3 (verticals false,
-    // omnivision + bridge + filehub + plugin-center + webstack true), mounted
-    // through the real channel: the five boot-enabled rows load and their
+  it('production boot: bridge + omnivision + filehub + plugin-center + webstack + workbench mount LOADED; verticals + autopilot stay skipped (FIX9 / TC-B3-MM1b/MM2 → TC-B4-RA-2 → TC-B4-W3 → TC-O3)', async () => {
+    // The shipped seed posture after TC-O3 (verticals + autopilot false,
+    // omnivision + bridge + filehub + plugin-center + webstack + workbench
+    // true — workbench boot-enabled per the user's O-3 ruling「默认安装可停用」,
+    // seeded only after its phase-1 source modernization went green), mounted
+    // through the real channel: the six boot-enabled rows load and their
     // probes pass; the verticals + autopilot rows are tried-by-nothing and
     // record skipped.
     const { ctx, gateway } = await bootRealLoader(SEED_PATH)
     await gateway.settlePreinstall()
 
     const report = gateway.preinstallReport()
-    for (const id of ['core/webstack-bridge', 'core/omnivision', 'core/filehub', 'core/plugin-center', 'core/webstack']) {
+    for (const id of ['core/webstack-bridge', 'core/omnivision', 'core/filehub', 'core/plugin-center', 'core/webstack', 'core/workbench']) {
       expect(report.entries[id]?.status, `Gate-P P5: ${id} production row must be installed`).toBe('installed')
       expect(report.entries[id]?.mount?.status, `Gate-P P5: ${id} must mount in the W3 production posture`).toBe('mounted')
     }
@@ -702,8 +744,8 @@ describe('Gate-P P5 — real mount spectrum over the seed rows + fail-open + lif
     expect(report.entries['core/autopilot']?.mount?.status, 'Gate-P P5: core/autopilot must stay held out of the mount spectrum').toBe('skipped')
     expect(report.entries['core/autopilot']?.mount?.reason, 'Gate-P P5: core/autopilot skipped-mount reason must cite the seed posture').toMatch(/enabledAtBoot=false/)
 
-    // Run the authored capability probes for the five boot-enabled rows.
-    for (const id of ['core/webstack-bridge', 'core/omnivision', 'core/filehub', 'core/plugin-center', 'core/webstack']) {
+    // Run the authored capability probes for the six boot-enabled rows.
+    for (const id of ['core/webstack-bridge', 'core/omnivision', 'core/filehub', 'core/plugin-center', 'core/webstack', 'core/workbench']) {
       await MOUNT_PROBES[id]!(ctx, FULL_SEED.find(row => row.id === id)!)
     }
   })
