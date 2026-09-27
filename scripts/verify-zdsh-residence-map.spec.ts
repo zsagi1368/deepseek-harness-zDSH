@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   checkResidenceMap,
   collectLocalPackageNameIndex,
+  collectZdshDependencies,
   containsTreeDirectory,
   parseCatFileBatchNameIndex,
   parseManifestName,
@@ -277,5 +278,44 @@ describe('collectLocalPackageNameIndex', () => {
       ['@deepseek-ai/fake-piece', 'packages/zdsh/fake-piece/package.json'],
       ['@deepseek-ai/fake-vendor', 'vendor/fake-vendor/package.json'],
     ]))
+  })
+})
+
+describe('collectZdshDependencies', () => {
+  it('collects host-org names from all four dependency sections, deduped and sorted', () => {
+    const root = fixtureRoot()
+    const pkgDir = join(root, 'packages', 'zdsh', 'dsh-compat')
+    mkdirSync(pkgDir, { recursive: true })
+    writeFileSync(join(pkgDir, 'package.json'), JSON.stringify({
+      name: '@deepseek-ai/dsh-compat',
+      dependencies: { '@deepseek-ai/dsh-invariants': 'workspace:^', 'js-yaml': '^4.2.0' },
+      peerDependencies: { '@deepseek-ai/cordis': 'workspace:^' },
+      optionalDependencies: { '@deepseek-ai/dsh-optional': 'workspace:^' },
+      // REVIEW-T5 建议1: dev edges are part of the broken-link scan face too
+      // (the zDSH specs consume host packages through devDependencies).
+      devDependencies: { '@deepseek-ai/dsh-tools': 'workspace:^', '@deepseek-ai/dsh-invariants': 'workspace:^', vitest: '^4.0.0' },
+    }))
+    // The seed entry (packageName null) is skipped; only dsh-compat indexes.
+    const index = collectZdshDependencies(root, TEST_MAP)
+    expect([...index.keys()]).toEqual(['@deepseek-ai/dsh-compat'])
+    expect(index.get('@deepseek-ai/dsh-compat')).toEqual([
+      '@deepseek-ai/cordis',
+      '@deepseek-ai/dsh-invariants',
+      '@deepseek-ai/dsh-optional',
+      '@deepseek-ai/dsh-tools',
+    ])
+  })
+
+  it('skips malformed sections without throwing and collects nothing from them', () => {
+    const root = fixtureRoot()
+    const pkgDir = join(root, 'packages', 'zdsh', 'dsh-compat')
+    mkdirSync(pkgDir, { recursive: true })
+    writeFileSync(join(pkgDir, 'package.json'), JSON.stringify({
+      name: '@deepseek-ai/dsh-compat',
+      dependencies: 'not-an-object',
+      devDependencies: { '@deepseek-ai/dsh-tools': 'workspace:^' },
+    }))
+    const index = collectZdshDependencies(root, TEST_MAP)
+    expect(index.get('@deepseek-ai/dsh-compat')).toEqual(['@deepseek-ai/dsh-tools'])
   })
 })

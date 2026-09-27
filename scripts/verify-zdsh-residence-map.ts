@@ -255,7 +255,13 @@ export function collectLocalPackageNameIndex(root: string): ReadonlyMap<string, 
   return names
 }
 
-/** Collect host-org dependency names declared by the mapped zDSH packages. */
+/**
+ * Collect host-org dependency names declared by the mapped zDSH packages.
+ * devDependencies are scanned too (REVIEW-T5 建议1): the zDSH specs consume
+ * host packages through dev edges (for example plugin-project-root's specs
+ * import @deepseek-ai/dsh-tools), and a dev-only edge dangles exactly like a
+ * runtime one when upstream deletes the supplying package.
+ */
 export function collectZdshDependencies(
   root: string,
   map: readonly ZdshResidenceEntry[] = ZDSH_RESIDENCE_MAP,
@@ -267,7 +273,7 @@ export function collectZdshDependencies(
     const manifest: unknown = JSON.parse(manifestText)
     if (typeof manifest !== 'object' || manifest === null) continue
     const declared = new Set<string>()
-    for (const section of ['dependencies', 'peerDependencies', 'optionalDependencies'] as const) {
+    for (const section of ['dependencies', 'peerDependencies', 'optionalDependencies', 'devDependencies'] as const) {
       const entries: unknown = (manifest as Record<string, unknown>)[section]
       if (typeof entries !== 'object' || entries === null) continue
       for (const name of Object.keys(entries as Record<string, unknown>)) {
