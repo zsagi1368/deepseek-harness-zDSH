@@ -70,7 +70,17 @@ describe('cwdHitsProjectRoot', () => {
   it('handles case folding on Windows', () => {
     const root = 'C:\\Users\\Test\\Project'
     const cwd = 'c:\\users\\test\\project\\src'
-    expect(cwdHitsProjectRoot(cwd, root)).toBe(true)
+    if (process.platform === 'win32') {
+      // win32 filesystems are case-insensitive: keyOf folds both sides to
+      // lowercase, so the mixed-case cwd still prefix-matches the root.
+      expect(cwdHitsProjectRoot(cwd, root)).toBe(true)
+    } else {
+      // posix filesystems are case-sensitive and keyOf deliberately does NOT
+      // fold case there: both drive-letter literals resolve (cwd-relative) to
+      // distinct names that differ from the first character, so no match.
+      // Asserting the denial keeps the case-sensitivity contract covered.
+      expect(cwdHitsProjectRoot(cwd, root)).toBe(false)
+    }
   })
 
   it('handles prefix collision: /work vs /workshop', () => {

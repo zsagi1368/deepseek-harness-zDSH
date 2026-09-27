@@ -246,7 +246,15 @@ describe('ProcessSandbox environment filtering', () => {
       expect(filtered['NORMAL_VAR']).toBeUndefined()
       // 运行必需项保留，注入标记最后落位。
       expect(filtered['PATH']).toBeDefined()
-      expect(filtered['TEMP'] ?? filtered['TMP']).toBeDefined()
+      if (process.platform === 'win32') {
+        // win32 宿主必然提供系统临时目录名（TEMP/TMP 均在 runtime-required 名单内）。
+        expect(filtered['TEMP'] ?? filtered['TMP']).toBeDefined()
+      } else {
+        // posix 宿主不存在 TEMP/TMP（win32 专属名，派生名单按名复制、宿主没有即无产物，
+        // 属正确行为）；posix 侧的 runtime-required 宿主保证项是 HOME（同 PATH 一样由
+        // 运行环境必然提供），断言其穿透派生。
+        expect(filtered['HOME']).toBeDefined()
+      }
       expect(filtered['NODE_ENV']).toBe('production')
       expect(filtered['DSH_SANDBOX']).toBe('true')
     })

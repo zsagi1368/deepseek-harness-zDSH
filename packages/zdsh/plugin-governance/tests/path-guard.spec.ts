@@ -183,7 +183,18 @@ describe('checkPathAllowed component-prefix regression (S-43 B-05)', () => {
     mkdirSync(base, { recursive: true })
     const config = fsConfig([base])
     const winStyle = `${base}\\sub\\file.txt`.replace(/\//g, '\\')
-    expect(checkPathAllowed(config, winStyle)).toBe(true)
+    if (process.platform === 'win32') {
+      // On win32 backslashes are separators: winStyle resolves inside `base`
+      // and the whole-segment prefix match must admit it.
+      expect(checkPathAllowed(config, winStyle)).toBe(true)
+    } else {
+      // On posix a backslash is a literal filename character, not a separator:
+      // winStyle is one relative single-segment name that resolves under the
+      // process cwd — outside the allow-listed root — so the gate must fail
+      // closed. Asserting the platform-correct denial keeps this regression
+      // case meaningful (separator semantics are per-platform) on both sides.
+      expect(checkPathAllowed(config, winStyle)).toBe(false)
+    }
   })
 
   it('denies everything on an empty allow list (fail closed)', () => {
