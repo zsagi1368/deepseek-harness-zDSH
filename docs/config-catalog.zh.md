@@ -403,49 +403,6 @@ export interface Config {
 
 来源：[`packages/client/hmr/src/index.ts:31`](../packages/client/hmr/src/index.ts)
 
-<a id="deepseek-aidsh-client-workbench"></a>
-
-## `@deepseek-ai/dsh-client-workbench`
-
-需要：`webServer`
-
-```ts config-catalog
-/** Deployment options for the host half (cordis plugin row `config`). */
-export interface WorkbenchHostConfig {
-  /**
-   * Additional trusted authorities (`host` or `host:port`) allowed past the
-   * Host fence when DSH serves beyond loopback. Must mirror the deployment's
-   * own trusted-host posture; entries are validated loudly at load time.
-   */
-  trustedHosts?: string[]
-  /** Text read cap per `fs.read`. Clamped hard at 8 MiB. */
-  readLimitBytes?: number
-  /** Request-body byte cap (also bounds writes). */
-  writeBodyLimitBytes?: number
-  /** Directory listing row bound per level. */
-  listLimit?: number
-  /** Search result bound before truncation. */
-  searchLimit?: number
-  /** Watcher batch window in milliseconds. */
-  watchDebounceMs?: number
-  /** Terminals one session may hold open at once. */
-  terminalsPerSession?: number
-  /** How long a disconnected terminal survives awaiting a reconnect (ms). */
-  reconnectGraceMs?: number
-  /**
-   * Workspace clamp: when non-empty, every request-declared `cwd` must lie
-   * inside one of these directories (first match wins per request). Empty
-   * means unrestricted — acceptable only because the trust fence limits the
-   * API to the user's own machine and page origin; deployments that expose
-   * the port beyond loopback SHOULD set this. The branch-integration build
-   * derives it from the live session automatically.
-   */
-  allowedRoots?: string[]
-}
-```
-
-来源：[`packages/client/workbench/src/index.ts:28`](../packages/client/workbench/src/index.ts)
-
 <a id="deepseek-aidsh-code-runtime-worker-thread"></a>
 
 ## `@deepseek-ai/dsh-code-runtime-worker-thread`

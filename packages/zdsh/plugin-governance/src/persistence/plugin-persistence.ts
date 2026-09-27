@@ -99,8 +99,7 @@ export const DSH_BRANCH_HOME_ENV = 'DSH_BRANCH_HOME'
  *
  * 镜像实现方（修改时同步）：plugin-governance/src/invariant.ts、
  * plugin-project-root/src/invariant.ts（经本包导出复用）、
- * packages/client/workbench/src/task-ledger.ts、独立仓 Workbench 与
- * PluginCenter 的同名逻辑。
+ * 独立仓 Workbench（zdsh-workbench，出厂装件）与 PluginCenter 的同名逻辑。
  * @param env - 环境变量来源，默认 `process.env`（注入以便测试）。
  * @returns 绝对存储根目录路径。
  */
