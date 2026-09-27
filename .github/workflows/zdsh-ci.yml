@@ -90,10 +90,11 @@ jobs:
       - name: Host build (tsc -b + tsdown host face)
         run: pnpm run build:lib:host
 
-      - name: Contract-gate specs (packages/zdsh) + A6/A2 script specs
+      - name: Contract-gate specs (packages/zdsh) + A6/A2/catalog script specs
         run: >-
           pnpm exec vitest run
           packages/zdsh
           scripts/verify-zdsh-residence-map.spec.ts
           scripts/lint-plugin-dependency-face.spec.ts
+          scripts/gen-config-catalog.spec.ts
           --testTimeout=60000
