@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-以 git URL + 完整 commit pin 声明每一个 zDSH 首启出厂预装的插件。治理 `SeedPreinstaller` 经既有 `install({ source: 'local:<目录>' })` 通道就地纳管各钉定工件；本包从不搬运、复制或删除工件。唯一消费者是出厂预装通道，最小入口是一行 `dependencies`。出厂集现已钉八件：`dsh-webstack-verticals`（出厂关闭试点）、`dsh-omnivision`（出厂即用件）、`dsh-webstack-bridge`（出厂即用的 webstack 数据面链路件）、`dsh-filehub` 与 `dsh-plugin-center`（两件自 TC-B4-RA-2 起出厂即用：R-A 装载侧 harness 已全套验收其装载——含 RA1c 可选 llm 守卫与 RA1d 处置接线（pin aab73d7）——故 seed 翻为 `enabledAtBoot: true` 开箱可用），另加 `dsh-autopilot`——`enabledAtBoot: false` 属【产品设计默认关】（ADJ-3：整件出厂默认关闭、由用户显式开启），不随 R-A harness 翻转。TC-B4-W3 加灌 `dsh-webstack`——WebStack monorepo 的聚合内核包，经 W-DEC 裁决出厂即用：三工具（`web_backend_status`、`web_batch_search`、`web_history`）首启即注册，coexist 数据面在宿主钉死的双选择器（`deepseek-official`/`http`）之后保持休眠——出厂不改变任何搜索/抓取路由，直至显式接管。TC-O3 加灌 `zdsh-workbench`——zDSH Workbench 停靠工作区（文件/编辑器/终端/Git/任务/浏览），经用户 O-3 裁决（「默认安装可停用」）出厂即用，且在阶段 1 真源现代化（capabilities + dsh.client + factory 形 client bundle + RA1d 族 teardown 接线）全绿推云之后灌入。
+为每一个 zDSH 首启出厂预装的插件声明 git URL + 完整 commit pin；一次 `pnpm install` 即把各工件落入本包的 `node_modules` 闭包，治理 `SeedPreinstaller` 经既有 `local:` 安装通道就地纳管。新增或更新出厂预装插件时使用本包：在 `dependencies` 加一行，并配 `zdsh-factory/seed.json` 对应条目。本包从不搬运、复制或删除工件；每行必须携带 40-hex commit pin 与一条 Gate-P 探针。当前已钉八件，各件的出厂姿态记录于已知限制一节。
 
 ## 目录
 

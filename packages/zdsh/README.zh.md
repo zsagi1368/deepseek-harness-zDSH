@@ -9,7 +9,7 @@ kind: "package-group"
 
 ## 摘要
 
-zdsh 组是 zDSH 自研底座的命名空间：本分叉在官方核心之上新增的每一个件都居于此（守恒指标：自研面 100% 位于 `packages/zdsh/*`）。组内统一四个面。版本自适应探测 shim（`dsh-compat`）是唯一允许动态探测官方核心 API 形状的层；每个 zDSH 功能件都经它对自身注册做门控，而非在部分装载或上游漂移的启动期抛错，每个裁决都记入进程级审计花名册。治理内核（`plugin-governance`：注册表镜像之上的 `LoadGuard`/`RunGuard`/`HealthGuard`）及其宿主服务面（`plugin-governance-host`：网关、远端词汇表与出厂工件的种子预装器）持有第三方扩展流入的宿主面。项目级插件根（`plugin-project-root`）从 `<projectRoot>/.dsh/plugins` 发现插件，对沙箱做宿主钳制，经耐久信任账本守卫，并在启动后作为隔离的 Cordis 层挂载。私有出厂装配束（`factory-bundle`）以 git URL + 完整 commit 钉住每个出厂预装插件，一次 `pnpm install` 即把全部工件落进治理预装执行器的工作区闭包。
+zdsh 组是 zDSH 自研底座的命名空间：本分叉新增的每一个件都位于 `packages/zdsh/*` 之下。`dsh-compat` 是唯一探测官方核心 API 形状的层；功能件经它对注册做门控，而非在漂移的启动期抛错。`plugin-governance` 与 `plugin-governance-host` 持有治理内核与面向第三方扩展的宿主服务面。`plugin-project-root` 发现项目级插件，钳制沙箱，经耐久信任账本守卫，并在启动后作为隔离的 Cordis 层挂载。`factory-bundle` 钉住每个出厂预装插件的 git URL 与完整 commit，一次 `pnpm install` 即把各工件落进工作区闭包。
 
 ## 目录
 

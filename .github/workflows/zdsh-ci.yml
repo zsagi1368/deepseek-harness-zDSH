@@ -74,6 +74,7 @@ jobs:
           pnpm run constraints
           pnpm run verify-tsconfig-paths
           pnpm run verify-config-catalog
+          pnpm run verify-package-readme-summaries
 
       - name: Fetch upstream ref (A6 residence map input)
         run: |
