@@ -8,13 +8,13 @@
   "dependencies": {
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/schemastery": "workspace:~",
-    "dsh-webstack-verticals": "git+https://github.com/zsagi1368/dsh-webstack.git#356580fcb5c99ff0907385377cd7461019827f75",
+    "dsh-webstack-verticals": "git+https://github.com/zsagi1368/dsh-webstack.git#289dab1b17a757bae3f170eb46b772c220471cd8",
     "dsh-omnivision": "git+https://github.com/zsagi1368/dsh-omnivision.git#d2decb2c23d527f660c1a0b97fe637e82939c966",
-    "dsh-webstack-bridge": "git+https://github.com/zsagi1368/dsh-webstack.git#356580fcb5c99ff0907385377cd7461019827f75",
-    "dsh-filehub": "git+https://github.com/zsagi1368/zdsh-filehub.git#aab73d7ca4a3c57351a4810c611957da76838e8b",
+    "dsh-webstack-bridge": "git+https://github.com/zsagi1368/dsh-webstack.git#289dab1b17a757bae3f170eb46b772c220471cd8",
+    "dsh-filehub": "git+https://github.com/zsagi1368/zdsh-filehub.git#b93894cf941566d0bbff6c445fa16bf083b53611",
     "dsh-plugin-center": "git+https://github.com/zsagi1368/zdsh-plugin-center.git#b9e205c7e13c49ed6580d76e79f10304d7c71f40",
-    "dsh-autopilot": "git+https://github.com/zsagi1368/zdsh-autopilot.git#3bc49638bbdc102eccab644065f73e46298fcc61",
-    "dsh-webstack": "git+https://github.com/zsagi1368/dsh-webstack.git#356580fcb5c99ff0907385377cd7461019827f75",
-    "zdsh-workbench": "git+https://github.com/zsagi1368/zdsh-workbench.git#9467c656473d8c178cdb3e0c330f30584a1f8b26"
+    "dsh-autopilot": "git+https://github.com/zsagi1368/zdsh-autopilot.git#c5c1c040f199ab0b6b84092d1853509d915c67c5",
+    "dsh-webstack": "git+https://github.com/zsagi1368/dsh-webstack.git#289dab1b17a757bae3f170eb46b772c220471cd8",
+    "zdsh-workbench": "git+https://github.com/zsagi1368/zdsh-workbench.git#aab54ea646552e35ae790ec907e9a475b55afc94"
   }
 }

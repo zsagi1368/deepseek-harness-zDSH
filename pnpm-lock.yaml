@@ -13904,11 +13904,11 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
       dsh-autopilot:
-        specifier: git+https://github.com/zsagi1368/zdsh-autopilot.git#3bc49638bbdc102eccab644065f73e46298fcc61
-        version: https://codeload.github.com/zsagi1368/zdsh-autopilot/tar.gz/3bc49638bbdc102eccab644065f73e46298fcc61(@deepseek-ai/cordis@vendor+cordis)
+        specifier: git+https://github.com/zsagi1368/zdsh-autopilot.git#c5c1c040f199ab0b6b84092d1853509d915c67c5
+        version: https://codeload.github.com/zsagi1368/zdsh-autopilot/tar.gz/c5c1c040f199ab0b6b84092d1853509d915c67c5(@deepseek-ai/cordis@vendor+cordis)
       dsh-filehub:
-        specifier: git+https://github.com/zsagi1368/zdsh-filehub.git#aab73d7ca4a3c57351a4810c611957da76838e8b
-        version: https://codeload.github.com/zsagi1368/zdsh-filehub/tar.gz/aab73d7ca4a3c57351a4810c611957da76838e8b(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/schemastery@vendor+schemastery)(react@18.3.1)
+        specifier: git+https://github.com/zsagi1368/zdsh-filehub.git#b93894cf941566d0bbff6c445fa16bf083b53611
+        version: https://codeload.github.com/zsagi1368/zdsh-filehub/tar.gz/b93894cf941566d0bbff6c445fa16bf083b53611(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/schemastery@vendor+schemastery)(react@18.3.1)
       dsh-omnivision:
         specifier: git+https://github.com/zsagi1368/dsh-omnivision.git#d2decb2c23d527f660c1a0b97fe637e82939c966
         version: https://codeload.github.com/zsagi1368/dsh-omnivision/tar.gz/d2decb2c23d527f660c1a0b97fe637e82939c966(@deepseek-ai/schemastery@vendor+schemastery)(sharp@0.35.3(@types/node@22.20.0))
@@ -13916,17 +13916,17 @@ importers:
         specifier: git+https://github.com/zsagi1368/zdsh-plugin-center.git#b9e205c7e13c49ed6580d76e79f10304d7c71f40
         version: https://codeload.github.com/zsagi1368/zdsh-plugin-center/tar.gz/b9e205c7e13c49ed6580d76e79f10304d7c71f40(@deepseek-ai/cordis@vendor+cordis)(react@18.3.1)
       dsh-webstack:
-        specifier: git+https://github.com/zsagi1368/dsh-webstack.git#356580fcb5c99ff0907385377cd7461019827f75
-        version: dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/356580fcb5c99ff0907385377cd7461019827f75
+        specifier: git+https://github.com/zsagi1368/dsh-webstack.git#289dab1b17a757bae3f170eb46b772c220471cd8
+        version: dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/289dab1b17a757bae3f170eb46b772c220471cd8
       dsh-webstack-bridge:
-        specifier: git+https://github.com/zsagi1368/dsh-webstack.git#356580fcb5c99ff0907385377cd7461019827f75
-        version: dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/356580fcb5c99ff0907385377cd7461019827f75
+        specifier: git+https://github.com/zsagi1368/dsh-webstack.git#289dab1b17a757bae3f170eb46b772c220471cd8
+        version: dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/289dab1b17a757bae3f170eb46b772c220471cd8
       dsh-webstack-verticals:
-        specifier: git+https://github.com/zsagi1368/dsh-webstack.git#356580fcb5c99ff0907385377cd7461019827f75
-        version: dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/356580fcb5c99ff0907385377cd7461019827f75
+        specifier: git+https://github.com/zsagi1368/dsh-webstack.git#289dab1b17a757bae3f170eb46b772c220471cd8
+        version: dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/289dab1b17a757bae3f170eb46b772c220471cd8
       zdsh-workbench:
-        specifier: git+https://github.com/zsagi1368/zdsh-workbench.git#9467c656473d8c178cdb3e0c330f30584a1f8b26
-        version: https://codeload.github.com/zsagi1368/zdsh-workbench/tar.gz/9467c656473d8c178cdb3e0c330f30584a1f8b26(@deepseek-ai/cordis@vendor+cordis)
+        specifier: git+https://github.com/zsagi1368/zdsh-workbench.git#aab54ea646552e35ae790ec907e9a475b55afc94
+        version: https://codeload.github.com/zsagi1368/zdsh-workbench/tar.gz/aab54ea646552e35ae790ec907e9a475b55afc94(@deepseek-ai/cordis@vendor+cordis)
 
   packages/zdsh/plugin-governance:
     devDependencies:
@@ -18809,8 +18809,8 @@ packages:
     resolution: {integrity: sha512-uBq4egWHTcTt33a72vpSG0z3HnPuIl6NqYcTrKEg2azoEyl2hpW0zqlxysq2pK9HlDIHyHyakeYaYnSAwd8bow==}
     engines: {node: '>=12'}
 
-  dsh-autopilot@https://codeload.github.com/zsagi1368/zdsh-autopilot/tar.gz/3bc49638bbdc102eccab644065f73e46298fcc61:
-    resolution: {gitHosted: true, tarball: https://codeload.github.com/zsagi1368/zdsh-autopilot/tar.gz/3bc49638bbdc102eccab644065f73e46298fcc61}
+  dsh-autopilot@https://codeload.github.com/zsagi1368/zdsh-autopilot/tar.gz/c5c1c040f199ab0b6b84092d1853509d915c67c5:
+    resolution: {gitHosted: true, integrity: sha512-0oznNzgtz0BliPcLtV06EgVDr3W2onvF4AiNEYJ+1vE5Wkoa8dW1Km+0o8lottE4fXU4QuVE054nD2Em/og92A==, tarball: https://codeload.github.com/zsagi1368/zdsh-autopilot/tar.gz/c5c1c040f199ab0b6b84092d1853509d915c67c5}
     version: 0.1.0
     engines: {node: '>=22'}
     peerDependencies:
@@ -18819,8 +18819,8 @@ packages:
       '@deepseek-ai/cordis':
         optional: true
 
-  dsh-filehub@https://codeload.github.com/zsagi1368/zdsh-filehub/tar.gz/aab73d7ca4a3c57351a4810c611957da76838e8b:
-    resolution: {gitHosted: true, tarball: https://codeload.github.com/zsagi1368/zdsh-filehub/tar.gz/aab73d7ca4a3c57351a4810c611957da76838e8b}
+  dsh-filehub@https://codeload.github.com/zsagi1368/zdsh-filehub/tar.gz/b93894cf941566d0bbff6c445fa16bf083b53611:
+    resolution: {gitHosted: true, integrity: sha512-auUB3puch1CB9z6/LeoH4prBfyDIDpTekc85womd6MZkximF1/B0dv4XIy9xUcEcEBatiyG0AIFITamYmsRchQ==, tarball: https://codeload.github.com/zsagi1368/zdsh-filehub/tar.gz/b93894cf941566d0bbff6c445fa16bf083b53611}
     version: 0.1.0
     engines: {node: '>=22'}
     peerDependencies:
@@ -18885,8 +18885,8 @@ packages:
       react:
         optional: true
 
-  dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/356580fcb5c99ff0907385377cd7461019827f75:
-    resolution: {gitHosted: true, tarball: https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/356580fcb5c99ff0907385377cd7461019827f75}
+  dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/289dab1b17a757bae3f170eb46b772c220471cd8:
+    resolution: {gitHosted: true, integrity: sha512-WDlPoDhvnvWgEbW/07ZhT1G01timoATYb1nPoWPelXv1CdqD15uu+adt/0nBo67tDUjfKzuQtpanwqv2BCJatQ==, tarball: https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/289dab1b17a757bae3f170eb46b772c220471cd8}
     version: 0.0.0
     engines: {node: '>=22.19.0'}
 
@@ -19868,6 +19868,9 @@ packages:
 
   jszip@3.10.1:
     resolution: {integrity: sha512-xXDvecyTpGLrqFrvkrUSoxxfJI5AH7U8zxxtVclpsUtMCq4JQ290LY8AW5c7Ggnr/Y/oK+bQMbqK2qmtk3pN4g==}
+
+  jszip@3.10.2:
+    resolution: {integrity: sha512-3l+rb15IOWtUhU0H5MFqES/T6Kh7abYwjosBey/vD6hDt8zoEffkSC5Ws5SGtgVw3gBx2NEbhTeSW1+kWkpyTQ==}
 
   jwa@2.0.1:
     resolution: {integrity: sha512-hRF04fqJIP8Abbkq5NKGN0Bbr3JxlQ+qhZufXVr0DvujKy93ZCbXZMHDL4EOtodSbCWxOqR8MS1tXA5hwqCXDg==}
@@ -22151,8 +22154,8 @@ packages:
     resolution: {integrity: sha512-CzhO+pFNo8ajLM2d2IW/R93ipy99LWjtwblvC1RsoSUMZgyLbYFr221TnSNT7GjGdYui6P459mw9JH/g/zW2ug==}
     engines: {node: '>=18'}
 
-  zdsh-workbench@https://codeload.github.com/zsagi1368/zdsh-workbench/tar.gz/9467c656473d8c178cdb3e0c330f30584a1f8b26:
-    resolution: {gitHosted: true, tarball: https://codeload.github.com/zsagi1368/zdsh-workbench/tar.gz/9467c656473d8c178cdb3e0c330f30584a1f8b26}
+  zdsh-workbench@https://codeload.github.com/zsagi1368/zdsh-workbench/tar.gz/aab54ea646552e35ae790ec907e9a475b55afc94:
+    resolution: {gitHosted: true, integrity: sha512-39lB/e7iDMmfKToZkXhNJrrU0tgDkcSsn8ZTEahhG9bzD+j5tbGybsWEB4aaoFuK5UIopkIh7huCgzrfZvhl2A==, tarball: https://codeload.github.com/zsagi1368/zdsh-workbench/tar.gz/aab54ea646552e35ae790ec907e9a475b55afc94}
     version: 0.1.0-beta.1
     engines: {node: '>=20'}
     peerDependencies:
@@ -26221,11 +26224,11 @@ snapshots:
 
   dotenv@16.6.1: {}
 
-  dsh-autopilot@https://codeload.github.com/zsagi1368/zdsh-autopilot/tar.gz/3bc49638bbdc102eccab644065f73e46298fcc61(@deepseek-ai/cordis@vendor+cordis):
+  dsh-autopilot@https://codeload.github.com/zsagi1368/zdsh-autopilot/tar.gz/c5c1c040f199ab0b6b84092d1853509d915c67c5(@deepseek-ai/cordis@vendor+cordis):
     optionalDependencies:
       '@deepseek-ai/cordis': link:vendor/cordis
 
-  dsh-filehub@https://codeload.github.com/zsagi1368/zdsh-filehub/tar.gz/aab73d7ca4a3c57351a4810c611957da76838e8b(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/schemastery@vendor+schemastery)(react@18.3.1):
+  dsh-filehub@https://codeload.github.com/zsagi1368/zdsh-filehub/tar.gz/b93894cf941566d0bbff6c445fa16bf083b53611(@deepseek-ai/cordis@vendor+cordis)(@deepseek-ai/schemastery@vendor+schemastery)(react@18.3.1):
     dependencies:
       mammoth: 1.13.0
       pdfjs-dist: 4.10.38
@@ -26246,7 +26249,7 @@ snapshots:
       '@deepseek-ai/cordis': link:vendor/cordis
       react: 18.3.1
 
-  dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/356580fcb5c99ff0907385377cd7461019827f75: {}
+  dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/289dab1b17a757bae3f170eb46b772c220471cd8: {}
 
   dts-resolver@3.0.0(oxc-resolver@11.20.0):
     optionalDependencies:
@@ -27444,6 +27447,13 @@ snapshots:
       readable-stream: 2.3.8
       setimmediate: 1.0.5
 
+  jszip@3.10.2:
+    dependencies:
+      lie: 3.3.0
+      pako: 1.0.11
+      readable-stream: 2.3.8
+      setimmediate: 1.0.5
+
   jwa@2.0.1:
     dependencies:
       buffer-equal-constant-time: 1.0.1
@@ -27688,7 +27698,7 @@ snapshots:
       argparse: 1.0.10
       base64-js: 1.5.1
       dingbat-to-unicode: 1.0.2
-      jszip: 3.10.1
+      jszip: 3.10.2
       lop: 0.4.2
       underscore: 1.13.8
       xmlbuilder: 10.1.1
@@ -29999,7 +30009,7 @@ snapshots:
 
   yoctocolors@2.1.2: {}
 
-  zdsh-workbench@https://codeload.github.com/zsagi1368/zdsh-workbench/tar.gz/9467c656473d8c178cdb3e0c330f30584a1f8b26(@deepseek-ai/cordis@vendor+cordis):
+  zdsh-workbench@https://codeload.github.com/zsagi1368/zdsh-workbench/tar.gz/aab54ea646552e35ae790ec907e9a475b55afc94(@deepseek-ai/cordis@vendor+cordis):
     dependencies:
       '@deepseek-ai/cordis': link:vendor/cordis
       node-pty: 1.2.0-beta.15(patch_hash=b40ae545608897914bd25fb009c97eeac478c34e8a910298ddcb01b746534bb0)
