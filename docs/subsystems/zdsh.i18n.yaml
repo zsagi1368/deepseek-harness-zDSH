@@ -1,6 +1,7 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for zdsh.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/subsystems/zdsh.md
-zdsh.md: 921a64862595009131a948282e7771f5ddfcc116
-zdsh.zh.md: 6d7ac9d0128a33c9a34b5c6dd32193020f7d4430
+/zdsh-enhanced-services:
+  en: 2b54781e9c060c65
+  zh: da84bcd3a9ee2009
