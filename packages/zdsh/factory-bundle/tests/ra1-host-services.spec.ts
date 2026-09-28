@@ -205,6 +205,18 @@ function entryState(ctx: Context, channelId: string): number | undefined {
   return (entry.fiber as { state?: number } | undefined)?.state
 }
 
+/**
+ * Settle one entry the spec remounted through a direct `loader.create`
+ * (SYNC-P3): 0.1.7 create resolves on fiber CREATION — the apply seam is
+ * awaited separately, the directory-picker-auto idiom.
+ */
+async function settleEntry(
+  loader: { resolve: (id: string) => { fiber?: { await?: () => Promise<unknown> } } },
+  channelId: string,
+): Promise<void> {
+  await loader.resolve(channelId).fiber?.await?.()
+}
+
 /** Boot the REAL mount harness: Loader + host-services fixture + gateway. */
 async function bootWithServices(
   seedPath: string,
@@ -524,7 +536,7 @@ describe('RA-1 sandbox mount proof (fixture + real loader.create; fixture is the
 
     const loader = (ctx as unknown as {
       loader: {
-        resolve: (id: string) => { fiber?: { state?: number; dispose?: () => Promise<unknown> | unknown } }
+        resolve: (id: string) => { fiber?: { state?: number; dispose?: () => Promise<unknown> | unknown; await?: () => Promise<unknown> } }
         create: (o: { name: string; id?: string; disabled?: boolean | null }) => Promise<unknown>
       }
     }).loader
@@ -538,6 +550,7 @@ describe('RA-1 sandbox mount proof (fixture + real loader.create; fixture is the
 
     // remount through the SAME real loader.create channel → ACTIVE again.
     await loader.create({ name: firstFactoryHref(mountRow('core/plugin-center')), id: pcChannel, disabled: false })
+    await settleEntry(loader, pcChannel)
     expect(entryState(ctx, pcChannel), 'M1: plugin-center did not come back after remount').toBe(2)
   })
 
@@ -581,7 +594,7 @@ describe('RA-1 sandbox mount proof (fixture + real loader.create; fixture is the
 
     const loader = (ctx as unknown as {
       loader: {
-        resolve: (id: string) => { fiber?: { state?: number; dispose?: () => Promise<unknown> | unknown } }
+        resolve: (id: string) => { fiber?: { state?: number; dispose?: () => Promise<unknown> | unknown; await?: () => Promise<unknown> } }
         create: (o: { name: string; id?: string; disabled?: boolean | null }) => Promise<unknown>
       }
     }).loader
@@ -597,6 +610,7 @@ describe('RA-1 sandbox mount proof (fixture + real loader.create; fixture is the
     expect(fx.webServer!.find('exact', '/api/autopilot-bridge'), 'M1 RA1d: dispose leaked the autopilot bridge route').toBeUndefined()
 
     await loader.create({ name: firstFactoryHref(mountRow('core/autopilot')), id: apChannel, disabled: false })
+    await settleEntry(loader, apChannel)
     expect(entryState(ctx, apChannel), 'M1: autopilot did not come back after remount').toBe(2)
     expect(fx.webServer!.find('exact', '/api/autopilot-action'), 'M1: action route not restored after remount').toBeDefined()
     expect(fx.webServer!.find('exact', '/api/autopilot-bridge'), 'M1: bridge route not restored after remount').toBeDefined()
@@ -662,7 +676,7 @@ describe('RA-1 sandbox mount proof (fixture + real loader.create; fixture is the
     // dispose withdraws every facet; remount restores the full surface.
     const loader = (ctx as unknown as {
       loader: {
-        resolve: (id: string) => { fiber?: { state?: number; dispose?: () => Promise<unknown> | unknown } }
+        resolve: (id: string) => { fiber?: { state?: number; dispose?: () => Promise<unknown> | unknown; await?: () => Promise<unknown> } }
         create: (o: { name: string; id?: string; disabled?: boolean | null }) => Promise<unknown>
       }
     }).loader
@@ -678,6 +692,7 @@ describe('RA-1 sandbox mount proof (fixture + real loader.create; fixture is the
     expect(web.fetchProviders.has('webstack'), 'M1 W3: dispose leaked the fetch provider').toBe(false)
 
     await loader.create({ name: firstFactoryHref(mountRow('core/webstack')), id: wsChannel, disabled: false })
+    await settleEntry(loader, wsChannel)
     expect(entryState(ctx, wsChannel), 'M1 W3: webstack did not come back after remount').toBe(2)
     expect(fx.tools!.get('web_backend_status'), 'M1 W3: tools not restored after remount').toBeDefined()
     expect(web.searchProviders.has('webstack'), 'M1 W3: search provider not restored after remount').toBe(true)
@@ -730,7 +745,7 @@ describe('RA-1 sandbox mount proof (fixture + real loader.create; fixture is the
     // entry and every route face; remount restores the full surface.
     const loader = (ctx as unknown as {
       loader: {
-        resolve: (id: string) => { fiber?: { state?: number; dispose?: () => Promise<unknown> | unknown } }
+        resolve: (id: string) => { fiber?: { state?: number; dispose?: () => Promise<unknown> | unknown; await?: () => Promise<unknown> } }
         create: (o: { name: string; id?: string; disabled?: boolean | null }) => Promise<unknown>
       }
     }).loader
@@ -745,6 +760,7 @@ describe('RA-1 sandbox mount proof (fixture + real loader.create; fixture is the
     expect(fx.webServer!.findUpgrade('/workbench/ws/terminal'), 'M1 O3 RA1d: dispose leaked the terminal ws upgrade route').toBeUndefined()
 
     await loader.create({ name: firstFactoryHref(mountRow('core/workbench')), id: wbChannel, disabled: false })
+    await settleEntry(loader, wbChannel)
     expect(entryState(ctx, wbChannel), 'M1 O3: workbench did not come back after remount').toBe(2)
     expect(fx.webServer!.find('prefix', '/workbench/api/'), 'M1 O3: api prefix route not restored after remount').toBeDefined()
     expect(fx.webServer!.find('exact', '/workbench/file'), 'M1 O3: file media route not restored after remount').toBeDefined()
@@ -763,7 +779,7 @@ describe('RA-1 sandbox mount proof (fixture + real loader.create; fixture is the
 
     const loader = (ctx as unknown as {
       loader: {
-        resolve: (id: string) => { fiber?: { state?: number; dispose?: () => Promise<unknown> | unknown } }
+        resolve: (id: string) => { fiber?: { state?: number; dispose?: () => Promise<unknown> | unknown; await?: () => Promise<unknown> } }
         create: (o: { name: string; id?: string; disabled?: boolean | null }) => Promise<unknown>
       }
     }).loader
@@ -786,6 +802,7 @@ describe('RA-1 sandbox mount proof (fixture + real loader.create; fixture is the
     // Clean remount through the SAME real loader.create channel — no
     // duplicate-route rejection, ACTIVE restored, surface back.
     await loader.create({ name: firstFactoryHref(mountRow('core/filehub')), id: fhChannel, disabled: false })
+    await settleEntry(loader, fhChannel)
     expect(entryState(ctx, fhChannel), 'M1 RA1d: filehub did not come back after remount').toBe(2)
     expect(fx.tools!.get('read_document'), 'M1 RA1d: read_document not restored after remount').toBeDefined()
     expect((await fx.systemPrompt!.assemble()).sections.some(s => s.name === 'filehub-document-reading'),

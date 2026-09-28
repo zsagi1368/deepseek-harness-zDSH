@@ -5,10 +5,13 @@
  *
  * Mounting is serial and post-boot: every candidate is created through
  * `ctx.loader.create` (root group) with a `file://` module specifier, each
- * create is try/catch isolated (a failure removes that entry only — the Loader
- * group's create rolls the failed entry out of the store by itself), and the
- * tool set is snapshotted before/after each create so newly registered tools
- * are attributed to the plugin that introduced them.
+ * create is try/catch isolated (a failure removes that entry only — since
+ * 0.1.7 the Loader group no longer rolls a failed entry out of the store by
+ * itself, so THIS layer compensates with `loader.remove`; and since create
+ * no longer rejects on import/apply failure, the settle check rides the
+ * entry fiber seam — SYNC-P3), and the tool set is snapshotted before/after
+ * each create so newly registered tools are attributed to the plugin that
+ * introduced them.
  *
  * Project entries NEVER enter the include patch tree, so a mount failure can
  * never reach the boot-time whole-tree audit (B-07).
@@ -367,15 +370,25 @@ export function createProjectPluginLayer(ctx: Context): ProjectPluginLayer {
         }
         const name = pathToFileURL(candidate.entryFile).href
         const before = toolNames(ctx)
-        let entryId: string
+        // Id taken up front (SYNC-P3): the compensation in the catch below
+        // stays usable even when create itself rejects.
+        const entryId = projectEntryId(candidate.projectRoot, candidate.id)
         try {
-          const options: EntryOptions = {
-            id: projectEntryId(candidate.projectRoot, candidate.id),
-            name,
-            config: {},
-          }
-          entryId = await ctx.loader.create(options)
+          const options: EntryOptions = { id: entryId, name, config: {} }
+          await ctx.loader.create(options)
+          // 0.1.7: create no longer rejects on import/apply failure — capture
+          // at the fiber seam (SYNC-P3, the directory-picker-auto idiom); the
+          // compensation below restores the 0.1.5 net state "a failure
+          // removes that entry only" (header contract, the B-07 tree face).
+          const entry = ctx.loader.resolve(entryId)
+          if (entry.fiber === undefined) throw new Error(`the Loader dropped the import of ${name}`)
+          await entry.fiber.await()
         } catch (cause) {
+          // 0.1.7 removed the Loader's own failed-entry rollback, so this
+          // layer removes the half-mounted residue itself: synchronous
+          // fire-and-forget, never awaited, and a compensation fault must
+          // not mask the original failure.
+          try { ctx.loader.remove(entryId) } catch { /* best-effort compensation */ }
           report.push({
             root: candidate.projectRoot,
             id: candidate.id,

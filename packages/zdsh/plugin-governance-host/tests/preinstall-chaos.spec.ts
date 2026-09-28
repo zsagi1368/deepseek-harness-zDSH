@@ -19,12 +19,12 @@
  *    治理域唯一现成超时 seam〕）。本腿证明面 = 三命题：挂起期间 boot 不阻断
  *    （Service.init fire-and-forget，R-1.1.4 启动半）+ roster/report 读面活 +
  *    前序兄弟在位；释放后 pass 全 settle + 台账逐项 + 兄弟零连坐。
- *    G3-F1 证据链：gateway src/index.ts:343-350 mount = await loader.create →
- *    vendor/loader entry.ts:297 await fiber.await() → vendor/cordis
- *    fiber.ts:704-710 while(inertia) 等的就是 apply 本体；preinstaller.ts
- *    :229-247 pass 单锁串行、台账写在 mutate 返回后 ⇒ 永久挂起 = pass 永挂 +
- *    台账 0 行 + 后序兄弟全不装载（R-1.1.4「其余继续」对永久挂起类有缺口；
- *    对崩/畸形类成立——本文件①③腿即证）。
+ *    G3-F1 证据链（SYNC-P3 轮转）：gateway src/index.ts mount 钩子三段捕获
+ *    await entry.fiber.await() → vendor/cordis fiber.ts:704-710
+ *    while(inertia) 等的就是 apply 本体；preinstaller.ts:236-256 pass 单锁
+ *    串行、台账写在 mutate 返回后 ⇒ 永久挂起 = pass 永挂 + 台账 0 行 +
+ *    后序兄弟全不装载（R-1.1.4「其余继续」对永久挂起类有缺口；对崩/畸形类
+ *    成立——本文件①③腿即证）。
  *  - ③ 畸形 manifest（package.json dsh 段缺损/坏形）：分层判据以 admission
  *    实际行为亲测为准（裁决④，臆测形禁写；本轮亲测纠正了「dsh 全缺=宽容
  *    准入」的初版假设）——真契约三分：

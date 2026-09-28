@@ -204,8 +204,10 @@ export type PreinstallStatus = 'installed' | 'skipped' | 'failed'
 /**
  * Outcome of the generic mount channel for one admitted seed entry
  * (DESIGN-intake-tech.md §9.4, fix8): `mounted` = every factory exit the
- * admitted artifact declared settled on the Loader; `failed` = a
- * `loader.create` rejected (e.g. cordis `invalid plugin`), with `reason`;
+ * admitted artifact declared settled on the Loader; `failed` = the mount
+ * channel captured an import / apply / invalid-plugin failure (SYNC-P3:
+ * since 0.1.7 `loader.create` alone no longer rejects — the gateway hook
+ * re-captures both classes at the entry fiber seam), with `reason`;
  * `skipped` = no mount was attempted (boot-disabled entry, or a manifest
  * declaring no service factory exit).
  */

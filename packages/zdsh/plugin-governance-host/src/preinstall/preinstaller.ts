@@ -26,7 +26,10 @@
  * or per-id branch exists here (M2) — and per-item fail-open: a rejecting
  * mount (e.g. cordis `invalid plugin` for a library-only barrel) settles a
  * queryable `mount` sub-structure on the ledger row (§9.4) without aborting
- * the pass or touching sibling entries.
+ * the pass or touching sibling entries. SYNC-P3: the failure-capture face
+ * lives in the gateway's mount hook, which stitches the 0.1.7 double seam —
+ * create resolves on fiber creation; import/apply failures are re-captured
+ * via the entry/fiber check plus the `fiber.await()` settle.
  *
  * ISOLATION CONTRACT, DECOUPLING DECLARATION (§9.4 bullet 4, verbatim
  * boundary): this mount path rides the raw cordis `ctx.loader.create`
@@ -97,12 +100,15 @@ export interface SeedPreinstallerHost {
   recordOrigin(pluginId: string, spec: string, version: string): void
   /**
    * Mount one admitted factory exit of one preinstalled artifact
-   * (DESIGN-intake-tech.md §9.3 step 4). Convention: the implementation
-   * forwards to `ctx.loader.create({ name: moduleUrl,
-   * id: 'factory/<pluginId>', disabled: !enabled })` and awaits settle —
-   * resolving when the entry is loaded, rejecting when the module is not a
-   * valid cordis plugin (its `invalid plugin` throw, a missing factory file)
-   * or its `apply` throws during start.
+   * (DESIGN-intake-tech.md §9.3 step 4). Contract (UNCHANGED — mount throws
+   * ⟺ the artifact failed): resolving = the entry settled loaded; rejecting
+   * = the module is not loadable (a missing factory file, not a valid cordis
+   * plugin) or its `apply` throws during start. Implementation note
+   * (SYNC-P3): since 0.1.7 `ctx.loader.create({ name: moduleUrl,
+   * id: 'factory/<pluginId>', disabled: !enabled })` alone no longer rejects
+   * on import/apply failure, so the gateway hook stitches the two official
+   * seams — create → entry/fiber check → `fiber.await()` settle — and
+   * compensates a failure with `loader.remove`, leaving no live entry behind.
    */
   mount(pluginId: string, moduleUrl: string, enabled: boolean): Promise<void>
   /**

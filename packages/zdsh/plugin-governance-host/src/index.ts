@@ -109,11 +109,47 @@ interface LoaderLike {
   /**
    * The Loader's mount face (§9.3): creates one entry in the live tree.
    * The governance host only ever calls this with `name` = the file URL of
-   * an admitted factory exit (M-F4) and `id` = `factory/<pluginId>`; the
-   * cordis Loader returns a promise that settles when the entry is loaded
-   * (or rejects on `invalid plugin` / a throwing apply).
+   * an admitted factory exit (M-F4) and `id` = `factory/<pluginId>`.
+   * 0.1.7 contract (SYNC-P3): the promise resolves once the entry's fiber
+   * EXISTS — an import failure is logged-and-dropped on the host side (the
+   * fiber stays undefined) and an apply failure settles on the fiber;
+   * neither rejects create any more. Only the synchronous `invalid plugin`
+   * throw of the cordis registry still rejects. Failure capture therefore
+   * rides the resolve/fiber check face below (the directory-picker-auto
+   * idiom), never create's rejection alone.
    */
   create?: (options: { name: string; id?: string; disabled?: boolean | null }) => Promise<unknown>
+  /**
+   * Entry lookup by id (SYNC-P3 capture face). The cordis Loader THROWS for
+   * an unresolvable id, so callers must treat this as a probe, not a read.
+   * Optional: a double without it falls back to the entries iteration.
+   */
+  resolve?: (id: string) => MountedEntry
+  /**
+   * Stop and remove one entry (SYNC-P3 compensation face). Synchronous
+   * fire-and-forget in 0.1.7 (it disposes the fiber without awaiting it), so
+   * callers must NOT await it — kept un-awaited for both loader generations.
+   */
+  remove?: (id: string) => unknown
+}
+
+/**
+ * Locate one entry on a LoaderLike by id (SYNC-P3, structured probing with
+ * the same discipline as resolveLoader/resolveMountLoader): the resolve face
+ * first — 0.1.7 throws for an unresolvable id, so it is probed under
+ * try/catch — then the entries iteration as the structural fallback.
+ * `undefined` when the loader exposes neither face or the id is absent; the
+ * mount hook FAILS CLOSED on that (an artifact whose settle cannot be
+ * checked is never recorded `mounted`, P3-design §10-7).
+ */
+function findLoaderEntry(loader: LoaderLike, id: string): MountedEntry | undefined {
+  if (typeof loader.resolve === 'function') {
+    try { return loader.resolve(id) } catch { return undefined }
+  }
+  if (typeof loader.entries === 'function') {
+    for (const entry of loader.entries()) if (entry.options.id === id) return entry
+  }
+  return undefined
 }
 
 /** Minimal structural view of one project plugin origin record. */
@@ -349,10 +385,31 @@ export class PluginGovernanceGateway extends TypertRemoteService {
         mount: async (pluginId, moduleUrl, enabled) => {
           const loader = this.resolveMountLoader()
           if (loader === undefined) throw new Error('no Loader service with a create channel is mounted on this context')
-          // await settle: the cordis create resolves when the entry is
-          // loaded and rejects with `invalid plugin` / a start failure —
-          // the same await-to-settle seam syncMountedPlugins uses (§0.4).
-          await loader.create({ name: moduleUrl, id: `factory/${canonicalId(pluginId)}`, disabled: !enabled })
+          const entryId = `factory/${canonicalId(pluginId)}`
+          // 0.1.7 Loader contract (SYNC-P3): create resolves once the entry's
+          // fiber exists — import failures are logged-and-dropped (fiber stays
+          // undefined) and apply failures settle on the fiber; neither rejects
+          // create any more (only a synchronous `invalid plugin` still does).
+          // §9.3/§9.4 keep "mount throws ⟺ the artifact failed", so the hook
+          // re-captures both classes at the official seam (the
+          // directory-picker-auto idiom: create → fiber check → fiber.await).
+          try {
+            await loader.create({ name: moduleUrl, id: entryId, disabled: !enabled })
+            if (!enabled) return // admitted-but-disabled posture: no fiber expected
+            const entry = findLoaderEntry(loader, entryId)
+            if (entry === undefined || entry.fiber === undefined) {
+              throw new Error(`the Loader dropped the import of ${moduleUrl} (import error logged on the host side)`)
+            }
+            await entry.fiber.await() // rejects with the start failure (fiber.ts:704-710)
+          } catch (cause) {
+            // Failed mounts leave no live entry: 0.1.5 net-state parity (the
+            // Loader's own rollback was removed upstream) + the official
+            // unmount idiom; a retry (next boot / next url) starts from a
+            // clean tree. Best-effort: a compensation fault must not mask the
+            // original failure.
+            try { loader.remove?.(entryId) } catch { /* best-effort */ }
+            throw cause
+          }
         },
       },
     })

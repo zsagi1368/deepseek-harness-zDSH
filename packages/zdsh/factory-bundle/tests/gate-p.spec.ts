@@ -638,6 +638,18 @@ function entryState(ctx: Context, channelId: string): number | undefined {
   return (entry.fiber as { state?: number } | undefined)?.state
 }
 
+/**
+ * Settle one entry the spec remounted through a direct `loader.create`
+ * (SYNC-P3): 0.1.7 create resolves on fiber CREATION — the apply seam is
+ * awaited separately, the directory-picker-auto idiom.
+ */
+async function settleEntry(
+  loader: { resolve: (id: string) => { fiber?: { await?: () => Promise<unknown> } } },
+  channelId: string,
+): Promise<void> {
+  await loader.resolve(channelId).fiber?.await?.()
+}
+
 // The P5 authored-per-artifact capability probes — the §9.5-D③ data-table
 // extension of SHAPE_PROBES (same "authored per contract, not a harness gap"
 // qualification the fix8 design ruled for escalate 2.2b-§3). Runs after a real
@@ -831,7 +843,7 @@ describe('Gate-P P5 — real mount spectrum over the seed rows + fail-open + lif
     const channelId = 'factory/core/webstack-verticals'
     const loader = (ctx as unknown as {
       loader: {
-        resolve: (id: string) => { fiber?: { dispose?: () => Promise<unknown> | unknown } }
+        resolve: (id: string) => { fiber?: { dispose?: () => Promise<unknown> | unknown; await?: () => Promise<unknown> } }
         create: (o: { name: string; id?: string; disabled?: boolean | null }) => Promise<unknown>
       }
     }).loader
@@ -840,6 +852,7 @@ describe('Gate-P P5 — real mount spectrum over the seed rows + fail-open + lif
 
     // 重挂恢复: re-create the same channel id from the artifact's factory exit.
     await loader.create({ name: firstFactoryHref(mountRow('core/webstack-verticals')), id: channelId, disabled: false })
+    await settleEntry(loader, channelId)
     expect(tryGet(ctx, 'x-vertical'), 'Gate-P P5: x-vertical did not come back after a remount').toBeTruthy()
   })
 })

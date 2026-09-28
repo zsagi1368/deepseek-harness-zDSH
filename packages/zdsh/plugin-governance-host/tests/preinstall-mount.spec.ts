@@ -200,6 +200,10 @@ describe('mount channel contract — fake loader records every create() arg', ()
     const fakeLoader = {
       * entries() {},
       create: async (options: CreateCall) => { calls.push(options) },
+      // SYNC-P3: the 0.1.7 mount channel inspects the entry/fiber face after
+      // create (fail-closed when uncheckable) — the double models a created
+      // entry whose fiber settles clean.
+      resolve: (id: string) => ({ options: { name: '', id }, fiber: { await: async () => {} } }),
     }
     const ctx = new Context()
     contexts.push(ctx)
