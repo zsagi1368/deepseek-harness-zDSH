@@ -142,7 +142,9 @@ function detectTar(): DetectedTar {
   return { kind, path }
 }
 
-describe('published PDF.js licenses', () => {
+// zDSH (PDF-FLAKE, 2026-09-28; REVIEW-RP-WS suggestion 1): the pack/tar child-process IO
+// flakes past the 5s default under full-run parallel load (isolated runtime 2.5-3.1s) — 30s suite budget.
+describe('published PDF.js licenses', { timeout: 30_000 }, () => {
   it.skipIf(!existsSync(bundlePath))('keeps every bundled license in the packed client artifact', ({ task }) => {
     const output = mkdtempSync(join(tmpdir(), 'dsh-document-preview-pack-'))
     try {
