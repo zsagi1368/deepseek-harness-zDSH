@@ -78,7 +78,7 @@ async function runOne(
 ): Promise<LegRunReport> {
   reset()
   const before = stats()
-  const result = await guard.preLoad(pluginFor(id), '0.1.5-rc.2')
+  const result = await guard.preLoad(pluginFor(id), '0.1.7-rc.2')
   const after = stats()
   return {
     id,

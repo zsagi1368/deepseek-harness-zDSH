@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-plugin-governance",
   "description": "Plugin governance system for the DeepSeek Harness: spec, registry, guards, sandboxes, Cordis adapter, and branch-local persistence",
-  "version": "0.1.5-rc.2",
+  "version": "0.1.7-rc.2",
   "publishConfig": {
     "access": "public"
   },
@@ -31,14 +31,14 @@
     "lib/types/**/*.d.ts"
   ],
   "peerDependencies": {
-    "@deepseek-ai/cordis": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-compat": "workspace:^"
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-invariants": "workspace:*",
+    "@deepseek-ai/dsh-compat": "workspace:*"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-compat": "workspace:^"
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-invariants": "workspace:*",
+    "@deepseek-ai/dsh-compat": "workspace:*"
   },
   "license": "MIT"
 }

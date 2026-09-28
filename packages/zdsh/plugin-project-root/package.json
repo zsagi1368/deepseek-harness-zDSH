@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-plugin-project-root",
   "description": "Project-level plugin root for the DeepSeek Harness: discovery, trust ledger, host clamping, gating, post-boot mounting, origin, and RunGuard wiring (S-43 M1 + M2a)",
-  "version": "0.1.5-rc.2",
+  "version": "0.1.7-rc.2",
   "publishConfig": {
     "access": "public"
   },
@@ -31,17 +31,17 @@
     "lib/types/**/*.d.ts"
   ],
   "peerDependencies": {
-    "@deepseek-ai/cordis": "workspace:^",
-    "@deepseek-ai/dsh-plugin-governance": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-compat": "workspace:^"
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-plugin-governance": "workspace:*",
+    "@deepseek-ai/dsh-invariants": "workspace:*",
+    "@deepseek-ai/dsh-compat": "workspace:*"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "workspace:^",
-    "@deepseek-ai/dsh-plugin-governance": "workspace:^",
-    "@deepseek-ai/dsh-tools": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-compat": "workspace:^"
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-plugin-governance": "workspace:*",
+    "@deepseek-ai/dsh-tools": "workspace:*",
+    "@deepseek-ai/dsh-invariants": "workspace:*",
+    "@deepseek-ai/dsh-compat": "workspace:*"
   },
   "license": "MIT"
 }

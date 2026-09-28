@@ -14,10 +14,10 @@ zDSH 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（�
 
 | 组成 | 版本 |
 | --- | --- |
-| 官方底座（[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)） | `0.1.5-rc.2` |
+| 官方底座（[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)） | `0.1.7-rc.2` |
 | zDSH 版本 | `v0.1.5-rc.2-zDSH20260927a` |
 
-zDSH 跟踪官方 `dsh-v0.1.5-rc.2` 基线，随官方发布滚动同步。zDSH 版本规则：`<官方版本>-zDSH<日期><修订字母>`，日期为 zDSH 战役收官日（`20260927`），字母为当日修订序号（`a`）。根 `package.json` 保持官方底座版本零触碰；zDSH 版本以本 README 声明面与配套发布 tag 为准。
+zDSH 跟踪官方 `dsh-v0.1.7-rc.2` 基线，随官方发布滚动同步。zDSH 版本规则：`<官方版本>-zDSH<日期><修订字母>`，日期为 zDSH 战役收官日（`20260927`），字母为当日修订序号（`a`）。根 `package.json` 保持官方底座版本零触碰；zDSH 版本以本 README 声明面与配套发布 tag 为准。
 
 ## 开发者预览
 

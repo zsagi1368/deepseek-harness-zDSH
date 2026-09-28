@@ -340,7 +340,7 @@ describe('SymbolIsolationCheck A-1.2.1: dual-copy fixture => CheckFailed with qu
     const root = buildRedDual()
     vi.stubEnv('DSH_HOME', root)
     vi.stubEnv('DSH_BRANCH_HOME', '')
-    const result = await new LoadGuard().preLoad(pluginFor('@demo/trojan'), '0.1.5-rc.2')
+    const result = await new LoadGuard().preLoad(pluginFor('@demo/trojan'), '0.1.7-rc.2')
     expect(result.allowed).toBe(false)
     const messages = symFailures(result)
     expect(messages).toHaveLength(1)
@@ -365,7 +365,7 @@ describe('SymbolIsolationCheck A-1.2.1: dual-copy fixture => CheckFailed with qu
     const root = buildRedDual()
     vi.stubEnv('DSH_HOME', root)
     vi.stubEnv('DSH_BRANCH_HOME', '')
-    const result = await new LoadGuard().preLoad(pluginFor('@demo/trojan'), '0.1.5-rc.2')
+    const result = await new LoadGuard().preLoad(pluginFor('@demo/trojan'), '0.1.7-rc.2')
     const detail = (symFailures(result)[0] ?? '')
     expect(detail).toContain('[判据3·存储区真实副本]')
     expect(detail).toContain(join(root, 'zdsh', 'installed', 'demo', 'trojan', 'node_modules', '@deepseek-ai', 'dsh-client-store'))
@@ -377,9 +377,9 @@ describe('SymbolIsolationCheck A-1.2.1: dual-copy fixture => CheckFailed with qu
     vi.stubEnv('DSH_HOME', root)
     vi.stubEnv('DSH_BRANCH_HOME', '')
     const guard = new LoadGuard()
-    const first = await guard.preLoad(pluginFor('@demo/trojan'), '0.1.5-rc.2')
+    const first = await guard.preLoad(pluginFor('@demo/trojan'), '0.1.7-rc.2')
     const mid = getSymbolIsolationScanStats()
-    const second = await guard.preLoad(pluginFor('@demo/trojan'), '0.1.5-rc.2')
+    const second = await guard.preLoad(pluginFor('@demo/trojan'), '0.1.7-rc.2')
     const after = getSymbolIsolationScanStats()
     expect(first.allowed).toBe(false)
     expect(second.allowed).toBe(false)
@@ -393,7 +393,7 @@ describe('SymbolIsolationCheck criterion 2: embedded core symbols in bundle arti
     const root = buildRedEmbed()
     vi.stubEnv('DSH_HOME', root)
     vi.stubEnv('DSH_BRANCH_HOME', '')
-    const result = await new LoadGuard().preLoad(pluginFor('@demo/trojan'), '0.1.5-rc.2')
+    const result = await new LoadGuard().preLoad(pluginFor('@demo/trojan'), '0.1.7-rc.2')
     expect(result.allowed).toBe(false)
     const detail = (symFailures(result)[0] ?? '')
     expect(detail).toContain('[判据2·内嵌核心符号]')
@@ -422,7 +422,7 @@ describe('SymbolIsolationCheck zero-false-kill green faces', () => {
     vi.stubEnv('DSH_HOME', root)
     vi.stubEnv('DSH_BRANCH_HOME', '')
     const before = getSymbolIsolationScanStats()
-    const result = await new LoadGuard().preLoad(pluginFor('test/plugin'), '0.1.5-rc.2')
+    const result = await new LoadGuard().preLoad(pluginFor('test/plugin'), '0.1.7-rc.2')
     const after = getSymbolIsolationScanStats()
     expect(result.failures).toEqual([])
     expect(result.warnings).toEqual([])
@@ -438,14 +438,14 @@ describe('SymbolIsolationCheck zero-false-kill green faces', () => {
 
     // id 缺失（非 string）：manifest-integrity 拒载，但 symbol-isolation 照常运行且不误报
     const idlessManifest = { ...testManifest(), id: undefined as unknown as string }
-    const missing = await guard.preLoad({ manifest: idlessManifest, install(): void {} }, '0.1.5-rc.2')
+    const missing = await guard.preLoad({ manifest: idlessManifest, install(): void {} }, '0.1.7-rc.2')
     expect(missing.allowed).toBe(false)
     expect(symFailures(missing)).toEqual([])
 
     for (const id of ['noslash', 'a/b/c']) {
       resetSymbolIsolationCacheForTest()
       const before = getSymbolIsolationScanStats()
-      const result = await guard.preLoad(pluginFor(id), '0.1.5-rc.2')
+      const result = await guard.preLoad(pluginFor(id), '0.1.7-rc.2')
       const after = getSymbolIsolationScanStats()
       expect(result.failures, id).toEqual([])
       expect(result.allowed, id).toBe(true)
@@ -457,7 +457,7 @@ describe('SymbolIsolationCheck zero-false-kill green faces', () => {
     const root = makeRoot('empty')
     vi.stubEnv('DSH_HOME', root)
     vi.stubEnv('DSH_BRANCH_HOME', join(root, 'absent-storage'))
-    const result = await new LoadGuard().preLoad(pluginFor('test/plugin'), '0.1.5-rc.2')
+    const result = await new LoadGuard().preLoad(pluginFor('test/plugin'), '0.1.7-rc.2')
     expect(result.failures).toEqual([])
     expect(result.allowed).toBe(true)
   }, 60_000)
@@ -465,7 +465,7 @@ describe('SymbolIsolationCheck zero-false-kill green faces', () => {
   it('blank DSH_HOME falls back to cwd host semantics (real repo tree, zero false kill)', async () => {
     vi.stubEnv('DSH_HOME', '')
     vi.stubEnv('DSH_BRANCH_HOME', join(makeRoot('blank-storage'), 'absent'))
-    const result = await new LoadGuard().preLoad(pluginFor('test/plugin'), '0.1.5-rc.2')
+    const result = await new LoadGuard().preLoad(pluginFor('test/plugin'), '0.1.7-rc.2')
     expect(result.failures, JSON.stringify(result.failures)).toEqual([])
     expect(result.allowed).toBe(true)
   }, 120_000)
@@ -483,7 +483,7 @@ describe('SymbolIsolationCheck A-1.2.3: injected scan failure => fail-closed Che
     fsInject.marker = root
     fsInject.payload = () => new Error('g1-injected-fs-failure')
     fsInject.active = true
-    const result = await new LoadGuard().preLoad(pluginFor('test/plugin'), '0.1.5-rc.2')
+    const result = await new LoadGuard().preLoad(pluginFor('test/plugin'), '0.1.7-rc.2')
     fsInject.active = false
     expect(result.allowed).toBe(false)
     const detail = (symFailures(result)[0] ?? '')
@@ -499,7 +499,7 @@ describe('SymbolIsolationCheck A-1.2.3: injected scan failure => fail-closed Che
     fsInject.marker = root
     fsInject.payload = () => 'G1-RAW-STRING-THROW'
     fsInject.active = true
-    const result = await new LoadGuard().preLoad(pluginFor('test/plugin'), '0.1.5-rc.2')
+    const result = await new LoadGuard().preLoad(pluginFor('test/plugin'), '0.1.7-rc.2')
     fsInject.active = false
     expect(result.allowed).toBe(false)
     expect(symFailures(result)[0] ?? '').toContain('G1-RAW-STRING-THROW')
@@ -513,11 +513,11 @@ describe('SymbolIsolationCheck A-1.2.3: injected scan failure => fail-closed Che
     fsInject.marker = root
     fsInject.payload = () => new Error('g1-transient')
     fsInject.active = true
-    const failed = await guard.preLoad(pluginFor('test/plugin'), '0.1.5-rc.2')
+    const failed = await guard.preLoad(pluginFor('test/plugin'), '0.1.7-rc.2')
     fsInject.active = false
     resetSymbolIsolationCacheForTest()
     const before = getSymbolIsolationScanStats()
-    const recovered = await guard.preLoad(pluginFor('test/plugin'), '0.1.5-rc.2')
+    const recovered = await guard.preLoad(pluginFor('test/plugin'), '0.1.7-rc.2')
     const after = getSymbolIsolationScanStats()
     expect(failed.allowed).toBe(false)
     expect(recovered.allowed).toBe(true)
@@ -541,7 +541,7 @@ describe('SymbolIsolationCheck A-1.2.2 x K-1.2.1: three resolution faces, factor
     for (const entry of seeded) {
       resetSymbolIsolationCacheForTest()
       const before = getSymbolIsolationScanStats()
-      const result = await guard.preLoad(pluginFor(entry.id), '0.1.5-rc.2')
+      const result = await guard.preLoad(pluginFor(entry.id), '0.1.7-rc.2')
       const after = getSymbolIsolationScanStats()
       expect(result.failures, `${entry.id}: ${JSON.stringify(result.failures)}`).toEqual([])
       expect(result.allowed, entry.id).toBe(true)
@@ -636,7 +636,7 @@ describe('SymbolIsolationCheck A-1.2.2 x K-1.2.1: three resolution faces, factor
     for (const entry of seeded) {
       resetSymbolIsolationCacheForTest()
       const before = getSymbolIsolationScanStats()
-      const result = await guard.preLoad(pluginFor(entry.id), '0.1.5-rc.2')
+      const result = await guard.preLoad(pluginFor(entry.id), '0.1.7-rc.2')
       const after = getSymbolIsolationScanStats()
       expect(result.failures, `${entry.id}: ${JSON.stringify(result.failures)}`).toEqual([])
       expect(result.allowed, entry.id).toBe(true)
@@ -662,20 +662,20 @@ describe('SymbolIsolationCheck acceptance-7: (hostRoot,mtime) pass cache, no rep
     resetSymbolIsolationCacheForTest()
     const base = getSymbolIsolationScanStats()
 
-    const first = await guard.preLoad(pluginFor('test/plugin'), '0.1.5-rc.2')
+    const first = await guard.preLoad(pluginFor('test/plugin'), '0.1.7-rc.2')
     const afterFirst = getSymbolIsolationScanStats()
     expect(first.allowed).toBe(true)
     expect(afterFirst.scans - base.scans).toBe(1)
     expect(afterFirst.cacheHits - base.cacheHits).toBe(0)
 
-    const second = await guard.preLoad(pluginFor('test/plugin'), '0.1.5-rc.2')
+    const second = await guard.preLoad(pluginFor('test/plugin'), '0.1.7-rc.2')
     const afterSecond = getSymbolIsolationScanStats()
     expect(second.allowed).toBe(true)
     expect(afterSecond.scans - base.scans, '二次 PreLoad 零重复扫盘').toBe(1)
     expect(afterSecond.cacheHits - base.cacheHits).toBe(1)
 
     // 跨插件同键命中（卡面：PreLoad 每插件不重复扫盘）
-    const third = await guard.preLoad(pluginFor('other/plugin'), '0.1.5-rc.2')
+    const third = await guard.preLoad(pluginFor('other/plugin'), '0.1.7-rc.2')
     const afterThird = getSymbolIsolationScanStats()
     expect(third.allowed).toBe(true)
     expect(afterThird.scans - base.scans).toBe(1)
@@ -694,7 +694,7 @@ describe('SymbolIsolationCheck FB2 hardening: ns 粒度失效腿 + 代数上限�
     vi.stubEnv('DSH_HOME', root)
     vi.stubEnv('DSH_BRANCH_HOME', '')
     const guard = new LoadGuard()
-    const first = await guard.preLoad(pluginFor('demo/clean-plugin'), '0.1.5-rc.2')
+    const first = await guard.preLoad(pluginFor('demo/clean-plugin'), '0.1.7-rc.2')
     expect(first.allowed).toBe(true)
     const mid = getSymbolIsolationScanStats()
     // D1b 幕 b 同形植入：既有 ns（demo）下新增插件目录+FAKE_STORE_PKG 同形真实
@@ -703,7 +703,7 @@ describe('SymbolIsolationCheck FB2 hardening: ns 粒度失效腿 + 代数上限�
     const fake = join(root, 'zdsh', 'installed', 'demo', 'b-plugin', 'node_modules', '@deepseek-ai', 'dsh-client-store')
     pkgJson(fake, '@deepseek-ai/dsh-client-store', '9.9.9-fake-tc-b0')
     write(join(fake, 'index.js'), "export const marker = 'FAKE'\n")
-    const second = await guard.preLoad(pluginFor('demo/b-plugin'), '0.1.5-rc.2')
+    const second = await guard.preLoad(pluginFor('demo/b-plugin'), '0.1.7-rc.2')
     const after = getSymbolIsolationScanStats()
     // 判别锁（旧形复刻必红：旧键面此处 cacheHits+1 且 allowed=true）：
     // ns 腿保证真重扫，且重扫必检出存储区副本。
@@ -719,9 +719,9 @@ describe('SymbolIsolationCheck FB2 hardening: ns 粒度失效腿 + 代数上限�
     vi.stubEnv('DSH_BRANCH_HOME', '')
     const guard = new LoadGuard()
     const base = getSymbolIsolationScanStats()
-    expect((await guard.preLoad(pluginFor('test/plugin'), '0.1.5-rc.2')).allowed).toBe(true)
+    expect((await guard.preLoad(pluginFor('test/plugin'), '0.1.7-rc.2')).allowed).toBe(true)
     for (let generation = 0; generation < 64; generation += 1) {
-      await guard.preLoad(pluginFor('test/plugin'), '0.1.5-rc.2')
+      await guard.preLoad(pluginFor('test/plugin'), '0.1.7-rc.2')
     }
     const mid = getSymbolIsolationScanStats()
     // 64 代全命中零重扫（性能契约保持：acceptance-7 语义不变）。
@@ -729,7 +729,7 @@ describe('SymbolIsolationCheck FB2 hardening: ns 粒度失效腿 + 代数上限�
     expect(mid.cacheHits - base.cacheHits).toBe(64)
     // 第 65 次：代数上限满→删键强制真重扫（对抗性 mtime 伪造的恒过窗压缩为
     // ≤64 代；清洁树重扫结果不变=仍绿，红线不粘滞语义零触碰）。
-    const forced = await guard.preLoad(pluginFor('test/plugin'), '0.1.5-rc.2')
+    const forced = await guard.preLoad(pluginFor('test/plugin'), '0.1.7-rc.2')
     const after = getSymbolIsolationScanStats()
     expect(forced.allowed).toBe(true)
     expect(after.scans - mid.scans).toBe(1)

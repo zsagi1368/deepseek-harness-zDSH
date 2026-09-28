@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-compat",
   "description": "Version-adaptive shim framework for fork/upstream drift in the DeepSeek Harness",
-  "version": "0.1.5-rc.2",
+  "version": "0.1.7-rc.2",
   "type": "module",
   "publishConfig": {
     "access": "public"
@@ -33,11 +33,11 @@
   "license": "MIT",
   "dependencies": {},
   "peerDependencies": {
-    "@deepseek-ai/cordis": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^"
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-invariants": "workspace:*"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^"
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-invariants": "workspace:*"
   }
 }
