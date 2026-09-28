@@ -52,12 +52,13 @@ function upstream(partial: Partial<UpstreamTreeFacts> = {}): UpstreamTreeFacts {
 }
 
 describe('zDSH residence map table', () => {
-  it('maps the five migrated packages plus the root seed directory', () => {
+  it('maps the six migrated packages plus the root seed directory', () => {
     const dirs = ZDSH_RESIDENCE_MAP.map(entry => entry.dir)
     expect(dirs).toEqual([
       'packages/zdsh/dsh-compat',
       'packages/zdsh/plugin-governance',
       'packages/zdsh/plugin-governance-host',
+      'packages/zdsh/plugin-governance-ui',
       'packages/zdsh/plugin-project-root',
       'packages/zdsh/factory-bundle',
       'zdsh-factory',
@@ -73,7 +74,15 @@ describe('zDSH residence map table', () => {
       }
       expect(entry.packageName.startsWith('@deepseek-ai/')).toBe(true)
       expect(entry.dir).toMatch(/^packages\/zdsh\/[^/]+$/)
-      expect(entry.formerPath).not.toBeNull()
+      // SYNC-P1 ruling: plugin-governance-ui deliberately carries formerPath
+      // null — its former packages/client/ui-plugin-manager path is official
+      // territory since 0.1.7-rc.2 (sidebar Plugins panel), so a non-null
+      // formerPath would trip the resurrected-former-path check permanently
+      // against legitimate official content (history lives in the
+      // officialCounterpart column).
+      if (entry.dir !== 'packages/zdsh/plugin-governance-ui') {
+        expect(entry.formerPath).not.toBeNull()
+      }
       expect(entry.officialCounterpart.length).toBeGreaterThan(0)
     }
   })

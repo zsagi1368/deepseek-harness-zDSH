@@ -28,6 +28,12 @@
     "packages/*/*/tests/**/*.client.ts",
     // Client package outside packages/client with a local CSS module face.
     "packages/extensions/ui-cordis/src/css-modules.d.ts",
+    // zDSH client faces (SYNC-P1): plugin-governance-ui joined the client
+    // aggregate from packages/client; these globs mirror the packages/client
+    // treatment so the zdsh group keeps its CSS declarations and .tsx test
+    // files inside this program (client-tsconfig.spec scans the same groups).
+    "packages/zdsh/*/src/css-modules.d.ts",
+    "packages/zdsh/*/tests/**/*.tsx",
     "packages/client/tsdown.client.ts",
     "scripts/client-build-environment.ts",
     "scripts/*.client.spec.ts",
@@ -109,7 +115,7 @@
     { "path": "./packages/client/ui-settings-general" },
     { "path": "./packages/client/ui-settings-models" },
     { "path": "./packages/client/ui-settings-plugin-inventory" },
-    { "path": "./packages/client/ui-plugin-manager" },
+    { "path": "./packages/zdsh/plugin-governance-ui" },
     { "path": "./packages/client/locale" },
     { "path": "./packages/client/ui-renderer" },
     { "path": "./packages/client/ui-session" },

@@ -3,7 +3,7 @@ description: "Governance tab in Web Plugins settings: roster badges, lifecycle a
 kind: "package-reference"
 ---
 
-# dsh-client-ui-plugin-manager
+# dsh-client-ui-plugin-governance
 
 English | [中文](README.zh.md)
 

@@ -60,7 +60,7 @@ flowchart LR
   pkg_plugin_governance["plugin-governance"]
   svc_pluginGovernance["ctx.pluginGovernance<br/>Plugin governance gateway"]
   pkg_plugin_governance_host["plugin-governance-host"]
-  pkg_ui_plugin_manager["ui-plugin-manager"]
+  pkg_plugin_governance_ui["plugin-governance-ui"]
   pkg_plugin_project_root["plugin-project-root"]
   svc_projectPluginLayer["ctx.projectPluginLayer<br/>Project plugin layer mount"]
   pkg_typert_registry["typert-registry"]
@@ -403,7 +403,7 @@ flowchart LR
   svc_lsp --> pkg_tool_lsp
   svc_modelSlots --> pkg_plan_mode
   svc_modelSlots --> pkg_session_title_llm
-  svc_pluginGovernance --> pkg_ui_plugin_manager
+  svc_pluginGovernance --> pkg_plugin_governance_ui
   svc_sandbox --> pkg_bash_sandbox
   svc_sandbox --> pkg_terminal_bash
   svc_sandboxPolicy --> pkg_bash_sandbox
@@ -509,7 +509,7 @@ flowchart LR
 | `ctx.directoryPickerController` | `core` | [`api-workspace-controller`](../packages/api/workspace-controller) | - | - | - | 把选目录 seam 送上线：能力门禁、取消传播，以及浏览器目录流程用于分支判断的 seam 错误码。 |
 | `ctx.invariants` | `core` | [`invariants`](../packages/runtime-diagnostics/invariants) | - | [`session`](../packages/core/session), [`agent`](../packages/core/agent), [`scope`](../packages/core/scope), [`agent-loop`](../packages/core/agent-loop) | - | 配套子路径注册所属包本地的检查；该服务负责选择、唯一性、子 fiber，以及标明所属包的失败。 |
 | `ctx.modelSlots` | `core` | [`model-slots`](../packages/llm/model-slots) | - | [`plan-mode`](../packages/plan/plan-mode), [`session-title-llm`](../packages/session/session-title-llm) | - | 持有部署级的辅助派发路由与持久的 slots/dispatch 审计记录；消费方按每次辅助调用解析路由，且不触碰会话主模型路由。 |
-| `ctx.pluginGovernance` | `seam` | [`plugin-governance`](../packages/zdsh/plugin-governance) | [`plugin-governance-host`](../packages/zdsh/plugin-governance-host) | `ui-plugin-manager` | - | 内核持有注册表镜像、守卫与持久化；宿主平面投射类型化 Remote，浏览器 plugin-manager 标签页消费名册与生命周期操作。 |
+| `ctx.pluginGovernance` | `seam` | [`plugin-governance`](../packages/zdsh/plugin-governance) | [`plugin-governance-host`](../packages/zdsh/plugin-governance-host) | `plugin-governance-ui` | - | 内核持有注册表镜像、守卫与持久化；宿主平面投射类型化 Remote，浏览器 plugin-manager 标签页消费名册与生命周期操作。 |
 | `ctx.projectPluginLayer` | `core` | [`plugin-project-root`](../packages/zdsh/plugin-project-root) | - | - | - | 启动后发现、钳制、守卫并挂载项目根插件，构成一个隔离的 Cordis 层；RunGuard 把每个项目工具调用路由到所属根。 |
 | `ctx.typert` | `core` | [`typert-registry`](../packages/typert/registry) | - | [`typert-loader`](../packages/typert/loader), [`api-gateway`](../packages/api/gateway) | - | 插件直接或通过 dsh-typert-loader 注册实时 zod 贡献；API 网关消费调用描述符和提供方，其他运行时消费方则在各自边界查询 schema 与反射元数据。 |
 | `ctx.typertGateway` | `core` | [`api-gateway`](../packages/api/gateway) | - | - | - | 将生成的 Remote 描述符与实时 Cordis 服务关联，解析已注册的身份，并通过共享的 Connection RPC 载体提供一元调用。 |

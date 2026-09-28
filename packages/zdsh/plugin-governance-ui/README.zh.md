@@ -3,7 +3,7 @@ description: "Web Plugins 设置内的治理标签页：评分徽章、生命周
 kind: "package-reference"
 ---
 
-# dsh-client-ui-plugin-manager（中文）
+# dsh-client-ui-plugin-governance（中文）
 
 [English](README.md) | 中文
 

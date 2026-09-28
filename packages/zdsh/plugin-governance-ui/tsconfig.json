@@ -12,22 +12,22 @@
       "path": "../../../vendor/cordis"
     },
     {
-      "path": "../../zdsh/plugin-governance-host"
+      "path": "../plugin-governance-host"
     },
     {
       "path": "../../api/remotes/tsconfig.client.json"
     },
     {
-      "path": "../locale"
+      "path": "../../client/locale"
     },
     {
-      "path": "../ui-settings"
+      "path": "../../client/ui-settings"
     },
     {
-      "path": "../ui-primitives"
+      "path": "../../client/ui-primitives"
     },
     {
-      "path": "../ui-slots"
+      "path": "../../client/ui-slots"
     }
   ]
 }

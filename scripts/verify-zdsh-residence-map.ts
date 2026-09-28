@@ -53,7 +53,9 @@ export interface ZdshResidenceEntry {
 /**
  * The mapping table. Baseline = T1 migration design §3 (five packages under
  * `packages/zdsh/*`) plus the root-level `zdsh-factory/` seed directory
- * (TD-3). Update this table whenever a zDSH artifact moves or is added.
+ * (TD-3); the SYNC-P1 ruling (2026-09-28) added the governance UI tab as a
+ * sixth migrated package. Update this table whenever a zDSH artifact moves
+ * or is added.
  */
 export const ZDSH_RESIDENCE_MAP: readonly ZdshResidenceEntry[] = [
   {
@@ -73,6 +75,18 @@ export const ZDSH_RESIDENCE_MAP: readonly ZdshResidenceEntry[] = [
     packageName: '@deepseek-ai/dsh-plugin-governance-host',
     formerPath: 'packages/host/plugin-governance-host',
     officialCounterpart: 'packages/host is an official group; the former subdirectory was zDSH-created inside it',
+  },
+  {
+    // SYNC-P1 ruling (2026-09-28): formerPath is deliberately null. The former
+    // residence packages/client/ui-plugin-manager became official territory in
+    // 0.1.7-rc.2 (sidebar Plugins panel), so a non-null formerPath would make
+    // the resurrected-former-path check fire permanently against legitimate
+    // official content. The former-path history is carried by the
+    // officialCounterpart status column instead (TD-3 semantics).
+    dir: 'packages/zdsh/plugin-governance-ui',
+    packageName: '@deepseek-ai/dsh-client-ui-plugin-governance',
+    formerPath: null,
+    officialCounterpart: 'former packages/client/ui-plugin-manager is officially owned since 0.1.7-rc.2 (sidebar Plugins panel); the zDSH governance tab relocated out of the collision path',
   },
   {
     dir: 'packages/zdsh/plugin-project-root',

@@ -58,7 +58,7 @@ flowchart LR
   pkg_plugin_governance["plugin-governance"]
   svc_pluginGovernance["ctx.pluginGovernance<br/>Plugin governance gateway"]
   pkg_plugin_governance_host["plugin-governance-host"]
-  pkg_ui_plugin_manager["ui-plugin-manager"]
+  pkg_plugin_governance_ui["plugin-governance-ui"]
   pkg_plugin_project_root["plugin-project-root"]
   svc_projectPluginLayer["ctx.projectPluginLayer<br/>Project plugin layer mount"]
   pkg_typert_registry["typert-registry"]
@@ -401,7 +401,7 @@ flowchart LR
   svc_lsp --> pkg_tool_lsp
   svc_modelSlots --> pkg_plan_mode
   svc_modelSlots --> pkg_session_title_llm
-  svc_pluginGovernance --> pkg_ui_plugin_manager
+  svc_pluginGovernance --> pkg_plugin_governance_ui
   svc_sandbox --> pkg_bash_sandbox
   svc_sandbox --> pkg_terminal_bash
   svc_sandboxPolicy --> pkg_bash_sandbox
@@ -507,7 +507,7 @@ flowchart LR
 | `ctx.directoryPickerController` | `core` | [`api-workspace-controller`](../packages/api/workspace-controller) | - | - | - | Carries the picking seam onto the wire: capability gating, cancellation, and the seam-coded failures a browser directory flow discriminates on. |
 | `ctx.invariants` | `core` | [`invariants`](../packages/runtime-diagnostics/invariants) | - | [`session`](../packages/core/session), [`agent`](../packages/core/agent), [`scope`](../packages/core/scope), [`agent-loop`](../packages/core/agent-loop) | - | Companion subpaths register owner-local checks; the service owns selection, uniqueness, child fibers, and package-attributed failures. |
 | `ctx.modelSlots` | `core` | [`model-slots`](../packages/llm/model-slots) | - | [`plan-mode`](../packages/plan/plan-mode), [`session-title-llm`](../packages/session/session-title-llm) | - | Owns the deployment-level auxiliary dispatch routes and the durable slots/dispatch audit record; consumers resolve per auxiliary call and keep the conversation main-model route untouched. |
-| `ctx.pluginGovernance` | `seam` | [`plugin-governance`](../packages/zdsh/plugin-governance) | [`plugin-governance-host`](../packages/zdsh/plugin-governance-host) | `ui-plugin-manager` | - | The kernel owns registry mirror, guards, and persistence; the host plane projects the typed Remote, and the browser plugin-manager tab consumes the roster and lifecycle actions. |
+| `ctx.pluginGovernance` | `seam` | [`plugin-governance`](../packages/zdsh/plugin-governance) | [`plugin-governance-host`](../packages/zdsh/plugin-governance-host) | `plugin-governance-ui` | - | The kernel owns registry mirror, guards, and persistence; the host plane projects the typed Remote, and the browser plugin-manager tab consumes the roster and lifecycle actions. |
 | `ctx.projectPluginLayer` | `core` | [`plugin-project-root`](../packages/zdsh/plugin-project-root) | - | - | - | Discovers, clamps, gates, and mounts project-root plugins post-boot as one isolated Cordis layer; RunGuard routes every project tool call through the owning root. |
 | `ctx.typert` | `core` | [`typert-registry`](../packages/typert/registry) | - | [`typert-loader`](../packages/typert/loader), [`api-gateway`](../packages/api/gateway) | - | Plugins register live zod contributions directly or through dsh-typert-loader; the API gateway consumes invocation descriptors and providers, while other runtime consumers query schemas and reflection metadata at their own edges. |
 | `ctx.typertGateway` | `core` | [`api-gateway`](../packages/api/gateway) | - | - | - | Associates generated Remote descriptors with live Cordis services, resolves registered identities, and exposes unary calls through the shared Connection RPC carrier. |

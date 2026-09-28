@@ -235,7 +235,7 @@ const SERVICE_ROLES: ServiceRole[] = [
     title: 'Plugin governance gateway',
     mode: 'seam',
     implementations: ['plugin-governance-host'],
-    consumers: ['ui-plugin-manager'],
+    consumers: ['plugin-governance-ui'],
     note: 'The kernel owns registry mirror, guards, and persistence; the host plane projects the typed Remote, and the browser plugin-manager tab consumes the roster and lifecycle actions.',
   },
   {
