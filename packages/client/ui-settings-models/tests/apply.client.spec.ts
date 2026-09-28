@@ -102,7 +102,11 @@ describe('ui-settings-models apply', () => {
     const { ctx } = await bench()
     try {
       vi.stubGlobal(ONBOARDING_CONFIG_GLOBAL, { credentialOnboarding: 'false' })
-      expect(() => { apply(ctx) }).toThrow()
+      // zDSH (SYNC-P2): apply is async on the zDSH side (the dsh-slot-ui compat
+      // guard awaits before registration), so the malformed-bootstrap failure
+      // surfaces as a rejected promise, not a synchronous throw. Assertion
+      // semantics unchanged: malformed options must fail the activation.
+      await expect(apply(ctx)).rejects.toThrow()
     } finally {
       await ctx.fiber.dispose()
     }
