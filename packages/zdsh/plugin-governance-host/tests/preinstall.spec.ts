@@ -16,10 +16,11 @@ import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context, Service } from '@deepseek-ai/cordis'
-import PluginGovernanceGateway, { type PluginGovernanceId } from '../src/index.ts'
+import PluginGovernanceGateway, { type FactorySeedsMode, type PluginGovernanceId } from '../src/index.ts'
 import type { HttpLike } from '../src/install/registry-source.ts'
+import { SeedPreinstaller } from '../src/preinstall/preinstaller.ts'
 import {
   parseSeedManifest,
   seedEntryContractIssue,
@@ -842,5 +843,99 @@ describe('FB6 — seed npm: exact-version contract lock + seed-pin download veri
     }
     expect(ledger.entries['demo/plugin']?.status, JSON.stringify(ledger.entries['demo/plugin'])).toBe('installed')
     expect(gateway.list().plugins.some(p => p.pluginId === gid('demo/plugin'))).toBe(true)
+  })
+})
+
+// ============================================================================
+// SYNC-P3-CFIX — `factorySeeds` gates the boot-fired preinstall pass
+// ============================================================================
+
+describe('SYNC-P3-CFIX — factorySeeds boot-pass posture gate', () => {
+  /**
+   * Count how many times service init hands the pass to the executor, for one
+   * posture. Spied at the executor's own seam rather than observed through the
+   * ledger: the boot pass is fire-and-forget, so a ledger observation would need
+   * an arbitrary number of event-loop turns to be sound, while the hand-off
+   * itself happens synchronously inside init — this makes the negative arms
+   * (`auto` under a src launch, `off`) exactly as deterministic as the positive
+   * one (`boot`).
+   * @param factorySeeds - the posture to boot with, or undefined for the default.
+   * @returns the runPass hand-off count recorded during service init.
+   */
+  async function bootPassHandOffs(factorySeeds: FactorySeedsMode | undefined): Promise<number> {
+    const spy = vi.spyOn(SeedPreinstaller.prototype, 'runPass')
+    try {
+      const ctx = new Context()
+      contexts.push(ctx)
+      const storageRoot = mkdtempSync(join(tmpdir(), 'gov-store-'))
+      storageRoots.push(storageRoot)
+      const gateway = new PluginGovernanceGateway(ctx, {
+        storageRoot,
+        // An empty seed keeps the pass a zero-action passthrough, so counting
+        // hand-offs is the entire observation and no fixture tree is needed.
+        seedPath: writeSeed([]),
+        ...(factorySeeds === undefined ? {} : { factorySeeds }),
+      })
+      const self = gateway as unknown as Record<symbol, () => Promise<void>>
+      await self[Service.init]!.call(self)
+      const handOffs = spy.mock.calls.length
+      spy.mockRestore()
+      // Drain the boot-fired pass (only the `boot` posture has one) so no ledger
+      // write outlives this test's tmpdir cleanup.
+      await gateway.settlePreinstall()
+      return handOffs
+    } finally {
+      spy.mockRestore()
+    }
+  }
+
+  it('skips the boot pass for the default `auto` posture under a src launch', async () => {
+    // This suite runs from source, so `import.meta.url` ends in `.ts` and `auto`
+    // resolves to "skip" (src/index.ts Config.factorySeeds). That skip IS the
+    // compat fix: a src launch must not pre-install the factory seed set, whose
+    // prebuilt webstack lib carries a top-level bare `@deepseek-ai/dsh-tools`
+    // import that native exports resolution (the importer sits inside
+    // node_modules, so tsx `paths` do not apply) lands on
+    // packages/core/tools/lib/index.js — a second, artifact-face tools instance
+    // inside a source-mode process, which the src-launch compat contract
+    // forbids (profile-resolution.ts:296-301).
+    expect(await bootPassHandOffs(undefined)).toBe(0)
+    expect(await bootPassHandOffs('auto')).toBe(0)
+  })
+
+  it('fires the boot pass for `boot`, whatever the runtime mode', async () => {
+    // The installed-deployment posture, and the explicit opt-in used by every
+    // spec whose proof face is the boot-fired pass itself (the
+    // preinstall-chaos R-1.1.4 "boot is not blocked" legs).
+    expect(await bootPassHandOffs('boot')).toBe(1)
+  })
+
+  it('never fires the boot pass for `off`', async () => {
+    expect(await bootPassHandOffs('off')).toBe(0)
+  })
+
+  it('keeps settlePreinstall an ungated seam: every posture still drives one complete pass', async () => {
+    // The gate covers only the boot-fired hand-off. No posture may strand the
+    // seed set, so the explicit settle seam runs the pass itself whenever init
+    // skipped it — observable here as the installed row each posture ends with.
+    for (const factorySeeds of ['auto', 'boot', 'off'] as const) {
+      const ctx = new Context()
+      contexts.push(ctx)
+      const storageRoot = mkdtempSync(join(tmpdir(), 'gov-store-'))
+      storageRoots.push(storageRoot)
+      const seedPath = writeSeed([
+        // enabledAtBoot=false: admission-only, so the assertion measures the
+        // pass driving to completion rather than any mount channel behaviour.
+        { id: 'demo/local', package: '@demo/local', version: '1.0.0', pin: 'b'.repeat(40), source: `local:${localPluginDir('@demo/local')}`, integrity: null, enabledAtBoot: false, family: 'demo', failPolicy: 'fail-open' },
+      ])
+      const gateway = new PluginGovernanceGateway(ctx, { storageRoot, seedPath, factorySeeds })
+      const self = gateway as unknown as Record<symbol, () => Promise<void>>
+      await self[Service.init]!.call(self)
+      await gateway.settlePreinstall()
+      expect(
+        gateway.preinstallReport().entries['demo/local']?.status,
+        `factorySeeds=${factorySeeds}: the settle seam must drive a complete pass`,
+      ).toBe('installed')
+    }
   })
 })

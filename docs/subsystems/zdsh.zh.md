@@ -173,7 +173,10 @@ The host governance service. It owns one PluginRegistry and one PluginPersistenc
 /**
  * Await the in-flight or last factory preinstall pass to settle. Test seam
  * mirroring {@link syncMountedPlugins}: boot calls the pass fire-and-forget,
- * so a caller that needs the durable outcome calls this to join it.
+ * so a caller that needs the durable outcome calls this to join it. When the
+ * boot pass was gated off (`factorySeeds`, SYNC-P3-CFIX) nothing is in flight
+ * and this seam runs the pass itself — the awaited outcome is one complete
+ * pass either way.
  * @returns when the current pass has committed or decided to write nothing.
  */
 settlePreinstall(): Promise<void>

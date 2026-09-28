@@ -51,6 +51,13 @@
  * 宣言自证），SymbolIsolationCheck 在本面无触点——G1 不误报复验的 chaos 面
  * 载体 = chaos.spec.ts G3 块（kernel preLoad 面）；本文件不重复断言、不触碰
  * symbol-isolation* spec（G1 产物，勿触）。
+ *
+ * 运行姿态（SYNC-P3-CFIX）：boot 期出厂种子预装现由插件 Config `factorySeeds`
+ * 门控，默认 `auto` = src 态跳过（src-launch compat 契约要求，见 src/index.ts
+ * Config.factorySeeds）。本文件锁的命题含「pass 由 Service.init fire-and-forget
+ * 发出而不阻断 boot」（上文 R-1.1.4 启动半），所以 bootRealLoader 显式钉
+ * `factorySeeds: 'boot'`，让被测的仍是 boot 发出的那一趟 pass——姿态由 Config
+ * 显式控制而非依赖运行模式探测。断言体一字未动。
  */
 
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -269,7 +276,14 @@ async function bootRealLoader(seedPath: string, storageRoot?: string): Promise<C
   await ctx.plugin(Loader)
   const root = storageRoot ?? mkdtempSync(join(tmpdir(), 'gov-chaos-home-'))
   if (storageRoot === undefined) storageRoots.push(root)
-  const gateway = new PluginGovernanceGateway(ctx, { storageRoot: root, seedPath })
+  // `factorySeeds: 'boot'` (SYNC-P3-CFIX) — 本文件的证明面显式声明为「boot 期
+  // fire-and-forget pass 不阻断启动」（头注 R-1.1.4 启动半 + 挂起腿 :332-333），
+  // 所以这里必须让 pass 由 Service.init 发出，而不是由下面的 settlePreinstall()
+  // 补发。默认 `auto` 姿态在 src 态（vitest 跑 .ts）会跳过 boot pass——那是
+  // src-launch compat 契约的要求（见 src/index.ts Config.factorySeeds），但会把
+  // 本文件锁的命题静默换成 settle 缝命题。Config 显式钉住运行姿态 = 断言语义
+  // 零改动的接线形（断言体一字未动）。
+  const gateway = new PluginGovernanceGateway(ctx, { storageRoot: root, seedPath, factorySeeds: 'boot' })
   const self = gateway as unknown as Record<symbol, () => Promise<void>>
   await self[Service.init]!.call(self)
   return { ctx, gateway, storageRoot: root }

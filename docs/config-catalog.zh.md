@@ -2282,7 +2282,30 @@ export interface Config {
    * trees are never disturbed (DESIGN-intake-tech.md §1.2).
    */
   seedPath?: string
+  /**
+   * When the boot-time factory preinstall pass runs (SYNC-P3-CFIX).
+   *
+   * - `boot` — always fire the pass from service init. This is the installed
+   *   deployment posture and the explicit opt-in tests that assert on the
+   *   boot-fired pass itself use.
+   * - `off` — never fire it from service init. The explicit
+   *   {@link PluginGovernanceGateway.settlePreinstall} seam is untouched by
+   *   every mode, so a pass can still be driven on demand.
+   * - `auto` (default, also the value an unset field resolves to) — fire it
+   *   only when this module executes from its built artifact. A src launch
+   *   (`import.meta.url` ending in `.ts`) is a dev/test boot and skips the
+   *   pass: pre-installing the factory seed set there mounts the prebuilt
+   *   webstack lib, whose top-level bare `@deepseek-ai/dsh-tools` import is
+   *   resolved natively (the importer sits inside node_modules, so tsx
+   *   `paths` do not apply) onto `packages/core/tools/lib/index.js` — a second
+   *   artifact-face instance of the tools face in a source-mode process, which
+   *   the src-launch compat contract forbids (profile-resolution.ts:296-301).
+   */
+  factorySeeds?: FactorySeedsMode
 }
+
+/** The three {@link Config.factorySeeds} postures. */
+export type FactorySeedsMode = 'auto' | 'boot' | 'off'
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-plugin-governance-host -->
 

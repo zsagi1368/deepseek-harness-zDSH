@@ -243,6 +243,48 @@ export interface Config {
    * trees are never disturbed (DESIGN-intake-tech.md §1.2).
    */
   seedPath?: string
+  /**
+   * When the boot-time factory preinstall pass runs (SYNC-P3-CFIX).
+   *
+   * - `boot` — always fire the pass from service init. This is the installed
+   *   deployment posture and the explicit opt-in tests that assert on the
+   *   boot-fired pass itself use.
+   * - `off` — never fire it from service init. The explicit
+   *   {@link PluginGovernanceGateway.settlePreinstall} seam is untouched by
+   *   every mode, so a pass can still be driven on demand.
+   * - `auto` (default, also the value an unset field resolves to) — fire it
+   *   only when this module executes from its built artifact. A src launch
+   *   (`import.meta.url` ending in `.ts`) is a dev/test boot and skips the
+   *   pass: pre-installing the factory seed set there mounts the prebuilt
+   *   webstack lib, whose top-level bare `@deepseek-ai/dsh-tools` import is
+   *   resolved natively (the importer sits inside node_modules, so tsx
+   *   `paths` do not apply) onto `packages/core/tools/lib/index.js` — a second
+   *   artifact-face instance of the tools face in a source-mode process, which
+   *   the src-launch compat contract forbids (profile-resolution.ts:296-301).
+   */
+  factorySeeds?: FactorySeedsMode
+}
+
+/** The three {@link Config.factorySeeds} postures. */
+export type FactorySeedsMode = 'auto' | 'boot' | 'off'
+
+/** The posture an unset `factorySeeds` resolves to. */
+const DEFAULT_FACTORY_SEEDS: FactorySeedsMode = 'auto'
+
+/**
+ * Whether the boot-time factory preinstall pass fires, given the configured
+ * posture. `auto` defers to the runtime mode through the official `.ts`-suffix
+ * probe (ptc-runtime-node/src/launch.ts:30, the directory-picker-auto idiom):
+ * a source-mode module is a src launch, so the pass is skipped — see
+ * {@link Config.factorySeeds} for why that matters to the src-launch contract.
+ * @param mode - the configured posture, or undefined when unset.
+ * @returns true when service init must fire the pass.
+ */
+function factorySeedsRunAtBoot(mode: FactorySeedsMode | undefined): boolean {
+  const resolved = mode ?? DEFAULT_FACTORY_SEEDS
+  if (resolved === 'boot') return true
+  if (resolved === 'off') return false
+  return !new URL(import.meta.url).pathname.endsWith('.ts')
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -285,6 +327,11 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     // storageRoot/registryUrl (out of scope, DESIGN-intake-tech.md §1.2). An
     // empty string means "not provided": the resolver then applies env / default.
     seedPath: z.string().default(''),
+    // Same `.default` idiom as seedPath: schemastery's `Schema` has no
+    // `.optional`, and an unset field resolves to `auto` on the code path too
+    // (factorySeedsRunAtBoot), so the default here only documents the wire
+    // shape rather than being the single source of the fallback.
+    factorySeeds: z.union(['auto', 'boot', 'off']).default(DEFAULT_FACTORY_SEEDS),
   })
 
   private readonly registry: PluginRegistry
@@ -314,6 +361,8 @@ export class PluginGovernanceGateway extends TypertRemoteService {
   private readonly repoRoot: string
   /** Factory seed preinstall executor (DESIGN-intake-tech.md §1.2). */
   private readonly preinstaller: SeedPreinstaller
+  /** Whether service init fires the boot preinstall pass (SYNC-P3-CFIX gate). */
+  private readonly preinstallAtBoot: boolean
 
   /**
    * @param ctx - owning Host context.
@@ -348,6 +397,10 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     // installed-sources data directory (§1.4).
     const seedPath = resolveSeedPath(config.seedPath, process.env)
     this.repoRoot = deriveRepoRoot(seedPath)
+    // Resolve the boot-pass posture once, at construction: it depends only on
+    // config plus this module's own runtime mode, neither of which can change
+    // for the lifetime of the service.
+    this.preinstallAtBoot = factorySeedsRunAtBoot(config.factorySeeds)
     this.preinstaller = new SeedPreinstaller({
       seedPath,
       resultsPath: join(this.persistence.dataDir, 'preinstall-results.json'),
@@ -434,7 +487,11 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     await this.syncMountedPlugins()
     // Fire-and-forget the factory preinstall pass so a broken or absent seed
     // never delays or aborts boot (R-1.1.4); tests await the settle seam.
-    void this.preinstaller.runPass()
+    // SYNC-P3-CFIX: gated by `factorySeeds` — a src launch skips it under the
+    // default `auto` posture (see Config.factorySeeds for the compat reason);
+    // `settlePreinstall()` below stays an unconditional explicit seam in every
+    // posture, so a pass is always drivable on demand.
+    if (this.preinstallAtBoot) void this.preinstaller.runPass()
     this.ctx.effect(() => () => {
       void this.registry.dispose()
     }, 'plugin-governance.registryDispose')
@@ -1037,7 +1094,10 @@ export class PluginGovernanceGateway extends TypertRemoteService {
   /**
    * Await the in-flight or last factory preinstall pass to settle. Test seam
    * mirroring {@link syncMountedPlugins}: boot calls the pass fire-and-forget,
-   * so a caller that needs the durable outcome calls this to join it.
+   * so a caller that needs the durable outcome calls this to join it. When the
+   * boot pass was gated off (`factorySeeds`, SYNC-P3-CFIX) nothing is in flight
+   * and this seam runs the pass itself — the awaited outcome is one complete
+   * pass either way.
    * @returns when the current pass has committed or decided to write nothing.
    */
   settlePreinstall(): Promise<void> {
