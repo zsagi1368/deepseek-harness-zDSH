@@ -10,7 +10,7 @@
  * itself (errata 1/2, RECEIPT-H1 §2.2): ① that API is async while this
  * package's ledger commits sit on synchronous contract faces (`approve()` is
  * a sync `@Remote` with a sync compensation try/catch; the executor's
- * `recordProvenance` hook is sync) — async-izing them would extend the
+ * `recordOrigin` hook is sync) — async-izing them would extend the
  * published `@Remote` signatures (a contract-face change this card must not
  * make); ② the kernel package carries a "zero new dependencies, node
  * builtins only" discipline and has its own file-local mirror of this shape.

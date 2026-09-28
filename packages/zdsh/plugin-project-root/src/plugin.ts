@@ -1,6 +1,6 @@
 /**
  * ProjectPluginLayer — the post-boot mount surface for project plugins (S-43
- * M2a). Owns the provenance table, the tool-name attribution map, the RunGuard
+ * M2a). Owns the origin table, the tool-name attribution map, the RunGuard
  * watcher registry, and the tools/execute wrapper wiring.
  *
  * Mounting is serial and post-boot: every candidate is created through
@@ -37,7 +37,7 @@ import { createSubprocessRuntime, type SubprocessRuntime } from './subprocess-ru
 import { wireSessionScope } from './session-scope.ts'
 import type {
   ProjectPluginCandidate,
-  ProjectPluginProvenance,
+  ProjectPluginOrigin,
   GateReportEntry,
 } from './types.ts'
 
@@ -58,11 +58,11 @@ export interface ProjectPluginLayer {
    */
   mount(accepted: ProjectPluginCandidate[]): Promise<MountResult>
   /**
-   * Provenance of one mounted loader entry id.
+   * Origin of one mounted loader entry id.
    * @param entryId - loader entry id returned by mount.
-   * @returns the provenance record, or `undefined` when the id is unknown.
+   * @returns the origin record, or `undefined` when the id is unknown.
    */
-  provenanceOf(entryId: string): ProjectPluginProvenance | undefined
+  originOf(entryId: string): ProjectPluginOrigin | undefined
   /**
    * The guarded manifest of one mounted loader entry id.
    * @param entryId - loader entry id returned by mount.
@@ -210,7 +210,7 @@ function registerSubprocessProxyTool(
  */
 export function createProjectPluginLayer(ctx: Context): ProjectPluginLayer {
   const runGuard = new RunGuard()
-  const provenance = new Map<string, ProjectPluginProvenance>()
+  const origin = new Map<string, ProjectPluginOrigin>()
   const manifests = new Map<string, PluginManifest>()
   const toolOwners = new Map<string, string>()
   /** manifest id → owning project root (M3 session-scope and execute checks). */
@@ -247,13 +247,13 @@ export function createProjectPluginLayer(ctx: Context): ProjectPluginLayer {
     },
 
     subprocessEntryIds(): string[] {
-      return [...provenance.values()]
+      return [...origin.values()]
         .filter(p => p.runtimeTier === 'subprocess')
         .map(p => p.entryId)
     },
 
-    provenanceOf(entryId: string): ProjectPluginProvenance | undefined {
-      return provenance.get(entryId)
+    originOf(entryId: string): ProjectPluginOrigin | undefined {
+      return origin.get(entryId)
     },
 
     guardedManifestOf(entryId: string): PluginManifest | undefined {
@@ -340,7 +340,7 @@ export function createProjectPluginLayer(ctx: Context): ProjectPluginLayer {
               message: `failed to register RunGuard watcher: ${cause instanceof Error ? cause.message : String(cause)}`,
             })
           }
-          provenance.set(entryId, {
+          origin.set(entryId, {
             entryId,
             manifestId: candidate.id,
             version: candidate.version,
@@ -399,11 +399,11 @@ export function createProjectPluginLayer(ctx: Context): ProjectPluginLayer {
         if (attributed.length > 0) {
           sessionScope.applyRestrictions(attributed, candidate.projectRoot)
         }
-        // Record provenance BEFORE the mirror can see the entry: mount runs at
+        // Record origin BEFORE the mirror can see the entry: mount runs at
         // boot, before the first governance sync pass, so the entry always finds
-        // its provenance (the fail-closed direction is "no provenance ⇒ never
+        // its origin (the fail-closed direction is "no origin ⇒ never
         // treated as a project entry").
-        provenance.set(entryId, {
+        origin.set(entryId, {
           entryId,
           manifestId: candidate.id,
           version: candidate.version,

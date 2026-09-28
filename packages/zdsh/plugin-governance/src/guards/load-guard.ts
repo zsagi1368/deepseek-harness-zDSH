@@ -370,7 +370,10 @@ const passCache = new Map<string, { result: CheckPassed; hits: number }>()
 let scanRuns = 0
 let cacheHits = 0
 
-/** 观测面（验收 7 性能断言载体）：扫描/缓存命中计数只读快照。 */
+/**
+ * 观测面（验收 7 性能断言载体）：扫描/缓存命中计数只读快照。
+ * @returns the scan and cache-hit counters since process start.
+ */
 export function getSymbolIsolationScanStats(): { scans: number; cacheHits: number } {
   return { scans: scanRuns, cacheHits }
 }

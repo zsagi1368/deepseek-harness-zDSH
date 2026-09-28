@@ -130,7 +130,7 @@ export const MODEL_SLOTS_SETTINGS_NAMESPACE = 'llm-model-slots'
 /** The built-in slots this page renders, in display order. */
 export const SLOT_ROWS = ['title', 'compaction.summarize', 'vision'] as const
 
-/** One slot's effective route as the page shows it, with its provenance tier. */
+/** One slot's effective route as the page shows it, with its origin tier. */
 export interface EffectiveSlotView {
   /** Slot identity (`title`, `compaction.summarize`, `vision`). */
   readonly slot: string
@@ -162,7 +162,7 @@ function routeEntryOf(value: unknown): { provider: string | undefined; model: st
 }
 
 /**
- * Compute the effective route and provenance tier for every built-in slot
+ * Compute the effective route and origin tier for every built-in slot
  * from the `llm-model-slots` namespace value, following the fixed precedence
  * the slot registry resolves: explicit slot statement, then the deployment
  * default, then the conversation's own main-model route (which a settings

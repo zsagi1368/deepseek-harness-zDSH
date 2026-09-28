@@ -211,11 +211,11 @@ The host-side project plugin layer service.
 mount(accepted: ProjectPluginCandidate[]): Promise<MountResult>
 
 /**
- * Provenance of one mounted loader entry id.
+ * Origin of one mounted loader entry id.
  * @param entryId - loader entry id returned by mount.
- * @returns the provenance record, or `undefined` when the id is unknown.
+ * @returns the origin record, or `undefined` when the id is unknown.
  */
-provenanceOf(entryId: string): ProjectPluginProvenance | undefined
+originOf(entryId: string): ProjectPluginOrigin | undefined
 
 /**
  * The guarded manifest of one mounted loader entry id.

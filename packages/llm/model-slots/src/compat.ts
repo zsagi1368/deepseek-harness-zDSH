@@ -43,8 +43,13 @@ export async function guardModelSlots(
         name: 'settings:register',
         run: async () => {
           try {
-            const { SettingsProvider } = await import('@deepseek-ai/dsh-settings')
-            return typeof SettingsProvider === 'function' && typeof SettingsProvider.prototype.register === 'function'
+            // zDSH (SYNC-P2): probe through a string index — the official 0.1.7
+            // settings rewrite removed the SettingsProvider export, and a static
+            // destructure would fail the compile surface instead of failing soft.
+            const mod = await import('@deepseek-ai/dsh-settings') as Record<string, unknown>
+            const provider: unknown = mod['SettingsProvider']
+            return typeof provider === 'function'
+              && typeof (provider as { prototype?: { register?: unknown } }).prototype?.register === 'function'
               ? null
               : 'register not a function'
           } catch {

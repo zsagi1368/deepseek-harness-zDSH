@@ -29,11 +29,11 @@ DeepSeek Harness 的项目级插件根（S-43 M1 + M2a + M2b）。插件从 `<pr
 - **宿主钳制**（`clampProjectPluginSandbox`）：清单沙箱是申请；钳制产出生效沙箱，对超出项目插件边界的声明值予以拒绝（B-01 `fullyAuthorized`/`spawn`/`exec`，B-03 `llm-adapter` 能力及任何非 `none` 的 `network.access`）或收窄（内存/超时封顶于 `PROJECT_PLUGIN_HOST_CAPS` 512 MiB / 60 秒，文件系统 `allowedPaths` 与插件目录求交集，fail-closed）。M2b 授予声明的 `process`/`worker` 档位（`runtimeTier: 'subprocess'`）；`inline` 保持 M2a 进程内运行时。
 - **门控**（`gate`）：每个候选依次执行钳制 + `LoadGuard.preLoad`（内核版本 `0.1.1-rc.2`）+ 能力拒绝，产出 `{ accepted, report }` 与完整判定审计轨迹（`rejected`/`warned`/`mounted`/`mount-failed`）。
 - **信任 ledger**（`data/project-trusts.json`）：持久的 根 × 插件 决策。缺失或损坏的 ledger 读作空（fail closed——在操作者记录决策之前什么都不挂载）。信任是项目根的性质，由发现者赋予；被发现的文件绝不自我报告信任。项目插件从不进入 registry 的 `persistedDecisions` 机制；本 ledger 是它们唯一的决策存储。
-- **post-boot 挂载隔离**（`mountProjectPlugins` / `createProjectPluginLayer`）：开关（`project-plugins.config.enabled`，无环境变量键）在任何发现之前检查——关闭时零文件系统读取（A-01/A-02）。挂载是串行且 post-boot 的，每次 `ctx.loader.create` 都被 try/catch 隔离（B-07）；工具集在每次 create 前后快照，新注册的工具据此归因到引入它的插件；provenance 在治理镜像能看到该条目之前就记录。项目条目永不进入 include patch tree。
+- **post-boot 挂载隔离**（`mountProjectPlugins` / `createProjectPluginLayer`）：开关（`project-plugins.config.enabled`，无环境变量键）在任何发现之前检查——关闭时零文件系统读取（A-01/A-02）。挂载是串行且 post-boot 的，每次 `ctx.loader.create` 都被 try/catch 隔离（B-07）；工具集在每次 create 前后快照，新注册的工具据此归因到引入它的插件；origin 在治理镜像能看到该条目之前就记录。项目条目永不进入 include patch tree。
 - **RunGuard 接线**：每个挂载的插件都注册 watcher（B-08），每个项目工具调用都经 `tools/execute` 包装器（`projectToolWrapper`）走 `runGuard.execute`；非项目工具零行为变化地通过（D-01）。`PluginTimeoutError`/`PluginError` 映射为结构化的 `isError` 结果，绝不以抛出的异常呈现。
 - **子进程运行时**（`createSubprocessRuntime`，M2b）：`process`/`worker` 档位在带 OS 边界的子进程或 worker 线程中运行。bootstrap 以字符串生成，内联绝对 `file://` URL（子进程侧无需裸说明符解析）；超时即杀死子进程（SIGKILL/`terminate`），回收挂起的执行体（B-06）；内存经 `--max-old-space-size` 或 Worker `resourceLimits` 强制；只有清单声明的工具名能通过 IPC 白名单；环境经 `deriveSandboxEnvironment` 过滤（B-09）。
 - **会话作用域**（`wireSessionScope`，M3/C-03）：每个项目工具绑定到其所属项目根；对每个会话 `cwd` 未命中该根（`cwdHitsProjectRoot`）的存活 agent，该工具经 `agent.ctx.tools.restrict({ deny: [...] })` 被限制移除，包装器中的执行时 cwd 检查作为纵深防御。新 agent 由 `agent/created` 监听覆盖。
-- **UI 徽标**：`runtimeTier`（`in-process` / `subprocess`）是名册/UI 显示字段；层暴露 `isSubprocess(pluginId)`、`subprocessEntryIds()` 与 provenance（`provenanceOf`）供 UI 渲染。
+- **UI 徽标**：`runtimeTier`（`in-process` / `subprocess`）是名册/UI 显示字段；层暴露 `isSubprocess(pluginId)`、`subprocessEntryIds()` 与 origin（`originOf`）供 UI 渲染。
 
 <a id="design-basis"></a>
 ## 设计依据

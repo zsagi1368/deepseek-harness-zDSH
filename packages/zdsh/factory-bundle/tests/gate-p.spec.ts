@@ -22,7 +22,7 @@
  * What it proves (the batch-2 acceptance slice, per seed row):
  *  - P1 first boot: every seed row is admitted, appears in list(), lands the
  *    boot posture the seed ITSELF declares (`enabledAtBoot` → 'active', else
- *    the K-B2 DEFAULT-DISABLED check), and badges provenance 'preinstall' +
+ *    the K-B2 DEFAULT-DISABLED check), and badges origin 'preinstall' +
  *    source native. The verticals row is the disabled case; the omnivision row
  *    is the boot-enabled case (出厂即用功能件, TC-B2-2.1b).
  *  - P1 idempotency: a restart over the same home re-settles to a
@@ -383,7 +383,7 @@ function pilotSummary(gateway: PluginGovernanceGateway) {
 }
 
 describe.each(seed.entries)('Gate-P P1 (matrix) — real seed + real cold-installed artifact: $id', (row) => {
-  it('first boot admits it, lands the seed-declared boot posture, and badges factory provenance', async () => {
+  it('first boot admits it, lands the seed-declared boot posture, and badges factory origin', async () => {
     const storageRoot = mkdtempSync(join(tmpdir(), 'gate-p-home-'))
     storageRoots.push(storageRoot)
     const { gateway } = await boot(storageRoot)
@@ -399,7 +399,7 @@ describe.each(seed.entries)('Gate-P P1 (matrix) — real seed + real cold-instal
     expect(summary).toBeDefined()
     expect(summary?.status).toBe(expectedBootStatus(row))
     expect(summary?.source).toBe('native')
-    expect(summary?.provenance).toBe('preinstall')
+    expect(summary?.origin).toBe('preinstall')
   })
 })
 
@@ -430,7 +430,7 @@ describe('Gate-P pilot — restart idempotency over the whole seed', () => {
       const summary = boot2.gateway.list().plugins.find(plugin => plugin.pluginId === gid(row.id))
       expect(summary, `Gate-P restart: seed row ${row.id} missing from the roster after boot 2`).toBeDefined()
       expect(summary?.status, `Gate-P restart: seed row ${row.id} drifted off its declared posture ${expectedBootStatus(row)}`).toBe(expectedBootStatus(row))
-      expect(summary?.provenance, `Gate-P restart: seed row ${row.id} lost its preinstall badge`).toBe('preinstall')
+      expect(summary?.origin, `Gate-P restart: seed row ${row.id} lost its preinstall badge`).toBe('preinstall')
     }
 
     // MM1b 固化教训（TC-B3-MM2 带入 autopilot）：内存 roster 断言会被 boot-2

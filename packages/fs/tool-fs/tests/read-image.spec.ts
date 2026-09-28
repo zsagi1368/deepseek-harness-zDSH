@@ -541,7 +541,7 @@ describe('strict image-modality gate', () => {
 })
 
 describe('vision slot digestion (S-45 M3)', () => {
-  it('digests through the vision slot and serves a provenance-bearing text block on a text-only route', async () => {
+  it('digests through the vision slot and serves a source-tagged text block on a text-only route', async () => {
     await writeFile(join(dir, 'red.png'), PNG_1X1)
     const visionAdapter = new VisionDigestAdapter('A red square.')
     const ctx = await setup({
@@ -560,7 +560,7 @@ describe('vision slot digestion (S-45 M3)', () => {
     expect(envelope).toContain(`<path>${join(dir, 'red.png')}</path>`)
     expect(envelope).toContain('<type>image-description</type>')
     expect(envelope).toContain('<description>A red square.</description>')
-    expect(envelope).toContain('<provenance>')
+    expect(envelope).toContain('<origin>')
     expect(envelope).toContain('<slot>vision</slot>')
     expect(envelope).toContain('<provider>vision-assist</provider>')
     expect(envelope).toContain('<model>vision-model</model>')

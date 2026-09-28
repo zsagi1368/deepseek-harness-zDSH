@@ -1,6 +1,6 @@
 /**
  * ProjectPluginLayer + mountProjectPlugins suite (S-43 M2a):
- * serial mounting, provenance, tool attribution, RunGuard watchers (B-08),
+ * serial mounting, origin, tool attribution, RunGuard watchers (B-08),
  * mount isolation (B-07), TOCTOU re-verification (B-10), and the switch
  * short-circuit (A-01/A-02).
  */
@@ -65,7 +65,7 @@ async function gateFixture(root: string): Promise<Awaited<ReturnType<typeof gate
 }
 
 describe('ProjectPluginLayer.mount', () => {
-  it('mounts entries serially with file URL specifiers, records provenance, and attributes tools', async () => {
+  it('mounts entries serially with file URL specifiers, records origin, and attributes tools', async () => {
     const root = makeRoot()
     const pluginDir = writePluginPackage(root, 'demo', manifestBlob())
     // A Cordis plugin that registers a tool during apply.
@@ -114,12 +114,12 @@ describe('ProjectPluginLayer.mount', () => {
     const entry = [...ctx.loader.entries()].find(e => e.options.id === entryId)
     expect(entry?.options.name).toBe(pathToFileURL(join(pluginDir, 'index.js')).href)
 
-    // Provenance is keyed by the loader entry id.
-    const provenance = layer.provenanceOf(entryId)
-    expect(provenance?.manifestId).toBe('fixtures/demo')
-    expect(provenance?.projectRoot).toBe(root)
-    expect(provenance?.clampedSandbox.network.access).toBe('none')
-    expect(provenance?.guardVerdict).toBe('allowed')
+    // Origin is keyed by the loader entry id.
+    const origin = layer.originOf(entryId)
+    expect(origin?.manifestId).toBe('fixtures/demo')
+    expect(origin?.projectRoot).toBe(root)
+    expect(origin?.clampedSandbox.network.access).toBe('none')
+    expect(origin?.guardVerdict).toBe('allowed')
     expect(layer.guardedManifestOf(entryId)?.id).toBe('fixtures/demo')
 
     // The tool introduced by the plugin is attributed to it (snapshot diff).
@@ -337,6 +337,6 @@ describe('mountProjectPlugins switch short-circuit (A-01/A-02)', () => {
     // demo is trusted+enabled and mounts; other is ledger-disabled and skipped.
     expect(result.mounted).toHaveLength(1)
     expect(result.report.some(row => row.id === 'fixtures/other' && row.check === 'ledger-disabled')).toBe(true)
-    expect(result.layer?.provenanceOf(result.mounted[0] as string)?.manifestId).toBe('fixtures/demo')
+    expect(result.layer?.originOf(result.mounted[0] as string)?.manifestId).toBe('fixtures/demo')
   })
 })

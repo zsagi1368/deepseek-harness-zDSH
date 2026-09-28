@@ -38,7 +38,10 @@ const STATUSES: readonly PreinstallStatus[] = ['installed', 'skipped', 'failed']
 /** The mount outcomes the schema admits, mirroring {@link PreinstallMountStatus}. */
 const MOUNT_STATUSES: readonly PreinstallMountStatus[] = ['mounted', 'failed', 'skipped']
 
-/** Empty ledger used when no durable record exists yet. */
+/**
+ * Empty ledger used when no durable record exists yet.
+ * @returns a version-1 ledger with no run timestamp and no entries.
+ */
 export function emptyPreinstallResults(): PersistedPreinstallResults {
   return { version: 1, ranAt: null, entries: {} }
 }
@@ -86,6 +89,8 @@ function readEntry(value: unknown): PreinstallEntryResult | null {
  * Read the ledger from `path`; a missing or unreadable/corrupt file yields an
  * empty ledger (fail-open: losing the report never blocks boot, R-1.1.4).
  * Entries that are not a well-formed result row are dropped.
+ * @param path - absolute path of the durable ledger file.
+ * @returns the parsed ledger, or an empty ledger when it is missing/corrupt.
  */
 export function loadPreinstallResults(path: string): PersistedPreinstallResults {
   if (!existsSync(path)) return emptyPreinstallResults()
@@ -127,7 +132,11 @@ export function savePreinstallResults(path: string, payload: PersistedPreinstall
   writeFileAtomicSync(path, JSON.stringify(payload, null, 2), 0o600)
 }
 
-/** Project the durable ledger to the read-only client report. */
+/**
+ * Project the durable ledger to the read-only client report.
+ * @param payload - the durable ledger read from disk.
+ * @returns the frozen client-facing preinstall report.
+ */
 export function toReport(payload: PersistedPreinstallResults): PreinstallReport {
   return Object.freeze({
     ranAt: payload.ranAt,

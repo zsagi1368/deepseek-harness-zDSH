@@ -113,7 +113,7 @@ const locJson = () => JSON.stringify({ uri: pathToFileURL(join(ws, 'a.ts')).href
 
 // zDSH (FLAKE-BATCH, 2026-09-28): every suite here spawns fixture-server/inline-script child
 // processes; node spawn + handshake starves past the 5s default under full-run parallel load
-// (S-4 family, PDF-FLAKE 721f766228 precedent) — 30s suite budget, assertions unchanged. The
+// (S-4 family, PDF-FLAKE precedent) — 30s suite budget, assertions unchanged. The
 // task.timeout consumer (waitForFile in the backpressure test) scales with the resolved value.
 describe('LspInstance server-request handling', { timeout: 30_000 }, () => {
   it('answers workspace/configuration with the static config per item', async () => {

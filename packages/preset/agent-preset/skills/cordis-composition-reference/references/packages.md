@@ -282,6 +282,7 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 | `@deepseek-ai/dsh-llm-deepseek-api-key` | yes | DeepSeek api-key provider authentication and discovery |
 | `@deepseek-ai/dsh-llm-pi-ai` | yes | pi-ai-backed DeepSeek adapter for the DeepSeek Harness LLM seam (design-verification twin of dsh-llm-deepseek) |
 | `@deepseek-ai/dsh-llm-retry` | yes | Provider-routed LLM request retry policy for the DeepSeek Harness |
+| `@deepseek-ai/dsh-model-slots` | yes | Unified auxiliary-model slot registry for the DeepSeek Harness: named side-task routes resolved ahead of every auxiliary LLM dispatch with durable audit records |
 | `@deepseek-ai/dsh-plugin-package-inventory-deepseek` | yes | Active Loader-backed plugin package inventory for official DeepSeek LLM API requests |
 | `@deepseek-ai/dsh-token-meter` | yes | Replay-aware token measurement service (ctx.tokenMeter) for the DeepSeek Harness |
 
@@ -502,3 +503,10 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 | Package | Config | Description |
 |---|---|---|
 | `@deepseek-ai/dsh-workspace` | no | Workspace entity registry (ctx.workspaceRegistry): durable workspace records with validated session attachment over the domain data form for the DeepSeek Harness |
+
+## zdsh
+
+| Package | Config | Description |
+|---|---|---|
+| `@deepseek-ai/dsh-client-ui-plugin-governance` | no | Governance tab in Web Plugins settings: roster badges, lifecycle and admission actions, health counts, and presets |
+| `@deepseek-ai/dsh-plugin-governance-host` | yes | Host-plane governance service: roster, lifecycle, health, admission, and preset Remotes over the plugin governance registry |

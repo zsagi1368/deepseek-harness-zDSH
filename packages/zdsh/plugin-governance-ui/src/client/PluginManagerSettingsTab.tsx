@@ -55,7 +55,7 @@ const STATUS_KEYS = {
   deprecated: 'statusDeprecated',
 } as const satisfies Record<GovernedPluginSummary['status'], PluginManagerLocaleKey>
 
-/** Locale copy for a roster row's provenance badge. */
+/** Locale copy for a roster row's origin badge. */
 const SOURCE_KEYS = {
   'loader-mirror': 'sourceMirror',
   native: 'sourceNative',

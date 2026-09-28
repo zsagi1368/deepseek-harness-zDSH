@@ -212,7 +212,7 @@ describe('subprocess project plugin roster (M2b)', () => {
       },
     } as const
     const fakeLayer = {
-      provenanceOf: (id: string) => id === entryId
+      originOf: (id: string) => id === entryId
         ? {
           manifestId: 'fixtures/subproc-demo',
           projectRoot,

@@ -143,9 +143,9 @@ describe('subprocess runtime (M2b)', () => {
     expect(mounted).toHaveLength(1)
     const entryId = mounted[0] as string
 
-    // Provenance carries the M2b subprocess tier.
-    expect(layer.provenanceOf(entryId)?.runtimeTier).toBe('subprocess')
-    expect(layer.provenanceOf(entryId)?.clampedSandbox.type).toBe('process')
+    // Origin carries the M2b subprocess tier.
+    expect(layer.originOf(entryId)?.runtimeTier).toBe('subprocess')
+    expect(layer.originOf(entryId)?.clampedSandbox.type).toBe('process')
     expect(layer.isSubprocess('fixtures/hang')).toBe(true)
 
     // The manifest-declared tools are attributed and exposed as proxies.
@@ -205,7 +205,7 @@ describe('subprocess runtime (M2b)', () => {
     const layer = createProjectPluginLayer(ctx)
     const { mounted } = await layer.mount(accepted)
     expect(mounted).toHaveLength(1)
-    expect(layer.provenanceOf(mounted[0] as string)?.runtimeTier).toBe('subprocess')
+    expect(layer.originOf(mounted[0] as string)?.runtimeTier).toBe('subprocess')
 
     const hung = await run(ctx, 'hang_tool')
     expect(hung.isError).toBe(true)

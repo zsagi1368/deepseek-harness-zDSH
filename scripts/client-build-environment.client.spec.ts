@@ -79,7 +79,7 @@ function repositoryFixture(version = '1.2.3-rc.4'): string {
 
 // zDSH (FLAKE-BATCH, 2026-09-28): the git-subprocess fixture tests (init/config/add/commit/
 // submodule spawns) flake past the 5s default under full-run parallel load (S-4 family, same
-// precedent as PDF-FLAKE 721f766228 and hmr-config.spec.ts) — 30s suite budget, assertions unchanged.
+// precedent as PDF-FLAKE and hmr-config.spec.ts) — 30s suite budget, assertions unchanged.
 describe('client build environment', { timeout: 30_000 }, () => {
   it('requires an exact public environment for a named artifact profile', () => {
     const expected = {

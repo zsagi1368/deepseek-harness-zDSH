@@ -18,7 +18,7 @@
 
 - `inject`: `agents` · `llm` · `sessionPersistence` · `sessions`
 - `refs`: `Stream` (`@agentclientprotocol/sdk`)
-- `source`: [`packages/acp/acp/src/index.ts:75`](../packages/acp/acp/src/index.ts)
+- `source`: [`packages/acp/acp/src/index.ts:101`](../packages/acp/acp/src/index.ts)
 
 ```ts config-catalog
 /** Plugin config: the provider/model selection used for each ACP-created agent. */
@@ -2082,6 +2082,34 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-message-feedback -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-model-slots -->
+<a id="deepseek-aidsh-model-slots"></a>
+
+## `@deepseek-ai/dsh-model-slots`
+
+- `source`: [`packages/llm/model-slots/src/index.ts:98`](../packages/llm/model-slots/src/index.ts)
+
+```ts config-catalog
+/** Deployment-level slot policy supplied as plugin configuration or direct construction. */
+export interface ModelSlotsConfig {
+  /** Explicit route per built-in slot id; a present entry pins that slot. */
+  readonly slots?: Readonly<Record<string, ModelSlotRouteConfig>>
+  /** Deployment default applied when a slot has no explicit entry. */
+  readonly fallback?: ModelSlotRouteConfig
+}
+
+/** One configured route entry; `provider` and `model` are a required pair. */
+export interface ModelSlotRouteConfig {
+  /** Registered LLM provider route. */
+  readonly provider: string
+  /** Provider model id. */
+  readonly model: string
+  /** Derived credential reference (`deriveKeyRef(provider)`), stored for audit; never a literal key. */
+  readonly apiKeyEnv?: string
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-model-slots -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-office-to-pdf -->
 <a id="deepseek-aidsh-office-to-pdf"></a>
 
@@ -2210,7 +2238,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-plan-mode`
 
 - `inject`: `tools` · `systemPrompt` · `sessionProjections`
-- `source`: [`packages/plan/plan-mode/src/index.ts:70`](../packages/plan/plan-mode/src/index.ts)
+- `source`: [`packages/plan/plan-mode/src/index.ts:75`](../packages/plan/plan-mode/src/index.ts)
 
 ```ts config-catalog
 /** Deployment-owned plan guidance. */
@@ -2220,6 +2248,43 @@ export interface PlanModeConfig {
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-plan-mode -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-plugin-governance-host -->
+<a id="deepseek-aidsh-plugin-governance-host"></a>
+
+## `@deepseek-ai/dsh-plugin-governance-host`
+
+- `source`: [`packages/zdsh/plugin-governance-host/src/index.ts:186`](../packages/zdsh/plugin-governance-host/src/index.ts)
+
+```ts config-catalog
+/** Deployment configuration of the governance service. */
+export interface Config {
+  /**
+   * Persistence root for the registry snapshot, approvals ledger, presets,
+   * and npm-installed plugin trees; defaults to the governance package's own
+   * root (`~/.dsh-zdsh`, overridden by `DSH_BRANCH_HOME`, or derived as
+   * `<DSH_HOME>/zdsh` when only `DSH_HOME` is set — see resolveBranchStorageRoot).
+   */
+  storageRoot?: string
+  /**
+   * HTTPS origin of the npm registry `npm:` install sources resolve against;
+   * defaults to https://registry.npmjs.org. Mirrors behind a firewall point
+   * this at their proxy — every request and redirect hop is pinned to this
+   * single origin.
+   */
+  registryUrl?: string
+  /**
+   * Absolute path to the factory seed manifest (`zdsh-factory/seed.json`) the
+   * preinstall pass consumes. When unset the executor falls back to the
+   * `DSH_FACTORY_SEED` environment variable, then to the nearest ancestor of
+   * this package holding `zdsh-factory/seed.json`. A seed file that is not
+   * present makes the whole pass a no-op, so non-factory deployments and test
+   * trees are never disturbed (DESIGN-intake-tech.md §1.2).
+   */
+  seedPath?: string
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-plugin-governance-host -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-plugin-manager -->
 <a id="deepseek-aidsh-plugin-manager"></a>
@@ -4309,6 +4374,7 @@ export interface Config {
 | `@deepseek-ai/dsh-client-ui-open-in-app` | — | [`packages/client/ui-open-in-app/src/index.ts`](../packages/client/ui-open-in-app/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-permission-presets` | — | [`packages/client/ui-permission-presets/src/index.ts`](../packages/client/ui-permission-presets/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-plan` | — | [`packages/client/ui-plan/src/index.ts`](../packages/client/ui-plan/src/index.ts) |
+| `@deepseek-ai/dsh-client-ui-plugin-governance` | — | [`packages/zdsh/plugin-governance-ui/src/index.ts`](../packages/zdsh/plugin-governance-ui/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-reference` | — | [`packages/client/ui-reference/src/index.ts`](../packages/client/ui-reference/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-renderer` | — | [`packages/client/ui-renderer/src/index.ts`](../packages/client/ui-renderer/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-schedule` | — | [`packages/client/ui-schedule/src/index.ts`](../packages/client/ui-schedule/src/index.ts) |
@@ -4423,6 +4489,7 @@ export interface Config {
 | `@deepseek-ai/dsh-client-ui-slots` | — | [`packages/client/ui-slots/src/index.ts`](../packages/client/ui-slots/src/index.ts) |
 | `@deepseek-ai/dsh-client-web` | — | [`packages/client/web/src/index.ts`](../packages/client/web/src/index.ts) |
 | `@deepseek-ai/dsh-cmdline` | — | [`packages/boot/cmdline/src/index.ts`](../packages/boot/cmdline/src/index.ts) |
+| `@deepseek-ai/dsh-compat` | — | [`packages/zdsh/dsh-compat/src/index.ts`](../packages/zdsh/dsh-compat/src/index.ts) |
 | `@deepseek-ai/dsh-deque` | — | [`packages/util/deque/src/index.ts`](../packages/util/deque/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-agent-team-profile` | — | [`packages/experimental/agent-team-profile/src/index.ts`](../packages/experimental/agent-team-profile/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-browser-use-runtime` | — | [`packages/experimental/browser-use-runtime/src/index.ts`](../packages/experimental/browser-use-runtime/src/index.ts) |
@@ -4440,6 +4507,8 @@ export interface Config {
 | `@deepseek-ai/dsh-native-command` | — | [`packages/util/native-command/src/index.ts`](../packages/util/native-command/src/index.ts) |
 | `@deepseek-ai/dsh-output-retention` | — | [`packages/util/output-retention/src/index.ts`](../packages/util/output-retention/src/index.ts) |
 | `@deepseek-ai/dsh-package-manifest` | — | [`packages/util/package-manifest/src/index.ts`](../packages/util/package-manifest/src/index.ts) |
+| `@deepseek-ai/dsh-plugin-governance` | — | [`packages/zdsh/plugin-governance/src/index.ts`](../packages/zdsh/plugin-governance/src/index.ts) |
+| `@deepseek-ai/dsh-plugin-project-root` | — | [`packages/zdsh/plugin-project-root/src/index.ts`](../packages/zdsh/plugin-project-root/src/index.ts) |
 | `@deepseek-ai/dsh-remote-mock` | — | [`packages/test-support/remote-mock/src/index.ts`](../packages/test-support/remote-mock/src/index.ts) |
 | `@deepseek-ai/dsh-sandbox-windows-acl` | — | [`packages/sandbox/sandbox-windows-acl/src/index.ts`](../packages/sandbox/sandbox-windows-acl/src/index.ts) |
 | `@deepseek-ai/dsh-scope` | — | [`packages/core/scope/src/index.ts`](../packages/core/scope/src/index.ts) |

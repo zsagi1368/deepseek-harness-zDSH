@@ -107,7 +107,7 @@
   color: var(--dsw-alias-label-secondary);
 }
 
-/* Project-root provenance shown next to the source badge for source='project'
+/* Project-root origin shown next to the source badge for source='project'
    rows. The value is served by the governance roster (server-side), never
    inferred by the client. */
 .projectRoot {

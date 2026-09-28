@@ -461,7 +461,7 @@ describe('P2 regression — storage-only uninstall reachable after restart', () 
 //      墓碑→下一轮复活"的半态；
 //   S2 failPolicy 非法值显式拒绝 + npm: 强制 sha512 integrity — 执行器把无法
 //      兑现的条目落成 failed 行，绝不静默降级为自己的默认；
-//   S3 provenance schema 增量 — factory local: 行标 'preinstall'、source 投影仍
+//   S3 origin schema 增量 — factory local: 行标 'preinstall'、source 投影仍
 //      native、可跨重启由 readInstalledSource 载入，且永不删其 node_modules 树。
 // ============================================================================
 
@@ -563,7 +563,7 @@ describe('EXEC7 S1 + S2 + S3 through the gateway', () => {
 
   it('P-9b: the preinstall half keeps the fatal semantics after the narrowing (no warn fallback, no half-state)', async () => {
     // P-9b (DESIGN §1.2 [P-9b 附裁]) narrows the fatal tombstone write to
-    // `provenance=preinstall` rows only; the sibling npm case in
+    // `origin=preinstall` rows only; the sibling npm case in
     // npm-install.spec.ts covers the non-preinstall fallback. This is the pair
     // regression proving the narrowing did NOT touch the load-bearing half:
     // the same injected writer-lock failure must still fail the receipt, and
@@ -579,7 +579,7 @@ describe('EXEC7 S1 + S2 + S3 through the gateway', () => {
     const boot1 = await boot({ storageRoot, seedPath })
     await boot1.gateway.settlePreinstall()
     expect(boot1.gateway.preinstallReport().entries['demo/local']?.status).toBe('installed')
-    // The fatal half is decided by the provenance row, so pin the precondition.
+    // The fatal half is decided by the origin row, so pin the precondition.
     const rows = [...(boot1.gateway as unknown as { installedSources: Map<string, Record<string, unknown>> }).installedSources.values()]
     expect(rows.find(r => r.kind === 'preinstall')).toBeDefined()
 
@@ -623,7 +623,7 @@ describe('EXEC7 S1 + S2 + S3 through the gateway', () => {
 
     const summary1 = boot1.gateway.list().plugins.find(p => p.pluginId === gid('demo/local'))
     expect(summary1).toBeDefined()
-    expect((summary1 as unknown as { provenance?: string }).provenance).toBe('preinstall')
+    expect((summary1 as unknown as { origin?: string }).origin).toBe('preinstall')
     // Source projection stays native (admission went through admitManifest).
     expect((summary1 as unknown as { source: string }).source).toBe('native')
 
@@ -642,7 +642,7 @@ describe('EXEC7 S1 + S2 + S3 through the gateway', () => {
     expect(preRow).not.toHaveProperty('dir')
     await boot2.gateway.settlePreinstall()
     const summary2 = boot2.gateway.list().plugins.find(p => p.pluginId === gid('demo/local'))
-    expect((summary2 as unknown as { provenance?: string }).provenance).toBe('preinstall')
+    expect((summary2 as unknown as { origin?: string }).origin).toBe('preinstall')
 
     // A successful uninstall drops only the ledger row — the artifact dir (the
     // node_modules closure stand-in) must survive untouched.

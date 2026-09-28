@@ -54,8 +54,8 @@ export interface GateReportEntry {
   message: string
 }
 
-/** Immutable provenance carried with one mounted project entry. */
-export interface ProjectPluginProvenance {
+/** Immutable origin carried with one mounted project entry. */
+export interface ProjectPluginOrigin {
   /** Loader-generated entry id inside the root entry tree. */
   entryId: string
   /** Canonical manifest id; the roster and ledger key. */

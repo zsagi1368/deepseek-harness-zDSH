@@ -940,7 +940,7 @@ export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   // zDSH project-plugin-root layer vocabulary (S-43).
   MountResult: 'project plugin mount result is owned by packages/zdsh/plugin-project-root/src/plugin.ts',
   ProjectPluginCandidate: 'project plugin discovery candidate is owned by packages/zdsh/plugin-project-root/src/discover.ts',
-  ProjectPluginProvenance: 'project plugin provenance record is owned by packages/zdsh/plugin-project-root/src/plugin.ts',
+  ProjectPluginOrigin: 'project plugin origin record is owned by packages/zdsh/plugin-project-root/src/plugin.ts',
   PluginManifest: 'plugin manifest contract is owned by packages/zdsh/plugin-governance/src/spec/index.ts',
   SubprocessRuntime: 'subprocess runtime contract is owned by packages/zdsh/plugin-project-root/src/subprocess-runtime.ts',
   WorkspaceFileScope: 'Host workspace file lookup contract is owned by packages/api/workspace-files/README.md',

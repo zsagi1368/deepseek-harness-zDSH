@@ -116,8 +116,8 @@ interface LoaderLike {
   create?: (options: { name: string; id?: string; disabled?: boolean | null }) => Promise<unknown>
 }
 
-/** Minimal structural view of one project plugin provenance record. */
-interface ProjectProvenanceLike {
+/** Minimal structural view of one project plugin origin record. */
+interface ProjectOriginLike {
   readonly manifestId: string
   readonly projectRoot: string
   readonly version: string
@@ -142,7 +142,7 @@ interface PersistedPreset {
   entries: Array<{ pluginId: string; status: 'active' | 'disabled' }>
 }
 
-/** One registry-sourced install recorded in the provenance ledger. */
+/** One registry-sourced install recorded in the installed-source ledger. */
 interface PersistedNpmInstallSource {
   kind: 'npm'
   /** The exact `npm:` source string the operator installed from. */
@@ -155,7 +155,7 @@ interface PersistedNpmInstallSource {
 }
 
 /**
- * One factory-preinstalled `local:` artifact recorded in the provenance
+ * One factory-preinstalled `local:` artifact recorded in the origin
  * ledger (§1.3, the G2 schema increment). The artifact lives in the pnpm
  * workspace closure of `zdsh-factory-bundle`, never under the governance
  * storage area, so there is no `dir`: a later uninstall removes this row and
@@ -170,7 +170,7 @@ interface PersistedPreinstallSource {
   installedAt: number
 }
 
-/** One provenance row, discriminated by how the artifact reached the roster. */
+/** One origin row, discriminated by how the artifact reached the roster. */
 type PersistedInstalledSource = PersistedNpmInstallSource | PersistedPreinstallSource
 
 /** Durable installed-source ledger format under the persistence data directory. */
@@ -330,7 +330,7 @@ export class PluginGovernanceGateway extends TypertRemoteService {
             pluginId: canonicalId(id),
             reason: 'factory preset: installed disabled by default (seed enabledAtBoot=false)',
           }),
-        recordProvenance: (id, spec, version) => {
+        recordOrigin: (id, spec, version) => {
           const pluginId = canonicalId(id)
           // The npm: install channel already wrote this id's row (storage tree
           // included); a re-admit on a later boot re-runs the pass, so an
@@ -368,7 +368,7 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     this.loadApprovals()
     this.loadInstalledSources()
     // P2 (TEST-b0-baseline §3-A): re-register storage-only installs from the
-    // provenance ledger BEFORE the Loader mirror, so `uninstall`/`get` reach
+    // installed-source ledger BEFORE the Loader mirror, so `uninstall`/`get` reach
     // them again after a restart and `restorePersistedDecisions` (the tail of
     // the sync below) re-applies their operator enable/disable decisions.
     await this.rebuildInstalledRoster()
@@ -466,7 +466,7 @@ export class PluginGovernanceGateway extends TypertRemoteService {
   /**
    * Shared admission tail for both install sources: duplicate check, registry
    * registration, server-side fail-closed gate, durable snapshot — plus, for
-   * registry installs, the provenance ledger entry that lets a later
+   * registry installs, the installed-source ledger entry that lets a later
    * uninstall remove the extracted tree. `seedChain` marks the factory
    * preinstall channel (FB3): its admission trust is the seed/pin supply
    * chain itself — a governance-side decision recorded as an approvals-ledger
@@ -474,7 +474,7 @@ export class PluginGovernanceGateway extends TypertRemoteService {
    */
   private async admitManifest(
     manifest: GovernanceResult<GovernedManifest>,
-    provenance?: PersistedInstalledSource,
+    origin?: PersistedInstalledSource,
     seedChain = false,
   ): Promise<GovernanceResult<GovernanceAcknowledgement>> {
     if (!manifest.ok) return manifest
@@ -536,19 +536,19 @@ export class PluginGovernanceGateway extends TypertRemoteService {
         this.warn(`failed to re-apply persisted disabled state at admission for ${String(pluginId)}: ${describe(cause)}`)
       }
     }
-    if (provenance !== undefined) this.installedSources.set(pluginId, provenance)
+    if (origin !== undefined) this.installedSources.set(pluginId, origin)
     try {
       // Ledger first: if the registry snapshot then fails, compensation drops
       // the ledger entry (a stale ledger row for an unregistered id is inert —
       // the next install overwrites it), whereas the reverse order could leave
       // the snapshot advertising a plugin this process no longer has in memory.
-      if (provenance !== undefined) this.saveInstalledSources()
+      if (origin !== undefined) this.saveInstalledSources()
       if (seedAdmissionGranted) this.saveApprovals()
       this.persistence.save()
     } catch (cause) {
       // Compensate so memory and disk never disagree behind a failed call.
       await this.registry.unregister(pluginId)
-      if (provenance !== undefined) this.installedSources.delete(pluginId)
+      if (origin !== undefined) this.installedSources.delete(pluginId)
       if (seedAdmissionGranted) this.approvals.delete(pluginId)
       return failed('persistence-failed', `the registry snapshot could not be written: ${describe(cause)}`)
     }
@@ -670,8 +670,8 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     // P-9b (DESIGN-intake-tech.md §1.2 [P-9b 附裁], TC-B1-P9 fix6): whether the
     // `userUninstalled` tombstone is a load-bearing durable contract for THIS
     // plugin. Its only consumer is the seed preinstall pass, and only a
-    // `provenance=preinstall` row can ever be resurrected by a later pass;
-    // every other provenance (a user-installed `npm:` artifact, a storage or
+    // `origin=preinstall` row can ever be resurrected by a later pass;
+    // every other origin (a user-installed `npm:` artifact, a storage or
     // loader rebuild) has no pass-resurrectable row, so its tombstone write is
     // best-effort and must never fail the uninstall the operator asked for.
     const tombstoneIsLoadBearing = this.installedSources.get(pluginId)?.kind === 'preinstall'
@@ -699,7 +699,7 @@ export class PluginGovernanceGateway extends TypertRemoteService {
         try {
           await this.preinstaller.recordUninstall(String(pluginId))
         } catch (cause) {
-          this.warn(`failed to record the uninstall tombstone of ${String(pluginId)}: ${describe(cause)} (non-preinstall provenance: no preinstall-pass row exists to resurrect this plugin, so the uninstall is not rolled back)`)
+          this.warn(`failed to record the uninstall tombstone of ${String(pluginId)}: ${describe(cause)} (non-preinstall origin: no preinstall-pass row exists to resurrect this plugin, so the uninstall is not rolled back)`)
         }
       }
     } catch (cause) {
@@ -1031,14 +1031,14 @@ export class PluginGovernanceGateway extends TypertRemoteService {
             // Entries that provide no object-valued service (plain function or
             // config-only plugins) have no instance to govern; skip them.
             if (service === undefined) continue
-            // Project plugin branch: the entry carries a provenance record from
+            // Project plugin branch: the entry carries a origin record from
             // the project plugin layer, so it is wrapped as a PROJECT source —
             // explicit id = manifest id, clamped manifest, no OFFICIAL badge,
-            // no autoApprove. The provenance table is written at mount time,
+            // no autoApprove. The origin table is written at mount time,
             // which always precedes this first sync pass (no race window).
-            const provenance = this.projectProvenanceOf(entry.options.id)
-            if (provenance !== undefined) {
-              await this.registerProjectEntry(entry.options.id, provenance, service)
+            const origin = this.projectOriginOf(entry.options.id)
+            if (origin !== undefined) {
+              await this.registerProjectEntry(entry.options.id, origin, service)
               continue
             }
             const pluginId = canonicalId(entry.options.name)
@@ -1075,9 +1075,9 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     try {
       const subprocessIds = this.projectLayer()?.subprocessEntryIds?.() ?? []
       for (const entryId of subprocessIds) {
-        const provenance = this.projectProvenanceOf(entryId)
-        if (provenance !== undefined) {
-          await this.registerProjectEntry(entryId, provenance)
+        const origin = this.projectOriginOf(entryId)
+        if (origin !== undefined) {
+          await this.registerProjectEntry(entryId, origin)
         }
       }
     } catch (cause) {
@@ -1131,7 +1131,7 @@ export class PluginGovernanceGateway extends TypertRemoteService {
    * production code): the paths come from the artifact's OWN admitted
    * manifest (`dsh.capabilities[].service.factory`), never from a lookup
    * table keyed by plugin. `[]` when nothing is loadable: an unregistered
-   * id, a manifest without a service factory, or a provenance row that
+   * id, a manifest without a service factory, or a origin row that
    * names no source directory. An escaping factory value (the manifest is
    * an untrusted artifact declaration, F7 third point / D1b §4.1) throws
    * with a queryable reason — the executor's per-item fail-open settles it
@@ -1165,19 +1165,19 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     if (row.kind === 'npm') return row.dir
     if (!row.spec.startsWith('local:')) return null
     const rest = row.spec.slice('local:'.length)
-    return resolveContainedPath(this.repoRoot, rest, 'local: provenance spec')
+    return resolveContainedPath(this.repoRoot, rest, 'local: origin spec')
   }
 
   /** Structural read view of the project plugin layer service (no package import). */
   private projectLayer(): {
-    provenanceOf(entryId: string): ProjectProvenanceLike | undefined
+    originOf(entryId: string): ProjectOriginLike | undefined
     guardedManifestOf(entryId: string): GovernedManifest | undefined
     subprocessEntryIds?(): string[]
   } | undefined {
     try {
       const candidate = this.ctx.get('projectPluginLayer') as
         | {
-          provenanceOf(entryId: string): ProjectProvenanceLike | undefined
+          originOf(entryId: string): ProjectOriginLike | undefined
           guardedManifestOf(entryId: string): GovernedManifest | undefined
           subprocessEntryIds?(): string[]
         }
@@ -1189,9 +1189,9 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     }
   }
 
-  /** Provenance of one loader entry id when the project layer knows it. */
-  private projectProvenanceOf(entryId: string): ProjectProvenanceLike | undefined {
-    return this.projectLayer()?.provenanceOf(entryId)
+  /** Origin of one loader entry id when the project layer knows it. */
+  private projectOriginOf(entryId: string): ProjectOriginLike | undefined {
+    return this.projectLayer()?.originOf(entryId)
   }
 
   /** The guarded (clamped) manifest the project layer mounted for one entry. */
@@ -1206,21 +1206,21 @@ export class PluginGovernanceGateway extends TypertRemoteService {
    * rows get the same C-01 projection: explicit id = manifest id, clamped
    * manifest, no OFFICIAL badge, no autoApprove.
    * @param entryId - the loader entry id (or synthetic project entry id).
-   * @param provenance - the layer's provenance record for this entry.
+   * @param origin - the layer's origin record for this entry.
    * @param service - the mounted Cordis service for a loader entry; subprocess
    *   entries pass no service (their tools are host-side proxies) and receive
    *   a stub whose health probe reports the mirror status.
    */
   private async registerProjectEntry(
     entryId: string,
-    provenance: ProjectProvenanceLike,
+    origin: ProjectOriginLike,
     service?: unknown,
   ): Promise<void> {
-    const manifestId = canonicalId(provenance.manifestId)
+    const manifestId = canonicalId(origin.manifestId)
     if (this.mirrored.has(manifestId)) return
     const guardedManifest = this.projectGuardedManifestOf(entryId)
     if (guardedManifest === undefined) {
-      // Provenance without a guarded manifest means the layer is in a state it
+      // Origin without a guarded manifest means the layer is in a state it
       // should never reach; fail soft and never treat this entry as an official
       // host plugin either (the C-01 invariant).
       this.warn(`project entry ${entryId} has no guarded manifest; skipping`)
@@ -1236,7 +1236,7 @@ export class PluginGovernanceGateway extends TypertRemoteService {
       {
         id: String(manifestId),
         name: mountedDisplayName(manifestId),
-        version: provenance.version,
+        version: origin.version,
         mirror: true,
         source: 'project',
         manifest: guardedManifest,
@@ -1245,8 +1245,8 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     this.mirrored.add(manifestId)
     if (result.success) {
       this.projectSources.set(manifestId, {
-        projectRoot: provenance.projectRoot,
-        runtimeTier: provenance.runtimeTier ?? 'in-process',
+        projectRoot: origin.projectRoot,
+        runtimeTier: origin.runtimeTier ?? 'in-process',
       })
     } else {
       this.warn(`failed to register project entry ${entryId}: ${(result.errors ?? []).map(error => error.message).join('; ')}`)
@@ -1278,15 +1278,15 @@ export class PluginGovernanceGateway extends TypertRemoteService {
       version: manifest.version,
       status: STATUS_NAMES[this.registry.getStatus(pluginId)],
       // Entries mirrored from the Loader are distinguishable from native
-      // registrations so the UI can badge their provenance; project plugins
-      // carry their root and source from the server-side provenance table.
+      // registrations so the UI can badge their origin; project plugins
+      // carry their root and source from the server-side origin table.
       source: project !== undefined
         ? 'project'
         : this.mirrored.has(pluginId) ? 'loader-mirror' : 'native',
       ...(project !== undefined ? { projectRoot: project.projectRoot } : {}),
-      // §1.3 G2: factory-preinstalled `local:` rows badge their provenance;
+      // §1.3 G2: factory-preinstalled `local:` rows badge their origin;
       // the source projection stays 'native' (admission, not a mirror).
-      ...(installed?.kind === 'preinstall' ? { provenance: 'preinstall' as const } : {}),
+      ...(installed?.kind === 'preinstall' ? { origin: 'preinstall' as const } : {}),
       approvalRequired: requiresAdmission(plugin),
       approved: this.approvals.has(pluginId),
       warnings: Object.freeze(this.registry.getPluginWarnings(pluginId) ?? []),
@@ -1346,7 +1346,7 @@ export class PluginGovernanceGateway extends TypertRemoteService {
 
   /**
    * P2 fix (TEST-b0-baseline §3-A): after a restart the in-memory governed
-   * registry is empty, yet the installed-sources provenance ledger survives,
+   * registry is empty, yet the installed-sources installed-source ledger survives,
    * so a storage-only `npm:` install becomes unreachable — `uninstall`/`get`
    * return `plugin-not-found` and its extracted tree is orphaned on disk.
    * Re-register each such entry from its recorded tree, reusing the exact
@@ -1758,7 +1758,7 @@ function writePreset(path: string, payload: PersistedPreset): void {
 }
 
 /**
- * Narrow one raw ledger row back into a provenance source (S3, §1.3 G2). The
+ * Narrow one raw ledger row back into a origin source (S3, §1.3 G2). The
  * load loop used to inline only the `npm:` shape; the union needs a second
  * branch for factory-`preinstall` rows, which carry **no** `dir` (their
  * artifact lives in the pnpm workspace closure, never under the storage area).

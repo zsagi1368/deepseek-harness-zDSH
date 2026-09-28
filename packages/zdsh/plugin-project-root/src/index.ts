@@ -2,7 +2,7 @@
  * @deepseek-ai/dsh-plugin-project-root — project-level plugin root.
  *
  * Exports the S-43 M1 discovery + M2a host clamping, gating, trust ledger,
- * post-boot mounting, provenance, and RunGuard wiring.
+ * post-boot mounting, origin, and RunGuard wiring.
  *
  * Trust is a property of the project root, assigned by the discoverer: a
  * discovered file never self-reports trust. Every value across this module is a
@@ -56,5 +56,5 @@ export type {
   DiscoveredProjectPlugin,
   ProjectPluginCandidate,
   GateReportEntry,
-  ProjectPluginProvenance,
+  ProjectPluginOrigin,
 } from './types.ts'

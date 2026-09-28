@@ -55,6 +55,7 @@ The [format references](persistence-changes/historical-formats/README.md) cover 
 | `event:session/end-seed` | event | `5e6db6e24948d4a853c71cb9fabd252ad051ce93d4672c1266cf837c1c17b84e` | [`{ type: "session/end-seed" }`](#persistence-type-sha256-5e6db6e24948d4a853c71cb9fabd252ad051ce93d4672c1266cf837c1c17b84e) |
 | `event:session/title` | event | `1b912703e2d64f91c99c675b8f805b01076c8325b905c1218ad81ef0b24909d5` | [`{ type: "session/title" }`](#persistence-type-sha256-1b912703e2d64f91c99c675b8f805b01076c8325b905c1218ad81ef0b24909d5) |
 | `event:session/title-llm-request` | event | `fa8f7d3ebf08a76c7f7a8b0781873c4d819b964da5dbb52cd3cdfa5da34f452d` | [`{ type: "session/title-llm-request" }`](#persistence-type-sha256-fa8f7d3ebf08a76c7f7a8b0781873c4d819b964da5dbb52cd3cdfa5da34f452d) |
+| `event:slots/dispatch` | event | `0157f9509d34e97fd492929b5596f7c74705e5b5209efbb2f11021d214cc98a6` | [`{ type: "slots/dispatch" }`](#persistence-type-sha256-0157f9509d34e97fd492929b5596f7c74705e5b5209efbb2f11021d214cc98a6) |
 | `event:step/end` | event | `e0a787e6ec76c7c94fecbc501b489164ab0293db05bc947914077ad01e674f05` | [`{ type: "step/end" }`](#persistence-type-sha256-e0a787e6ec76c7c94fecbc501b489164ab0293db05bc947914077ad01e674f05) |
 | `event:step/start` | event | `4513e088d43e6c68425be30451b9f961cc264fe7318ca62681c41d4d78615986` | [`{ type: "step/start" }`](#persistence-type-sha256-4513e088d43e6c68425be30451b9f961cc264fe7318ca62681c41d4d78615986) |
 | `event:subagent/catalog` | event | `3abae7324356f155cb42450c00b806d134ec93bd6439d2063b8d724162d58604` | [`{ type: "subagent/catalog" }`](#persistence-type-sha256-3abae7324356f155cb42450c00b806d134ec93bd6439d2063b8d724162d58604) |
@@ -697,7 +698,7 @@ Source: [`packages/interaction/permission-presets/src/index.ts:59`](../packages/
 'plan/mode': { active: boolean }
 ```
 
-Source: [`packages/plan/plan-mode/src/index.ts:53`](../packages/plan/plan-mode/src/index.ts)
+Source: [`packages/plan/plan-mode/src/index.ts:58`](../packages/plan/plan-mode/src/index.ts)
 
 ### `request/*`
 
@@ -840,7 +841,7 @@ Source: [`packages/session/session-title/src/index.ts:77`](../packages/session/s
 
 Types: [SessionTitleLlmRequestEventData](subsystems/session-title.md)
 
-Source: [`packages/session/session-title-llm/src/index.ts:52`](../packages/session/session-title-llm/src/index.ts)
+Source: [`packages/session/session-title-llm/src/index.ts:53`](../packages/session/session-title-llm/src/index.ts)
 
 ### `session-log-deepseek/*`
 
@@ -861,6 +862,19 @@ Source: [`packages/session/session-title-llm/src/index.ts:52`](../packages/sessi
 ```
 
 Source: [`packages/session/session-log-deepseek/src/types.ts:81`](../packages/session/session-log-deepseek/src/types.ts)
+
+### `slots/*`
+
+<a id="slotsdispatch--log-only"></a>
+
+#### `slots/dispatch` — log-only
+
+```ts persistence-catalog
+/** Log-only pre-dispatch record naming the auxiliary route one slot dispatch will use. */
+'slots/dispatch': ModelSlotDispatchEventData
+```
+
+Source: [`packages/llm/model-slots/src/index.ts:60`](../packages/llm/model-slots/src/index.ts)
 
 ### `step/*`
 
@@ -1661,6 +1675,14 @@ SHA-256: `1a2718b00937b236a0d0910ef5dab2f9f8b65e4bde410cc21f15fbbf29f584d3`
 
 `"deliverables/presented"`
 
+<a id="persistence-type-sha256-13ffbf86960a01c0886e7b0329484859d98891ff603e365a48dfc7fd86b8542c"></a>
+
+### `"deployment-default"`
+
+SHA-256: `13ffbf86960a01c0886e7b0329484859d98891ff603e365a48dfc7fd86b8542c`
+
+`"deployment-default"`
+
 <a id="persistence-type-sha256-589d0d91239681f89ee485459dc8c2f73ea47183b5534289d966637024a2c35d"></a>
 
 ### `"developer"`
@@ -1986,6 +2008,14 @@ SHA-256: `611cae9a3539733aa0c42f66035a7d90f19dcbbdfb5d9e3b628b13705253942d`
 SHA-256: `4ae007ed190a72c92138b22d059b83208079c7551ca13fb59ae8cf5e23693964`
 
 `"llm/retry-started"`
+
+<a id="persistence-type-sha256-0532290c8d2a3a426eb8c37b0816fd89c76a419f3fac64c962952e241bb4a703"></a>
+
+### `"main-route"`
+
+SHA-256: `0532290c8d2a3a426eb8c37b0816fd89c76a419f3fac64c962952e241bb4a703`
+
+`"main-route"`
 
 <a id="persistence-type-sha256-68141cbe3994a5ffcd064c07c75996538437fd9dbf77ce8a2927e89ec577fabe"></a>
 
@@ -2418,6 +2448,22 @@ SHA-256: `6ebcc2dbec9f2dabca9f668ae6d39e877899b180740570f453409db339221df3`
 SHA-256: `1922cd79a70806c17758185a6ef0458bc1fb3900363906733421c16414da2509`
 
 `"skill-invocation"`
+
+<a id="persistence-type-sha256-500b2f8ec809e0b056a802e5e3fd3b213b648557c1747aeb4c7c4e0a030f40ec"></a>
+
+### `"slot"`
+
+SHA-256: `500b2f8ec809e0b056a802e5e3fd3b213b648557c1747aeb4c7c4e0a030f40ec`
+
+`"slot"`
+
+<a id="persistence-type-sha256-d2e6c7616cec6bed277191deffe09cac9d557f348877a4df316616ef92738818"></a>
+
+### `"slots/dispatch"`
+
+SHA-256: `d2e6c7616cec6bed277191deffe09cac9d557f348877a4df316616ef92738818`
+
+`"slots/dispatch"`
 
 <a id="persistence-type-sha256-6f9e00383836275e46c0a9915767f9bb561be5fc30aae490174908a93e99a912"></a>
 
@@ -4103,6 +4149,43 @@ Sources: [`packages/api/session-controller/src/types.ts:100`](../packages/api/se
 | `provider` | required | `string` |
 | `reasoningEffort` | optional | `string` |
 
+<a id="persistence-type-sha256-b5179f11c20399c4cc20662a3c01195e2c971708ac7ecb3e6e7911c98289e014"></a>
+
+<a id="persistence-type-modelslotdispatcheventdata"></a>
+
+<a id="persistence-type-packagesllmmodel-slotssrcindextsmodelslotdispatcheventdata"></a>
+
+### `ModelSlotDispatchEventData`
+
+SHA-256: `b5179f11c20399c4cc20662a3c01195e2c971708ac7ecb3e6e7911c98289e014`
+
+Sources: [`packages/llm/model-slots/src/index.ts:46`](../packages/llm/model-slots/src/index.ts)
+
+| Property | Presence | Type |
+|---|---|---|
+| `model` | required | `string` |
+| `provider` | required | `string` |
+| `slot` | required | `string` |
+| `source` | required | [`ModelSlotSource`](#persistence-type-sha256-0ea83f814076a21d409beac1e4759e6191e29e9694b576d52a66e0c653da441b) |
+
+<a id="persistence-type-sha256-0ea83f814076a21d409beac1e4759e6191e29e9694b576d52a66e0c653da441b"></a>
+
+<a id="persistence-type-modelslotsource"></a>
+
+<a id="persistence-type-packagesllmmodel-slotssrcindextsmodelslotsource"></a>
+
+### `ModelSlotSource`
+
+SHA-256: `0ea83f814076a21d409beac1e4759e6191e29e9694b576d52a66e0c653da441b`
+
+Sources: [`packages/llm/model-slots/src/index.ts:43`](../packages/llm/model-slots/src/index.ts)
+
+One of:
+
+- `"deployment-default"`
+- `"main-route"`
+- `"slot"`
+
 <a id="persistence-type-sha256-8e8e91646a5cae3fc78f7532a0013ff2088ae47077642c2edd507a508209b8af"></a>
 
 <a id="persistence-type-oneshotscheduledispatchchange"></a>
@@ -4441,7 +4524,7 @@ Sources: [`packages/session/session-title/src/types.ts:41`](../packages/session/
 
 SHA-256: `9bc85364d1f37d9c837db6a3bdd3d1d007d923cdc7401a3322be9f12fdc225fd`
 
-Sources: [`packages/session/session-title-llm/src/index.ts:34`](../packages/session/session-title-llm/src/index.ts)
+Sources: [`packages/session/session-title-llm/src/index.ts:35`](../packages/session/session-title-llm/src/index.ts)
 
 | Property | Presence | Type |
 |---|---|---|
@@ -5492,7 +5575,7 @@ Array of `unknown` (opaque).
 
 SHA-256: `20a57544bbf204dacd1ae6beb2ab29444365c3c869f2afdf489dcdcbc3d9c8c5`
 
-Sources: [`packages/plan/plan-mode/src/index.ts:53`](../packages/plan/plan-mode/src/index.ts)
+Sources: [`packages/plan/plan-mode/src/index.ts:58`](../packages/plan/plan-mode/src/index.ts)
 
 | Property | Presence | Type |
 |---|---|---|
@@ -8244,6 +8327,22 @@ SHA-256: `fa8f7d3ebf08a76c7f7a8b0781873c4d819b964da5dbb52cd3cdfa5da34f452d`
 | `seq` | required | `number` |
 | `time` | required | `number` |
 | `type` | required | `"session/title-llm-request"` |
+
+<a id="persistence-type-sha256-0157f9509d34e97fd492929b5596f7c74705e5b5209efbb2f11021d214cc98a6"></a>
+
+<a id="persistence-type-eventslotsdispatch"></a>
+
+### `{ type: "slots/dispatch" }`
+
+SHA-256: `0157f9509d34e97fd492929b5596f7c74705e5b5209efbb2f11021d214cc98a6`
+
+| Property | Presence | Type |
+|---|---|---|
+| `data` | required | [`ModelSlotDispatchEventData`](#persistence-type-sha256-b5179f11c20399c4cc20662a3c01195e2c971708ac7ecb3e6e7911c98289e014) |
+| `ignorable` | optional | `true` |
+| `seq` | required | `number` |
+| `time` | required | `number` |
+| `type` | required | `"slots/dispatch"` |
 
 <a id="persistence-type-sha256-e0a787e6ec76c7c94fecbc501b489164ab0293db05bc947914077ad01e674f05"></a>
 

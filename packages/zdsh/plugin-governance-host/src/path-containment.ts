@@ -5,7 +5,7 @@
  * extends the same posture to path semantics).
  *
  * Shape: the filehub `isStrictlyInside` equivalent form (D1a :207 reusable-
- * fix provenance): `resolve` + `relative` + reject `''` (equal-root) + reject
+ * fix origin): `resolve` + `relative` + reject `''` (equal-root) + reject
  * `..` segments + reject `isAbsolute(rel)` (cross-drive on win32). Deliberately
  * NOT `startsWith` — the zdsh-security-patterns segment-comparison trap
  * (`C:\repo` vs `C:\repo-evil` prefix collision) is immune by construction

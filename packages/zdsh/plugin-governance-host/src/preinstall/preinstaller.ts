@@ -89,12 +89,12 @@ export interface SeedPreinstallerHost {
    */
   setBootState(pluginId: string, enabled: boolean): Promise<unknown>
   /**
-   * Record the G2 factory provenance row (§1.3) for one successfully
+   * Record the G2 factory origin row (§1.3) for one successfully
    * installed `local:` preinstall. Synchronous and throw-permissive at this
    * boundary: the executor wraps the call so a ledger write failure warns
    * instead of failing an admission that already landed.
    */
-  recordProvenance(pluginId: string, spec: string, version: string): void
+  recordOrigin(pluginId: string, spec: string, version: string): void
   /**
    * Mount one admitted factory exit of one preinstalled artifact
    * (DESIGN-intake-tech.md §9.3 step 4). Convention: the implementation
@@ -184,7 +184,10 @@ export class SeedPreinstaller {
     return this.running
   }
 
-  /** Current durable ledger projected to the client-facing report (§1.4). */
+  /**
+   * Current durable ledger projected to the client-facing report (§1.4).
+   * @returns the read-only preinstall report for governance clients.
+   */
   report(): PreinstallReport {
     return toReport(loadPreinstallResults(this.resultsPath))
   }
@@ -278,10 +281,10 @@ export class SeedPreinstaller {
     if (issue !== null) return this.writeRow(ledger, id, { status: 'failed', reason: issue }, existing)
     const outcome = await this.installOne(entry, id)
     if (outcome.status === 'installed') {
-      // G2 provenance (§1.3): a `local:` artifact admitted through the shared
+      // G2 origin (§1.3): a `local:` artifact admitted through the shared
       // channel carries its factory row (the npm: form's registry row is
       // already written by the install channel itself, dir included).
-      if (entry.source.startsWith('local:')) this.requestProvenance(entry, id)
+      if (entry.source.startsWith('local:')) this.requestOrigin(entry, id)
       // Step 4 (§9.3): boot-enabled entries additionally take the generic
       // mount channel; a `enabledAtBoot: false` entry is never created and
       // records the `skipped` mount dimension (§9.4) so Gate-P can tell
@@ -418,14 +421,14 @@ export class SeedPreinstaller {
   }
 
   /**
-   * Fire the injected provenance record; a durable-write failure warns (the
+   * Fire the injected origin record; a durable-write failure warns (the
    * admission already landed) and the next pass retries, never fails the row.
    */
-  private requestProvenance(entry: SeedEntry, id: string): void {
+  private requestOrigin(entry: SeedEntry, id: string): void {
     try {
-      this.host.recordProvenance(id, entry.source, entry.version)
+      this.host.recordOrigin(id, entry.source, entry.version)
     } catch (cause) {
-      this.host.warn(`preinstall provenance ${JSON.stringify(id)} failed: ${cause instanceof Error ? cause.message : String(cause)}`)
+      this.host.warn(`preinstall origin ${JSON.stringify(id)} failed: ${cause instanceof Error ? cause.message : String(cause)}`)
     }
   }
 }

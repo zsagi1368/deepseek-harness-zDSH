@@ -14719,6 +14719,111 @@
       }
     },
     {
+      "key": "event:slots/dispatch",
+      "kind": "event",
+      "event": "slots/dispatch",
+      "surface": false,
+      "digest": "0157f9509d34e97fd492929b5596f7c74705e5b5209efbb2f11021d214cc98a6",
+      "schema": {
+        "root": 0,
+        "nodes": [
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "data",
+                "type": 1,
+                "optional": false
+              },
+              {
+                "name": "ignorable",
+                "type": 7,
+                "optional": true
+              },
+              {
+                "name": "seq",
+                "type": 8,
+                "optional": false
+              },
+              {
+                "name": "time",
+                "type": 8,
+                "optional": false
+              },
+              {
+                "name": "type",
+                "type": 9,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "model",
+                "type": 2,
+                "optional": false
+              },
+              {
+                "name": "provider",
+                "type": 2,
+                "optional": false
+              },
+              {
+                "name": "slot",
+                "type": 2,
+                "optional": false
+              },
+              {
+                "name": "source",
+                "type": 3,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "primitive",
+            "type": "string"
+          },
+          {
+            "kind": "union",
+            "types": [
+              4,
+              5,
+              6
+            ]
+          },
+          {
+            "kind": "literal",
+            "value": "deployment-default"
+          },
+          {
+            "kind": "literal",
+            "value": "main-route"
+          },
+          {
+            "kind": "literal",
+            "value": "slot"
+          },
+          {
+            "kind": "literal",
+            "value": true
+          },
+          {
+            "kind": "primitive",
+            "type": "number"
+          },
+          {
+            "kind": "literal",
+            "value": "slots/dispatch"
+          }
+        ]
+      }
+    },
+    {
       "key": "event:step/end",
       "kind": "event",
       "event": "step/end",
@@ -21684,6 +21789,109 @@
       "sources": []
     },
     {
+      "digest": "0157f9509d34e97fd492929b5596f7c74705e5b5209efbb2f11021d214cc98a6",
+      "schema": {
+        "root": 0,
+        "nodes": [
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "data",
+                "type": 1,
+                "optional": false
+              },
+              {
+                "name": "ignorable",
+                "type": 7,
+                "optional": true
+              },
+              {
+                "name": "seq",
+                "type": 8,
+                "optional": false
+              },
+              {
+                "name": "time",
+                "type": 8,
+                "optional": false
+              },
+              {
+                "name": "type",
+                "type": 9,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "model",
+                "type": 2,
+                "optional": false
+              },
+              {
+                "name": "provider",
+                "type": 2,
+                "optional": false
+              },
+              {
+                "name": "slot",
+                "type": 2,
+                "optional": false
+              },
+              {
+                "name": "source",
+                "type": 3,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "primitive",
+            "type": "string"
+          },
+          {
+            "kind": "union",
+            "types": [
+              4,
+              5,
+              6
+            ]
+          },
+          {
+            "kind": "literal",
+            "value": "deployment-default"
+          },
+          {
+            "kind": "literal",
+            "value": "main-route"
+          },
+          {
+            "kind": "literal",
+            "value": "slot"
+          },
+          {
+            "kind": "literal",
+            "value": true
+          },
+          {
+            "kind": "primitive",
+            "type": "number"
+          },
+          {
+            "kind": "literal",
+            "value": "slots/dispatch"
+          }
+        ]
+      },
+      "names": [],
+      "sources": []
+    },
+    {
       "digest": "0203243b72fc867afc81aff5f4cf2167e564ed342534eb612fc92f295cf07789",
       "schema": {
         "root": 0,
@@ -21804,6 +22012,20 @@
           {
             "kind": "literal",
             "value": "product-interaction"
+          }
+        ]
+      },
+      "names": [],
+      "sources": []
+    },
+    {
+      "digest": "0532290c8d2a3a426eb8c37b0816fd89c76a419f3fac64c962952e241bb4a703",
+      "schema": {
+        "root": 0,
+        "nodes": [
+          {
+            "kind": "literal",
+            "value": "main-route"
           }
         ]
       },
@@ -22738,6 +22960,40 @@
       },
       "names": [],
       "sources": []
+    },
+    {
+      "digest": "0ea83f814076a21d409beac1e4759e6191e29e9694b576d52a66e0c653da441b",
+      "schema": {
+        "root": 0,
+        "nodes": [
+          {
+            "kind": "union",
+            "types": [
+              1,
+              2,
+              3
+            ]
+          },
+          {
+            "kind": "literal",
+            "value": "deployment-default"
+          },
+          {
+            "kind": "literal",
+            "value": "main-route"
+          },
+          {
+            "kind": "literal",
+            "value": "slot"
+          }
+        ]
+      },
+      "names": [
+        "packages/llm/model-slots/src/index.ts#ModelSlotSource"
+      ],
+      "sources": [
+        "packages/llm/model-slots/src/index.ts:43"
+      ]
     },
     {
       "digest": "0ed8d1108fe7a5e1c3078ef1faea12199a56b6b1216ccaceb0f6103b0c9a7691",
@@ -25445,6 +25701,20 @@
           {
             "kind": "literal",
             "value": "deliverables/presented"
+          }
+        ]
+      },
+      "names": [],
+      "sources": []
+    },
+    {
+      "digest": "13ffbf86960a01c0886e7b0329484859d98891ff603e365a48dfc7fd86b8542c",
+      "schema": {
+        "root": 0,
+        "nodes": [
+          {
+            "kind": "literal",
+            "value": "deployment-default"
           }
         ]
       },
@@ -31718,7 +31988,7 @@
       },
       "names": [],
       "sources": [
-        "packages/plan/plan-mode/src/index.ts:53"
+        "packages/plan/plan-mode/src/index.ts:58"
       ]
     },
     {
@@ -45173,6 +45443,20 @@
           {
             "kind": "literal",
             "value": "team/member"
+          }
+        ]
+      },
+      "names": [],
+      "sources": []
+    },
+    {
+      "digest": "500b2f8ec809e0b056a802e5e3fd3b213b648557c1747aeb4c7c4e0a030f40ec",
+      "schema": {
+        "root": 0,
+        "nodes": [
+          {
+            "kind": "literal",
+            "value": "slot"
           }
         ]
       },
@@ -68310,7 +68594,7 @@
         "packages/session/session-title-llm/src/index.ts#SessionTitleLlmRequestEventData"
       ],
       "sources": [
-        "packages/session/session-title-llm/src/index.ts:34"
+        "packages/session/session-title-llm/src/index.ts:35"
       ]
     },
     {
@@ -72001,6 +72285,70 @@
       },
       "names": [],
       "sources": []
+    },
+    {
+      "digest": "b5179f11c20399c4cc20662a3c01195e2c971708ac7ecb3e6e7911c98289e014",
+      "schema": {
+        "root": 0,
+        "nodes": [
+          {
+            "kind": "object",
+            "properties": [
+              {
+                "name": "model",
+                "type": 1,
+                "optional": false
+              },
+              {
+                "name": "provider",
+                "type": 1,
+                "optional": false
+              },
+              {
+                "name": "slot",
+                "type": 1,
+                "optional": false
+              },
+              {
+                "name": "source",
+                "type": 2,
+                "optional": false
+              }
+            ],
+            "indices": []
+          },
+          {
+            "kind": "primitive",
+            "type": "string"
+          },
+          {
+            "kind": "union",
+            "types": [
+              3,
+              4,
+              5
+            ]
+          },
+          {
+            "kind": "literal",
+            "value": "deployment-default"
+          },
+          {
+            "kind": "literal",
+            "value": "main-route"
+          },
+          {
+            "kind": "literal",
+            "value": "slot"
+          }
+        ]
+      },
+      "names": [
+        "packages/llm/model-slots/src/index.ts#ModelSlotDispatchEventData"
+      ],
+      "sources": [
+        "packages/llm/model-slots/src/index.ts:46"
+      ]
     },
     {
       "digest": "b52f215a6cd691058a3413c12f161fa3b563a2f4895adb3df6f744ec4b0a6ef1",
@@ -77696,6 +78044,20 @@
           {
             "kind": "literal",
             "value": "one-shot"
+          }
+        ]
+      },
+      "names": [],
+      "sources": []
+    },
+    {
+      "digest": "d2e6c7616cec6bed277191deffe09cac9d557f348877a4df316616ef92738818",
+      "schema": {
+        "root": 0,
+        "nodes": [
+          {
+            "kind": "literal",
+            "value": "slots/dispatch"
           }
         ]
       },

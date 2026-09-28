@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-plugin-project-root",
-  "description": "Project-level plugin root for the DeepSeek Harness: discovery, trust ledger, host clamping, gating, post-boot mounting, provenance, and RunGuard wiring (S-43 M1 + M2a)",
+  "description": "Project-level plugin root for the DeepSeek Harness: discovery, trust ledger, host clamping, gating, post-boot mounting, origin, and RunGuard wiring (S-43 M1 + M2a)",
   "version": "0.1.5-rc.2",
   "publishConfig": {
     "access": "public"

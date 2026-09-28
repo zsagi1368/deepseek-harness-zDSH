@@ -1,7 +1,7 @@
 /**
  * Registry-source install suite: `npm:` sources through an injected
  * in-memory registry double — resolution, download, sha512 verification,
- * strict tar extraction (traversal/link/refusal matrix), provenance-ledger
+ * strict tar extraction (traversal/link/refusal matrix), origin-ledger
  * driven uninstall hygiene, and fail-closed re-admission after reinstall.
  */
 
@@ -374,7 +374,7 @@ describe('npm: installs through the gateway', () => {
 
   it('P-9b: a tombstone write failure on an npm install warns and still completes the uninstall', async () => {
     // P-9b (DESIGN §1.2 [P-9b 附裁], EXEC8 整改): the fatal tombstone semantics
-    // only gate `provenance=preinstall` rows — the sole rows a later preinstall
+    // only gate `origin=preinstall` rows — the sole rows a later preinstall
     // pass could resurrect. An npm: install has no pass-resurrectable row, so
     // the same injected writer-lock failure that fails the preinstall half
     // (preinstall.spec.ts) must here be non-fatal: warn on record, uninstall
@@ -387,7 +387,7 @@ describe('npm: installs through the gateway', () => {
     const gateway = await gatewayOn(double)
     expect((await gateway.install({ source: 'npm:@demo/plugin@1.0.0' })).ok).toBe(true)
     const installedDir = join(String(storageRoots.at(-1)), 'installed', 'demo', 'plugin')
-    // Pin the precondition the narrowing keys on: provenance row kind npm.
+    // Pin the precondition the narrowing keys on: origin row kind npm.
     const rows = [...(gateway as unknown as { installedSources: Map<string, Record<string, unknown>> }).installedSources.values()]
     expect(rows.find(r => r.kind === 'npm')).toBeDefined()
     expect(rows.some(r => r.kind === 'preinstall')).toBe(false)
