@@ -578,16 +578,21 @@ export function normalizePluginId(id: string): string {
     return id.slice(1)
   }
 
-  // 格式 2: dsh-xxx → core/xxx
+  // 格式 2: dsh-xxx → core/xxx（裸前缀 'dsh-' 无后名 → 原样返回，交由
+  // validatePluginId 格式门显式拒收，不构造空名 'core/'——REVIEW-S3FIX
+  // 建议2 加固：拒收路径显式化，处置不变）
   if (id.startsWith('dsh-')) {
-    return `core/${id.slice(4)}`
+    const name = id.slice(4)
+    return name === '' ? id : `core/${name}`
   }
 
   // 格式 2b: zdsh-xxx → core/xxx（TC-O3：真源包名 zdsh-workbench 的准入
   // 身份面；manifestFromLocalSource 以本函数派生治理 id，zdsh- 世代命名
-  // 不识别即 request-invalid——O3-S2 设计遗漏等量处理）
+  // 不识别即 request-invalid——O3-S2 设计遗漏等量处理。裸前缀 'zdsh-'
+  // 无后名 → 原样返回交格式门显式拒收，与 dsh- 分支同轮加固）
   if (id.startsWith('zdsh-')) {
-    return `core/${id.slice(5)}`
+    const name = id.slice(5)
+    return name === '' ? id : `core/${name}`
   }
 
   // 格式 3: namespace/name（已经是标准格式）

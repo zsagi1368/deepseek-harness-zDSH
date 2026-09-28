@@ -25,6 +25,12 @@ describe('PluginSpec', () => {
       // （manifestFromLocalSource 以本函数派生准入身份；zdsh-workbench 先例）。
       expect(normalizePluginId('zdsh-tools')).toBe('core/tools')
       expect(normalizePluginId('zdsh-workbench')).toBe('core/workbench')
+      // REVIEW-S3FIX 建议2 加固：裸前缀无后名 → 原样返回（不构造空名
+      // 'core/'），validatePluginId 格式门拒收路径显式化，处置不变恒拒。
+      expect(normalizePluginId('dsh-')).toBe('dsh-')
+      expect(normalizePluginId('zdsh-')).toBe('zdsh-')
+      expect(validatePluginId(normalizePluginId('dsh-'))).toBe(false)
+      expect(validatePluginId(normalizePluginId('zdsh-'))).toBe(false)
     })
 
     it('should normalize @scope/name format', () => {
