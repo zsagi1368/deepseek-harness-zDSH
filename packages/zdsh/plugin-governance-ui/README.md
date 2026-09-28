@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The plugin-manager tab lives in Web Plugins settings and gives the roster, lifecycle, admission, health, and presets of the governance surface. It projects rows through `pluginGovernance.list`, offers `approve`/`enable`/`disable` remote actions, and saves/loads/deletes governance presets. Choose it when a browser UI must operate the plugin governance host without a terminal.
+The governance tab lives in Web Plugins settings and gives the roster, lifecycle, admission, health, and presets of every governed plugin. It projects rows through `pluginGovernance.list`, offers `approve`/`enable`/`disable` remote actions, and saves/loads/deletes governance presets. Choose it when a browser UI must operate the plugin governance host without a terminal.
 
 ## Table of Contents
 

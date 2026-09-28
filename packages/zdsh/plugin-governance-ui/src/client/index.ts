@@ -54,7 +54,7 @@ async function callRaw<T>(promise: Promise<RemoteResult<T>>): Promise<T> {
 
 /** Contribute the governance management tab to the Plugins settings section. */
 export function apply(ctx: ClientContext): void {
-  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-plugin-manager: dictionaries')
+  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'plugin-governance-ui: dictionaries')
 
   const t = ctx.locale.bind(NS)
   const governance = ctx.remote.pluginGovernance

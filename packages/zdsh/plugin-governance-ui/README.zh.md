@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-插件管理标签页位于 Web Plugins 设置区，承载治理表面的名单、生命周期、准入、健康与预设。它通过 `pluginGovernance.list` 投影名单行，提供 `approve`/`enable`/`disable` 远程操作，并支持治理预设的保存/加载/删除。当浏览器 UI 需要在无终端环境下操作插件治理主机时选择本包。
+治理标签页位于 Web Plugins 设置区，承载每个受治理插件的名单、生命周期、准入、健康与预设。它通过 `pluginGovernance.list` 投影名单行，提供 `approve`/`enable`/`disable` 远程操作，并支持治理预设的保存/加载/删除。当浏览器 UI 需要在无终端环境下操作插件治理主机时选择本包。
 
 ## 目录
 
