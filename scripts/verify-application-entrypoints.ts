@@ -74,6 +74,13 @@ const SOURCE_EXCLUDES = [
   '**/lib/**',
   '**/dist/**',
   '**/coverage/**',
+  // zDSH (FLAKE-BATCH, 2026-09-28): oxlint-contract.spec.ts writes/deletes transient
+  // `oxlint-contract-<UUID>.ts` probes under packages/**/src|tests and apps/cli/tests while
+  // verifying tsconfig ownership; a concurrent full-suite run of this verifier could glob a
+  // probe and then readFileSync it after the spec's finally-block deleted it (ENOENT flake).
+  // The name is a reserved probe namespace (UUID-suffixed, never a real launcher), so
+  // excluding it removes the glob/read race without weakening the executable-source gate.
+  '**/oxlint-contract-*',
 ]
 
 /** Convert a host path from glob output to the repository's slash form. */
