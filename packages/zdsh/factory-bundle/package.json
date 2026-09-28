@@ -6,13 +6,13 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "dsh-webstack-verticals": "git+https://github.com/zsagi1368/dsh-webstack.git#956df1b0797127746039baee4ca26805b2f4ad4d",
+    "dsh-webstack-verticals": "git+https://github.com/zsagi1368/dsh-webstack.git#356580fcb5c99ff0907385377cd7461019827f75",
     "dsh-omnivision": "git+https://github.com/zsagi1368/dsh-omnivision.git#d2decb2c23d527f660c1a0b97fe637e82939c966",
-    "dsh-webstack-bridge": "git+https://github.com/zsagi1368/dsh-webstack.git#ffa036435d383edf577c47935f21cb1d7252ea93",
+    "dsh-webstack-bridge": "git+https://github.com/zsagi1368/dsh-webstack.git#356580fcb5c99ff0907385377cd7461019827f75",
     "dsh-filehub": "git+https://github.com/zsagi1368/zdsh-filehub.git#aab73d7ca4a3c57351a4810c611957da76838e8b",
     "dsh-plugin-center": "git+https://github.com/zsagi1368/zdsh-plugin-center.git#b9e205c7e13c49ed6580d76e79f10304d7c71f40",
     "dsh-autopilot": "git+https://github.com/zsagi1368/zdsh-autopilot.git#3bc49638bbdc102eccab644065f73e46298fcc61",
-    "dsh-webstack": "git+https://github.com/zsagi1368/dsh-webstack.git#d9ae62ab48da9ce5c3a5e0210ad952d22d2fbdaf",
+    "dsh-webstack": "git+https://github.com/zsagi1368/dsh-webstack.git#356580fcb5c99ff0907385377cd7461019827f75",
     "zdsh-workbench": "git+https://github.com/zsagi1368/zdsh-workbench.git#9467c656473d8c178cdb3e0c330f30584a1f8b26"
   }
 }

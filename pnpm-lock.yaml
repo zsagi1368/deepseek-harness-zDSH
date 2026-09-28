@@ -11041,14 +11041,14 @@ importers:
         specifier: git+https://github.com/zsagi1368/zdsh-plugin-center.git#b9e205c7e13c49ed6580d76e79f10304d7c71f40
         version: https://codeload.github.com/zsagi1368/zdsh-plugin-center/tar.gz/b9e205c7e13c49ed6580d76e79f10304d7c71f40(@deepseek-ai/cordis@vendor+cordis)(react@18.3.1)
       dsh-webstack:
-        specifier: git+https://github.com/zsagi1368/dsh-webstack.git#d9ae62ab48da9ce5c3a5e0210ad952d22d2fbdaf
-        version: dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/d9ae62ab48da9ce5c3a5e0210ad952d22d2fbdaf
+        specifier: git+https://github.com/zsagi1368/dsh-webstack.git#356580fcb5c99ff0907385377cd7461019827f75
+        version: dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/356580fcb5c99ff0907385377cd7461019827f75
       dsh-webstack-bridge:
-        specifier: git+https://github.com/zsagi1368/dsh-webstack.git#ffa036435d383edf577c47935f21cb1d7252ea93
-        version: dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/ffa036435d383edf577c47935f21cb1d7252ea93
+        specifier: git+https://github.com/zsagi1368/dsh-webstack.git#356580fcb5c99ff0907385377cd7461019827f75
+        version: dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/356580fcb5c99ff0907385377cd7461019827f75
       dsh-webstack-verticals:
-        specifier: git+https://github.com/zsagi1368/dsh-webstack.git#956df1b0797127746039baee4ca26805b2f4ad4d
-        version: dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/956df1b0797127746039baee4ca26805b2f4ad4d
+        specifier: git+https://github.com/zsagi1368/dsh-webstack.git#356580fcb5c99ff0907385377cd7461019827f75
+        version: dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/356580fcb5c99ff0907385377cd7461019827f75
       zdsh-workbench:
         specifier: git+https://github.com/zsagi1368/zdsh-workbench.git#9467c656473d8c178cdb3e0c330f30584a1f8b26
         version: https://codeload.github.com/zsagi1368/zdsh-workbench/tar.gz/9467c656473d8c178cdb3e0c330f30584a1f8b26(@deepseek-ai/cordis@vendor+cordis)
@@ -15639,18 +15639,8 @@ packages:
       react:
         optional: true
 
-  dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/956df1b0797127746039baee4ca26805b2f4ad4d:
-    resolution: {gitHosted: true, integrity: sha512-3E5WBV9hQgWNoMEZUr7h0jtkl9zXdUpNXgNNW9dabvPCA+JUsF9JR2ld1j6UTKJ0J9mmPwu7Ep7J9oTdrJw/+g==, tarball: https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/956df1b0797127746039baee4ca26805b2f4ad4d}
-    version: 0.0.0
-    engines: {node: '>=22.19.0'}
-
-  dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/d9ae62ab48da9ce5c3a5e0210ad952d22d2fbdaf:
-    resolution: {gitHosted: true, integrity: sha512-C6+/KEt4gy5/stwXuukZtejbozjsIXe+TYtUl1Iv9pfAekgVzgswvu/zj6tPGiEgCvANnBksWAw6UUwqj/XxPg==, tarball: https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/d9ae62ab48da9ce5c3a5e0210ad952d22d2fbdaf}
-    version: 0.0.0
-    engines: {node: '>=22.19.0'}
-
-  dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/ffa036435d383edf577c47935f21cb1d7252ea93:
-    resolution: {gitHosted: true, integrity: sha512-pRpWUgpRy9pwmor5voxZtWDSbwQizoNXBep5uCZUrLtm+KxNjUDAC9gkv82IQvthYgctPJyi58HcWwLFkCTdPA==, tarball: https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/ffa036435d383edf577c47935f21cb1d7252ea93}
+  dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/356580fcb5c99ff0907385377cd7461019827f75:
+    resolution: {gitHosted: true, integrity: sha512-4IfNM5cZaATOgDRIGKcoqA5HiwJhwia+rA6BBTxudj7pf9L/GVXyvemaPITuVM1oXjN4H/sTjn06Ty8HY0OT6A==, tarball: https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/356580fcb5c99ff0907385377cd7461019827f75}
     version: 0.0.0
     engines: {node: '>=22.19.0'}
 
@@ -22451,11 +22441,7 @@ snapshots:
       '@deepseek-ai/cordis': link:vendor/cordis
       react: 18.3.1
 
-  dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/956df1b0797127746039baee4ca26805b2f4ad4d: {}
-
-  dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/d9ae62ab48da9ce5c3a5e0210ad952d22d2fbdaf: {}
-
-  dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/ffa036435d383edf577c47935f21cb1d7252ea93: {}
+  dsh-webstack-monorepo@https://codeload.github.com/zsagi1368/dsh-webstack/tar.gz/356580fcb5c99ff0907385377cd7461019827f75: {}
 
   dts-resolver@3.0.0(oxc-resolver@11.20.0):
     optionalDependencies:
