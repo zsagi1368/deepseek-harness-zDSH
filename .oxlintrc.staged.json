@@ -2,7 +2,14 @@
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "extends": ["./.oxlintrc.json"],
   "options": {
-    "typeAware": false
+    "typeAware": false,
+    // zDSH (MAIN-HYGIENE, sync-017 DEBT §8): the two zDSH line-level oxlint-disable
+    // directives (dsh-compat/src/probe.ts:92, plugin-governance-host preinstaller.ts:366)
+    // both exempt type-aware rules, which this typeAware:false fast-screen lane never
+    // runs — they are structurally "unused" here (2 permanent false warnings per
+    // pre-commit drown the real signal). The repo-wide main config (.oxlintrc.json,
+    // typeAware:true) still reports genuinely dead directives; only this lane opts out.
+    "reportUnusedDisableDirectives": "off"
   },
   "ignorePatterns": [
     "**/lib/**",
