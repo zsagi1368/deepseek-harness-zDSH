@@ -17,7 +17,7 @@
  * silently drift into meaninglessness either).
  *
  * Ordering note: the negative control runs first so `vi.doMock` is
- * registered before this file ever imports the real `@assistant-ai/dsh-settings`;
+ * registered before this file ever imports the real `@deepseek-ai/dsh-settings`;
  * the `afterEach` then unmocks and resets the module cache so the positive
  * face evaluates the real module. The top-level bound imports (guard, roster,
  * registry) keep their module identity across the reset.

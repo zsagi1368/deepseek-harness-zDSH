@@ -16,12 +16,12 @@
  * `realpathSync.native` on BOTH sides (same-coordinate-system discipline, the
  * path-guard shape). Erratum vs the report prose (RECEIPT-H1 §2.5 勘误4):
  * D1a/D1b suggested "lstat rejects symlink/junction bodies" — landing that
- * literally would false-kill all seven factory rows, whose bundle
+ * literally would false-kill all eight factory rows, whose bundle
  * `node_modules` entries ARE pnpm junctions (D1b §4.2 self-evidence). The
  * normalized-containment form keeps the junction mine locked (a link escaping
  * the root fails) while in-root pnpm junctions pass — the G1 "junction with a
  * single in-root target = normal" philosophy, and the K-1.2.1 zero-false-kill
- * discipline for the factory seven.
+ * discipline for the factory eight.
  * @module @deepseek-ai/dsh-plugin-governance-host/src/path-containment
  */
 import { realpathSync } from 'node:fs'

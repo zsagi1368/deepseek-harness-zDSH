@@ -38,7 +38,7 @@
  * release paperwork itself, so the local block is the effective one.
  *
  * Run: `tsx scripts/verify-zdsh-external-links.ts` (exit 0 = no red,
- * 1 = at least one red, 2 = usage/environment failure).
+ * 1 = at least one red; an uncaught usage/environment failure also exits 1).
  * @module scripts/verify-zdsh-external-links
  */
 
