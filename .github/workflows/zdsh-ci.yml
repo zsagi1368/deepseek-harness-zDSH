@@ -76,6 +76,18 @@ jobs:
           pnpm run verify-config-catalog
           pnpm run verify-package-readme-summaries
 
+      # External-link liveness for the zDSH identity docs (MAIN-HYGIENE,
+      # sync-017 DEBT rulings §5): the official verify-md-links gate skips
+      # scheme URLs by design (zDSH zero-diff), and the P7 incident was four
+      # dead issue links in the release-notes README. Observation period =
+      # continue-on-error; promotion trigger (20 consecutive runs or two
+      # weeks with zero false red) is documented in the script header. The
+      # blocking face for release paperwork is the P7 pre-publish checklist
+      # in skill zdsh-upstream-sync (local run must be 0 red).
+      - name: zDSH external links (observation, non-blocking)
+        continue-on-error: true
+        run: pnpm exec tsx scripts/verify-zdsh-external-links.ts
+
       - name: Fetch upstream ref (A6 residence map input)
         run: |
           git remote add upstream https://github.com/deepseek-ai/deepseek-harness.git
