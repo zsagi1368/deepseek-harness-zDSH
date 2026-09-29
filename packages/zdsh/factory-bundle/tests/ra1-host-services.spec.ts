@@ -422,9 +422,9 @@ describe('RA-1 sandbox mount proof (fixture + real loader.create; fixture is the
     expect((await fx.systemPrompt!.assemble()).sections.some(section => section.name === 'ra1_probe_section')).toBe(false)
 
     // webServer 捕获桩：坏输入必拒、好输入入表、disposer 生效。
-    expect(() => webServer.register({ kind: 'regex', path: '/ra1/bad-kind', handler: () => {} } as never)).toThrow()
-    expect(() => webServer.register({ kind: 'exact', path: 'ra1/relative', handler: () => {} } as never)).toThrow()
-    expect(() => webServer.register({ kind: 'exact', path: '/ra1/no-handler' } as never)).toThrow()
+    expect(() => webServer.register({ kind: 'regex', path: '/ra1/bad-kind', handler: () => {} })).toThrow()
+    expect(() => webServer.register({ kind: 'exact', path: 'ra1/relative', handler: () => {} })).toThrow()
+    expect(() => webServer.register({ kind: 'exact', path: '/ra1/no-handler' })).toThrow()
     const good = { kind: 'exact' as const, path: '/ra1/capture', handler: () => {} }
     const disposeRoute = webServer.register(good)
     expect(webServer.find('exact', '/ra1/capture')).toBeDefined()
@@ -440,9 +440,9 @@ describe('RA-1 sandbox mount proof (fixture + real loader.create; fixture is the
     // disposer 撤回、重复 path 拒——镜像真 WebServer.registerUpgrade 文档化契约
     // （运行时仅重复拒；绝对无尾斜杠/handler 函数签名=WebUpgradeRoute 类型契约在
     // fixture 面升为运行时校验，register 既有先例同款）。
-    expect(() => webServer.registerUpgrade({ path: 'ra1/relative-ws', handler: () => {} } as never)).toThrow()
-    expect(() => webServer.registerUpgrade({ path: '/ra1/trailing-slash/', handler: () => {} } as never)).toThrow()
-    expect(() => webServer.registerUpgrade({ path: '/ra1/no-handler-ws' } as never)).toThrow()
+    expect(() => webServer.registerUpgrade({ path: 'ra1/relative-ws', handler: () => {} })).toThrow()
+    expect(() => webServer.registerUpgrade({ path: '/ra1/trailing-slash/', handler: () => {} })).toThrow()
+    expect(() => webServer.registerUpgrade({ path: '/ra1/no-handler-ws' })).toThrow()
     const goodUpgrade = { path: '/ra1/capture-ws', handler: () => {} }
     const disposeUpgrade = webServer.registerUpgrade(goodUpgrade)
     expect(webServer.findUpgrade('/ra1/capture-ws')).toBeDefined()
@@ -454,24 +454,24 @@ describe('RA-1 sandbox mount proof (fixture + real loader.create; fixture is the
     againUpgrade()
 
     // storage：KV 写→读回同一 unit（正），跨 reopen 持久（出厂分支实证）。
-    const kv = fx.storage!.backend.get('json')!.kv!
-    const unit = await kv.open({ name: 'ra1_probe', version: 1, tables: ['data'], hasGlobal: false } as never)
+    const kv = fx.storage!.backend.get('json').kv!
+    const unit = await kv.open({ name: 'ra1_probe', version: 1, tables: ['data'], hasGlobal: false })
     await unit.putRecord('data', 'k1', { v: 7 })
     expect(((await unit.loadAll()) as unknown as { tables: { data: Record<string, unknown> } }).tables.data.k1).toEqual({ v: 7 })
     await unit.close()
-    const reopened = await kv.open({ name: 'ra1_probe', version: 1, tables: ['data'], hasGlobal: false } as never)
+    const reopened = await kv.open({ name: 'ra1_probe', version: 1, tables: ['data'], hasGlobal: false })
     expect(((await reopened.loadAll()) as unknown as { tables: { data: Record<string, unknown> } }).tables.data.k1, 'RA-1: KV record did not survive the unit reopen').toEqual({ v: 7 })
     await reopened.close()
-    await expect(kv.open({ name: 'RA1-Bad', version: 1, tables: ['data'], hasGlobal: false } as never),
+    await expect(kv.open({ name: 'RA1-Bad', version: 1, tables: ['data'], hasGlobal: false }),
       'RA-1: KV accepted a malformed unit name').rejects.toThrow()
 
     // sessions：合法 session（tmpdir cwd）可 resolve（正）；未知 id 与非法 meta（负）。
     const home = scratch()
     const sessionId = SessionId('ra1-known')
-    fx.sessions!.create(sessionId, { meta: { cwd: home } } as never)
+    fx.sessions!.create(sessionId, { meta: { cwd: home } })
     expect(fx.sessions!.get(sessionId)?.header.cwd, 'RA-1: session header cwd did not round-trip').toBe(home)
     expect(fx.sessions!.get(SessionId('ra1-never-created'))).toBeUndefined()
-    expect(() => fx.sessions!.create(SessionId('ra1-relative'), { meta: { cwd: 'relative/path' } } as never),
+    expect(() => fx.sessions!.create(SessionId('ra1-relative'), { meta: { cwd: 'relative/path' } }),
       'RA-1: sessions accepted a non-absolute cwd header').toThrow()
 
     // fs：真 provider 在场且可用（RA-F1 销案：解析期占位 + 真实例，见回执）。
@@ -536,7 +536,7 @@ describe('RA-1 sandbox mount proof (fixture + real loader.create; fixture is the
 
     const loader = (ctx as unknown as {
       loader: {
-        resolve: (id: string) => { fiber?: { state?: number; dispose?: () => Promise<unknown> | unknown; await?: () => Promise<unknown> } }
+        resolve: (id: string) => { fiber?: { state?: number; dispose?: () => unknown; await?: () => Promise<unknown> } }
         create: (o: { name: string; id?: string; disabled?: boolean | null }) => Promise<unknown>
       }
     }).loader
@@ -594,7 +594,7 @@ describe('RA-1 sandbox mount proof (fixture + real loader.create; fixture is the
 
     const loader = (ctx as unknown as {
       loader: {
-        resolve: (id: string) => { fiber?: { state?: number; dispose?: () => Promise<unknown> | unknown; await?: () => Promise<unknown> } }
+        resolve: (id: string) => { fiber?: { state?: number; dispose?: () => unknown; await?: () => Promise<unknown> } }
         create: (o: { name: string; id?: string; disabled?: boolean | null }) => Promise<unknown>
       }
     }).loader
@@ -676,7 +676,7 @@ describe('RA-1 sandbox mount proof (fixture + real loader.create; fixture is the
     // dispose withdraws every facet; remount restores the full surface.
     const loader = (ctx as unknown as {
       loader: {
-        resolve: (id: string) => { fiber?: { state?: number; dispose?: () => Promise<unknown> | unknown; await?: () => Promise<unknown> } }
+        resolve: (id: string) => { fiber?: { state?: number; dispose?: () => unknown; await?: () => Promise<unknown> } }
         create: (o: { name: string; id?: string; disabled?: boolean | null }) => Promise<unknown>
       }
     }).loader
@@ -745,7 +745,7 @@ describe('RA-1 sandbox mount proof (fixture + real loader.create; fixture is the
     // entry and every route face; remount restores the full surface.
     const loader = (ctx as unknown as {
       loader: {
-        resolve: (id: string) => { fiber?: { state?: number; dispose?: () => Promise<unknown> | unknown; await?: () => Promise<unknown> } }
+        resolve: (id: string) => { fiber?: { state?: number; dispose?: () => unknown; await?: () => Promise<unknown> } }
         create: (o: { name: string; id?: string; disabled?: boolean | null }) => Promise<unknown>
       }
     }).loader
@@ -779,7 +779,7 @@ describe('RA-1 sandbox mount proof (fixture + real loader.create; fixture is the
 
     const loader = (ctx as unknown as {
       loader: {
-        resolve: (id: string) => { fiber?: { state?: number; dispose?: () => Promise<unknown> | unknown; await?: () => Promise<unknown> } }
+        resolve: (id: string) => { fiber?: { state?: number; dispose?: () => unknown; await?: () => Promise<unknown> } }
         create: (o: { name: string; id?: string; disabled?: boolean | null }) => Promise<unknown>
       }
     }).loader

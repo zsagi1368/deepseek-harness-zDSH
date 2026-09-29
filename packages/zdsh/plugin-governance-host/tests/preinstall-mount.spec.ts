@@ -207,7 +207,7 @@ describe('mount channel contract — fake loader records every create() arg', ()
     }
     const ctx = new Context()
     contexts.push(ctx)
-    void ctx.reflect.provide('loader', fakeLoader as never)
+    void ctx.reflect.provide('loader', fakeLoader)
 
     // The three REAL seed rows (absolute sources), production postures kept:
     // verticals stays boot-off and must never reach create().

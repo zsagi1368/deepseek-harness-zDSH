@@ -207,7 +207,7 @@ export interface HostServicesFixture {
   readonly systemPrompt: SystemPrompt | undefined
   readonly sessions: SessionStore | undefined
   readonly storage: Storage | undefined
-  readonly fs: unknown | undefined
+  readonly fs: unknown
   readonly webServer: WebServerRouteCapture | undefined
   readonly llm: LlmRuntime | undefined
   readonly web: WebRuntime | undefined

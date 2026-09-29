@@ -843,7 +843,7 @@ describe('Gate-P P5 — real mount spectrum over the seed rows + fail-open + lif
     const channelId = 'factory/core/webstack-verticals'
     const loader = (ctx as unknown as {
       loader: {
-        resolve: (id: string) => { fiber?: { dispose?: () => Promise<unknown> | unknown; await?: () => Promise<unknown> } }
+        resolve: (id: string) => { fiber?: { dispose?: () => unknown; await?: () => Promise<unknown> } }
         create: (o: { name: string; id?: string; disabled?: boolean | null }) => Promise<unknown>
       }
     }).loader

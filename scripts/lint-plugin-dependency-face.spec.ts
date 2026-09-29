@@ -178,7 +178,10 @@ describe('scanRepository', () => {
         line: 3,
         specifier: '@deepseek-ai/dsh-app-boot/src/index',
         kind: 'deep-path',
-        reason: expect.stringContaining('reaches past the published export surface'),
+        // zDSH: vitest 官方类型缺陷 `stringContaining: (expected: string) => any`
+        // （@vitest/expect d.ts）触发 no-unsafe-assignment；as string 仅编译期收窄，
+        // 运行时仍是同一 asymmetric matcher，断言语义零改动。
+        reason: expect.stringContaining('reaches past the published export surface') as string,
       },
     ])
     expect(report.exempted.map(entry => entry.violation.specifier)).toEqual(['@deepseek-ai/dsh-legacy-shim'])

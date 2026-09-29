@@ -407,7 +407,7 @@ export class PluginGovernanceGateway extends TypertRemoteService {
       repoRoot: this.repoRoot,
       host: {
         now: () => Date.now(),
-        warn: message => this.warn(message),
+        warn: (message) => { this.warn(message) },
         isRegistered: id => this.registry.get(canonicalId(id)) !== null,
         // FB3 (TC-B4-H1 face 2): the seed rows install through the dedicated
         // seed-chain channel — admission trust from the seed/pin supply chain

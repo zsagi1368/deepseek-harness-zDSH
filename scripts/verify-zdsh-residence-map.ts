@@ -290,7 +290,7 @@ export function collectZdshDependencies(
     for (const section of ['dependencies', 'peerDependencies', 'optionalDependencies', 'devDependencies'] as const) {
       const entries: unknown = (manifest as Record<string, unknown>)[section]
       if (typeof entries !== 'object' || entries === null) continue
-      for (const name of Object.keys(entries as Record<string, unknown>)) {
+      for (const name of Object.keys(entries)) {
         if (name.startsWith(HOST_ORG_PREFIX)) declared.add(name)
       }
     }

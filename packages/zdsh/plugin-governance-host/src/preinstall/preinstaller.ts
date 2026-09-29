@@ -359,6 +359,11 @@ export class SeedPreinstaller {
       // A plugin admitted earlier this same boot by a concurrent path already
       // occupies the id: treat that as satisfied, not a failure.
       if (this.host.isRegistered(id)) return { status: 'installed' }
+      // zDSH 防御性保留：host.install 是注入面（GovernanceHost），违约实现可在
+      // 运行期返回 { ok: false } 而缺 error 字段；移除 ?. 会使属性访问抛
+      // TypeError 被下方 catch 改写 reason 文案（运行时行为改变），?? 兜底
+      // 维持 fail-soft reason 语义，故行级豁免。
+      // oxlint-disable-next-line typescript/no-unnecessary-condition
       return { status: 'failed', reason: result.error?.message ?? 'install was rejected' }
     } catch (cause) {
       return { status: 'failed', reason: cause instanceof Error ? cause.message : String(cause) }
