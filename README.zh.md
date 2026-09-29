@@ -15,9 +15,29 @@ zDSH 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（�
 | 组成 | 版本 |
 | --- | --- |
 | 官方底座（[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)） | `0.1.7-rc.2` |
-| zDSH 版本 | `v0.1.5-rc.2-zDSH20260927a` |
+| zDSH 版本 | `v0.1.7-rc.2-zDSH20260929a` |
 
-zDSH 跟踪官方 `dsh-v0.1.7-rc.2` 基线，随官方发布滚动同步。zDSH 版本规则：`<官方版本>-zDSH<日期><修订字母>`，日期为 zDSH 战役收官日（`20260927`），字母为当日修订序号（`a`）。根 `package.json` 保持官方底座版本零触碰；zDSH 版本以本 README 声明面与配套发布 tag 为准。
+zDSH 跟踪官方 `dsh-v0.1.7-rc.2` 基线，随官方发布滚动同步。zDSH 版本规则：`<官方版本>-zDSH<日期><修订字母>`，日期为 zDSH 战役收官日（`20260929`），字母为当日修订序号（`a`）。根 `package.json` 保持官方底座版本零触碰；zDSH 版本以本 README 声明面与配套发布 tag 为准。
+
+## 升级须知
+
+从 `v0.1.5-rc.2-zDSH*` 版本升级会把官方底座从 `0.1.5-rc.2` 迁移到 `0.1.7-rc.2`。升级前请阅读本节——覆盖用户数据面。
+
+- **会话持久化数据不跨版本迁移。** 0.1.5 与 0.1.7 的持久化面互不兼容（社区实证 [#7921](https://github.com/deepseek-ai/deepseek-harness/discussions/7921) 与 [#7983](https://github.com/deepseek-ai/deepseek-harness/discussions/7983)）。升级方向（#7921）：0.1.7-rc.1 → rc.2 升级在 Windows 上触发数据目录重初始化，会话/历史/插件状态丢失——升级前完整备份 `data/` 目录，且不要让 0.1.5 与 0.1.7 两套安装共用同一数据主目录。回退方向（#7983）：0.1.7 删除了共用浏览器持久化键 `dsh.workspace.view.v5` 下的 `sessionUpdatedAtByAccount` 字段（键本身未升版——两版共用同一键），回退到 0.1.5-rc.2 后会话列表渲染为空；会话数据本身不丢——清除该 localStorage 键后刷新即可恢复（分组/排序偏好会重置）。该字段级 schema 变更无官方迁移/兼容处理。官方 0.1.7 引入 Session 日志 V4 并提供一次性批量迁移命令 `pnpm run migrate:sessions-to-v4`（默认操作 `~/.dsh/sessions`；zDSH 的数据主目录在仓库内 `data/`，须显式传 `--sessions-dir`）。
+- **model-slots 用户层槽位覆写 fail-soft 降级。** 官方 0.1.7 settings 重写移除了 `SettingsProvider` 命名空间注册面，`dsh-model-slots` compat 守卫据此仅跳过 settings 段注册，roster 审计中该件报告为禁用。这是 dsh-compat 框架的设计兑现——官方 API 变动时功能自动降级、不拖垮核心：`ModelSlotRegistry` 服务本体仍工作在 raw config（resolve/dispatch/audit 全活）。该债务以 DEBT-MODEL-SLOTS 登记，出现真实生产消费需求时按预案恢复。
+- **治理台 UI 首次可达。** zDSH 治理台 tab 此前在本分支上是孤儿包（挂载行在历史移植中丢失，浏览器半侧不可达）。现已迁至 `packages/zdsh/plugin-governance-ui`（包名改为 `@deepseek-ai/dsh-client-ui-plugin-governance`，避让官方 `ui-plugin-manager` 撞名）并完成 web-app 接线，Web Plugins 设置区的 governance tab（roster 徽章、生命周期/准入操作、健康面）首次可达。官方新件 sidebar Plugins 面板与之并存，两个面互补不覆盖。
+- **八装件 pin 换锚至 0.1.7-rc.2 官方底座。** 八件出厂插件全部携带新供应链 pin；谱面姿态不变（6 mounted / 2 skipped）：
+
+| 插件（id） | 包 | 版本 | Pin（40-hex git commit） |
+| --- | --- | --- | --- |
+| `core/webstack` | `dsh-webstack` | `0.2.0` | `289dab1b17a757bae3f170eb46b772c220471cd8` |
+| `core/webstack-bridge` | `dsh-webstack-bridge` | `0.2.0` | `289dab1b17a757bae3f170eb46b772c220471cd8` |
+| `core/omnivision` | `dsh-omnivision` | `0.1.0-alpha` | `d2decb2c23d527f660c1a0b97fe637e82939c966` |
+| `core/filehub` | `dsh-filehub` | `0.1.0` | `b93894cf941566d0bbff6c445fa16bf083b53611` |
+| `core/plugin-center` | `dsh-plugin-center` | `0.2.0` | `b9e205c7e13c49ed6580d76e79f10304d7c71f40` |
+| `core/workbench` | `zdsh-workbench` | `0.1.0-beta.1` | `aab54ea646552e35ae790ec907e9a475b55afc94` |
+| `core/webstack-verticals` | `dsh-webstack-verticals` | `0.2.0` | `289dab1b17a757bae3f170eb46b772c220471cd8` |
+| `core/autopilot` | `dsh-autopilot` | `0.1.0` | `c5c1c040f199ab0b6b84092d1853509d915c67c5` |
 
 ## 开发者预览
 

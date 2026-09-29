@@ -15,9 +15,29 @@ This repository (`zsagi1368/deepseek-harness-zDSH`) is the zDSH fork. The active
 | Component | Version |
 | --- | --- |
 | Official base ([DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)) | `0.1.7-rc.2` |
-| zDSH release | `v0.1.5-rc.2-zDSH20260927a` |
+| zDSH release | `v0.1.7-rc.2-zDSH20260929a` |
 
-zDSH tracks the official `dsh-v0.1.7-rc.2` baseline and re-syncs on every official release. zDSH version rule: `<official-version>-zDSH<date><revision-letter>`, where the date is the zDSH campaign close date (`20260927`) and the letter counts same-day revisions (`a`). The root `package.json` keeps the official base version untouched; the zDSH version is declared on this README surface and on the matching release tag.
+zDSH tracks the official `dsh-v0.1.7-rc.2` baseline and re-syncs on every official release. zDSH version rule: `<official-version>-zDSH<date><revision-letter>`, where the date is the zDSH campaign close date (`20260929`) and the letter counts same-day revisions (`a`). The root `package.json` keeps the official base version untouched; the zDSH version is declared on this README surface and on the matching release tag.
+
+## Upgrade notes
+
+Upgrading from a `v0.1.5-rc.2-zDSH*` release moves the official base from `0.1.5-rc.2` to `0.1.7-rc.2`. Read this section before upgrading — it covers the user-data surface.
+
+- **Session persistence does not migrate across versions.** The 0.1.5 and 0.1.7 persistence layers are mutually incompatible (community evidence [#7921](https://github.com/deepseek-ai/deepseek-harness/discussions/7921) and [#7983](https://github.com/deepseek-ai/deepseek-harness/discussions/7983)). Upgrade direction (#7921): a 0.1.7-rc.1 → rc.2 upgrade re-initialized the data directory on Windows, losing sessions, history, and plugin state — back up the whole `data/` directory before upgrading, and never share one data home between a 0.1.5 and a 0.1.7 install. Rollback direction (#7983): 0.1.7 removed the `sessionUpdatedAtByAccount` field under the shared browser persistence key `dsh.workspace.view.v5` (the key itself was never version-bumped — both releases use the same one), so after rolling back to 0.1.5-rc.2 the session list renders empty; the session data itself is not lost — clear that localStorage key and reload to recover (grouping/sorting preferences reset). This field-level schema change has no official migration or compatibility handling. Official 0.1.7 introduces session log V4 and ships a one-time batch migration command, `pnpm run migrate:sessions-to-v4` (it defaults to `~/.dsh/sessions`; the zDSH data home lives in the repository's `data/` directory, so pass `--sessions-dir` explicitly).
+- **Model-slot user overrides degrade fail-soft.** The official 0.1.7 settings rewrite removed the `SettingsProvider` namespace registration surface, so the `dsh-model-slots` compatibility guard skips only its settings-section registration and the roster audit reports the plugin disabled. This is the dsh-compat design working as intended — an official API change degrades the feature instead of breaking the core: the `ModelSlotRegistry` service itself stays live on raw config (resolve/dispatch/audit all functional). The debt is registered as DEBT-MODEL-SLOTS with a restore plan gated on a real production consumer appearing.
+- **The governance console UI is reachable for the first time.** The zDSH governance tab had been an orphaned package on this branch (its mount line was lost in a historical migration, leaving the browser half unreachable). It now lives at `packages/zdsh/plugin-governance-ui` (renamed to `@deepseek-ai/dsh-client-ui-plugin-governance` to avoid the official `ui-plugin-manager` name collision) and is wired into the web app, so the governance tab in the Web Plugins settings area — roster badges, lifecycle/admission actions, health — is reachable for the first time. The official sidebar Plugins panel ships alongside it; the two surfaces complement each other.
+- **The eight factory plugins are re-pinned for the 0.1.7-rc.2 base.** Every factory artifact carries a new supply-chain pin; the roster posture is unchanged (6 mounted / 2 skipped):
+
+| Plugin (id) | Package | Version | Pin (40-hex git commit) |
+| --- | --- | --- | --- |
+| `core/webstack` | `dsh-webstack` | `0.2.0` | `289dab1b17a757bae3f170eb46b772c220471cd8` |
+| `core/webstack-bridge` | `dsh-webstack-bridge` | `0.2.0` | `289dab1b17a757bae3f170eb46b772c220471cd8` |
+| `core/omnivision` | `dsh-omnivision` | `0.1.0-alpha` | `d2decb2c23d527f660c1a0b97fe637e82939c966` |
+| `core/filehub` | `dsh-filehub` | `0.1.0` | `b93894cf941566d0bbff6c445fa16bf083b53611` |
+| `core/plugin-center` | `dsh-plugin-center` | `0.2.0` | `b9e205c7e13c49ed6580d76e79f10304d7c71f40` |
+| `core/workbench` | `zdsh-workbench` | `0.1.0-beta.1` | `aab54ea646552e35ae790ec907e9a475b55afc94` |
+| `core/webstack-verticals` | `dsh-webstack-verticals` | `0.2.0` | `289dab1b17a757bae3f170eb46b772c220471cd8` |
+| `core/autopilot` | `dsh-autopilot` | `0.1.0` | `c5c1c040f199ab0b6b84092d1853509d915c67c5` |
 
 ## Developer preview
 
