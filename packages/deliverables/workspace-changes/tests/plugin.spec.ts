@@ -52,7 +52,13 @@ function announcedSeq(session: Session): number {
   return event.seq
 }
 
-describe('workspace-changes in a repository', () => {
+// zDSH (CFACE, 2026-09-29): 30s suite budget (PDF-FLAKE/FLAKE-BATCH precedent; source:
+// DEBT-research-rulings §13 item 2 — P2/P5/P6 three consecutive full-run reds, 2F per
+// round, P6 at 5181/5241ms; both P6 failures (spec:113/:204) live in this suite, which
+// boots the plugin and shells out to real git child processes; isolated reruns 16/16
+// green). Budget widening only — assertions unchanged, the sibling suites below stay on
+// the default budget per the ruling's scope.
+describe('workspace-changes in a repository', { timeout: 30_000 }, () => {
   it('records the turn’s own changes and excludes the user’s prior uncommitted work', async () => {
     const cwd = await repository()
     await writeFile(join(cwd, 'b.txt'), 'x user\n')

@@ -84,7 +84,13 @@ async function fixture(
   return { path, bytes, directory }
 }
 
-describe('one-time V4 migration command', () => {
+// zDSH (CFACE, 2026-09-29): 30s suite budget (PDF-FLAKE/FLAKE-BATCH precedent; source:
+// DEBT-research-rulings §13 item 1 + P3-design §7). Every case spawns a real node+tsx
+// child via execa (runAt above); under full-run parallel load the 5s default starved —
+// P6 full run 2F at 5046/5045ms (spec:228 it.each none/zstd), isolated reruns 25/25
+// green. Budget widening only — the expect bodies below are unchanged, so a real
+// migration regression still fails on content regardless of timing.
+describe('one-time V4 migration command', { timeout: 30_000 }, () => {
   it('bounds active jobs and retries changed-source inputs only after the initial pass drains', async () => {
     const entered = Array.from({ length: 4 }, () => Promise.withResolvers<undefined>())
     const release = Array.from({ length: 4 }, () => Promise.withResolvers<undefined>())
