@@ -1,13 +1,17 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import LlmRuntime, { createUserMessage, ToolCallId, LlmError, ReasoningEffortId, StreamChunk, TRUNCATED_TOOL_CALL_CODE, expandAssistantStream } from '@deepseek-ai/dsh-llm'
 import type { ContextFormed } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions } from '@deepseek-ai/dsh-llm'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import SessionStore, { SessionId, TurnEndReason } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
 import AgentRegistry, { type Agent, type AssistantStreamFrame } from '@deepseek-ai/dsh-agent'
 
+import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { MockAdapter, maxTokensResponse, textResponse, toolCallResponse } from './mock-adapter.ts'
@@ -1951,5 +1955,116 @@ describe('agent loop', () => {
     expect(replayed.snapshotEvents().slice(0, agent.session.seq).map(e => e.type)).toEqual(
       agent.session.snapshotEvents().map(e => e.type))
     expect(replayed.snapshotEvents().at(-1)?.type).toBe('session/end-seed')
+  })
+})
+
+// zDSH (E2E-TEAM-FIX, SYNC-017, 2026-09-29): race-regression lock for the
+// declarative-agent persistence race — an AgentLoop constructed while the
+// session-persistence sibling is still mounting behind the loader's
+// concurrent Promise.all (vendor/loader config/group.ts) used to leave the
+// declarative Lead session unstored forever (R6 keyless Agent Team:
+// "did not persist its Lead"). The fix is the loader-await lazy compensation
+// in createStoredSession; root cause chain, E4 preload experiment, and
+// ruling: zDSH-docs Plan/campaigns/2026-09-28-sync-017/E2E-TEAM-ruling.md §5.2.
+describe('declarative agent persistence race (E2E-TEAM-FIX)', () => {
+  const roots: string[] = []
+  const contexts: Context[] = []
+  afterEach(async () => {
+    for (const ctx of contexts.splice(0)) await ctx.fiber.dispose().catch(() => {})
+    for (const dir of roots.splice(0)) await rm(dir, { recursive: true, force: true })
+  })
+
+  /** Harness with a caller-released `loader` readiness gate and no persistence yet. */
+  async function raceHarness(adapter: MockAdapter): Promise<{ ctx: Context; root: string; settleLoader: () => void }> {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-loop-race-'))
+    roots.push(root)
+    const ctx = new Context()
+    contexts.push(ctx)
+    await ctx.plugin(LlmRuntime)
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionProjectionRegistry)
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(AgentRegistry)
+    let settleLoader!: () => void
+    const settled = new Promise<void>((resolve) => { settleLoader = resolve })
+    // Structural loader stub: agent-loop only consumes the readiness `await()`
+    // (headless.spec precedent; `as never` keeps provide well-typed whether or
+    // not the loader augmentation is in this program).
+    ctx.provide('loader', { await: () => settled } as never)
+    ctx.llm.registerAdapter(['mock'], adapter)
+    return { ctx, root, settleLoader }
+  }
+
+  it('stores the declarative main agent when persistence mounts after agent-loop', async () => {
+    const adapter = new MockAdapter([textResponse('race stored')])
+    const { ctx, root, settleLoader } = await raceHarness(adapter)
+    // agent-loop constructs FIRST — the persistence sibling is still pending
+    // behind the loader gate: the concurrent-mount order the R6 leg hit.
+    const loopFiber = await ctx.plugin(AgentLoop, {
+      agents: [{ id: SessionId('main'), provider: 'mock', model: 'mock' }],
+    })
+
+    // Discriminating lock: startup must park on the readiness gate instead of
+    // publishing an unstored agent right away (the pre-fix behavior published
+    // within microtasks because the synchronous read saw no backend).
+    await new Promise(resolve => setTimeout(resolve, 30))
+    expect(ctx.agents.list()).toHaveLength(0)
+
+    // The sibling finishes mounting, then the loader settles — the order
+    // every real boot completes in before `loader.await()` returns.
+    await ctx.plugin(JsonlSessionPersistence, { root })
+    settleLoader()
+
+    const agent = await vi.waitFor(() => {
+      const published = ctx.agents.list()[0]
+      if (published === undefined) throw new Error('declarative agent not published')
+      return published
+    }, { timeout: 10_000, interval: 20 })
+    expect(agent.id).toMatch(/^main-session-/)
+
+    send(agent, 'hi')
+    await waitForIdle(ctx, agent)
+
+    // The late-mounted backend owns the Lead session: the header stored at
+    // publication plus the live turn routed through the handle.
+    await ctx.sessionPersistence.flush()
+    const snapshot = await ctx.sessionPersistence.stat(agent.session.id)
+    expect(snapshot?.header.id).toBe(agent.session.id)
+    const reader = await ctx.sessionPersistence.open(agent.session.id, 'read')
+    try {
+      const storedTypes = (await reader.read()).events.map(event => event.type)
+      expect(storedTypes).toContain('user/message')
+      expect(storedTypes).toContain('assistant/message')
+    } finally {
+      await reader.close()
+    }
+
+    // Teardown in mount-safe order: the loop drains its live writer into the
+    // still-open backend (resume.spec harness comment), then afterEach
+    // disposes the tree and removes the temp root.
+    await loopFiber.dispose()
+  })
+
+  it('still publishes unstored when the loader settles with no backend mounted', async () => {
+    const adapter = new MockAdapter([textResponse('unstored')])
+    const { ctx, settleLoader } = await raceHarness(adapter)
+    await ctx.plugin(AgentLoop, {
+      agents: [{ id: SessionId('main'), provider: 'mock', model: 'mock' }],
+    })
+    settleLoader()
+
+    const agent = await vi.waitFor(() => {
+      const published = ctx.agents.list()[0]
+      if (published === undefined) throw new Error('declarative agent not published')
+      return published
+    }, { timeout: 10_000, interval: 20 })
+    send(agent, 'hi')
+    await waitForIdle(ctx, agent)
+
+    // No-persistence profile semantics are untouched: settled loader and
+    // still no backend → unstored run, full turn, no hang and no throw.
+    expect(ctx.get('sessionPersistence')).toBeUndefined()
+    expect(userTexts(agent)).toEqual(['hi'])
   })
 })

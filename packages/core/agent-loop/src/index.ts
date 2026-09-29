@@ -201,6 +201,15 @@ interface StoredSession {
   storedCount: number
 }
 
+/**
+ * Structural readiness view of the `loader` service: settle every pending
+ * entry import and lifecycle. Kept structural so this package carries no
+ * type dependency on the loader package (gateway client precedent).
+ */
+interface LoaderReadiness {
+  await(): Promise<unknown>
+}
+
 /** Prepared-but-unpublished agent resources sharing one memoized teardown. */
 interface PreparedAgent {
   agent: ReactLoopAgent
@@ -672,13 +681,34 @@ export class AgentLoop extends Service implements AgentFactory {
    * publication commit point, so a failed or cancelled validation or setup
    * closes an unmaterialized handle and leaves no stored residue — the same
    * id can be created again.
+   *
+   * zDSH (E2E-TEAM-FIX, SYNC-017, 2026-09-29): loader siblings mount
+   * concurrently (Promise.all in vendor/loader config/group.ts), so when a
+   * declarative config agent is constructed the persistence backend may
+   * still be mounting; the first synchronous read racing that mount used to
+   * strand the session unstored forever (R6 keyless Agent Team: "did not
+   * persist its Lead"). An `undefined` first read now settles the loader
+   * once through the official readiness gate — the headless runner's
+   * `await ctx.get('loader')?.await()` (packages/bundle/headless/src/index.ts)
+   * — and re-reads before giving up. Still `undefined` after settlement
+   * means the profile truly mounts no backend, so the unstored semantics
+   * are unchanged. Root cause chain, E4 preload experiment, and ruling:
+   * zDSH-docs Plan/campaigns/2026-09-28-sync-017/E2E-TEAM-ruling.md §5.2.
    * @param session - the unpublished session to store.
    * @param signal - optional cancellation forwarded to the backend create.
    * @returns the owned handle and stored cursor, or `undefined` without a backend.
    */
   private async createStoredSession(session: Session, signal?: AbortSignal): Promise<StoredSession | undefined> {
-    const persistence = this.runtime.ctx.get('sessionPersistence')
-    if (persistence === undefined) return undefined
+    let persistence = this.runtime.ctx.get('sessionPersistence')
+    if (persistence === undefined) {
+      // Lazy compensation for the concurrent-mount race (see JSDoc above):
+      // settle pending entry mounts once, then re-read. Without a loader
+      // (unit contexts) or once it has settled, this is a no-op re-read.
+      const loader = this.runtime.ctx.get('loader') as LoaderReadiness | undefined
+      await loader?.await()
+      persistence = this.runtime.ctx.get('sessionPersistence')
+      if (persistence === undefined) return undefined
+    }
     const handle = await persistence.create(session.header, {
       inheritedEventCount: session.inheritedEventCount,
       ...signal === undefined ? {} : { signal },
