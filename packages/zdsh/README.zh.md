@@ -26,8 +26,9 @@ zdsh 组是 zDSH 自研底座的命名空间：本分叉新增的每一个件都
 | [`dsh-compat/`](dsh-compat/README.zh.md) | 动态 API 形状探测（`probeSymbol`）、功能守卫（`guardFeature`）与进程级兼容花名册；零运行时依赖 | —（进程级花名册） |
 | [`plugin-governance/`](plugin-governance/README.zh.md) | 治理规范与内核：spec、registry、guards、sandbox、Cordis 适配器与持久化 | `ctx.pluginGovernance`（宿主 Remote 经 `plugin-governance-host`） |
 | [`plugin-governance-host/`](plugin-governance-host/README.zh.md) | 宿主服务面：治理网关（`PluginGovernanceGateway`）、远端词汇表（`/types` `/typert` `/remote`）与出厂种子预装器 | —（宿主服务） |
+| [`plugin-governance-ui/`](plugin-governance-ui/README.zh.md) | 治理台 UI client 件：roster 徽章、生命周期与准入动作、健康计数与预设，经 `pluginGovernance` Remote 投影 | —（client slots 件） |
 | [`plugin-project-root/`](plugin-project-root/README.zh.md) | 项目级插件发现、宿主钳制、守卫、信任账本与启动后层挂载 | `ctx.projectPluginLayer` |
-| [`factory-bundle/`](factory-bundle/README.zh.md) | 私有清单：七个出厂预装插件的 git URL + 完整 commit pin（`@deepseek-ai/zdsh-factory-bundle`）；不发布、无可执行源码 | —（依赖清单） |
+| [`factory-bundle/`](factory-bundle/README.zh.md) | 私有清单：八个出厂预装插件的 git URL + 完整 commit pin（`@deepseek-ai/zdsh-factory-bundle`）；不发布、无可执行源码 | —（依赖清单） |
 
 -----
 

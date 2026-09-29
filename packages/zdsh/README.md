@@ -26,8 +26,9 @@ The zdsh group is the namespace of the zDSH self-developed base: every package t
 | [`dsh-compat/`](dsh-compat/README.md) | Dynamic API-shape probing (`probeSymbol`), feature guards (`guardFeature`), and the process-level compat roster; zero runtime dependencies | — (process-level roster) |
 | [`plugin-governance/`](plugin-governance/README.md) | Governance spec and kernel: spec, registry, guards, sandbox, Cordis adapter, and persistence | `ctx.pluginGovernance` (host remote via `plugin-governance-host`) |
 | [`plugin-governance-host/`](plugin-governance-host/README.md) | Host service face: governance gateway (`PluginGovernanceGateway`), remote vocabulary (`/types` `/typert` `/remote`), and the factory seed preinstaller | — (host service) |
+| [`plugin-governance-ui/`](plugin-governance-ui/README.md) | Governance tab UI (client piece): roster badges, lifecycle and admission actions, health counts, and presets, projected through the `pluginGovernance` remote | — (client slots piece) |
 | [`plugin-project-root/`](plugin-project-root/README.md) | Project-level plugin discovery, host clamping, gating, trust ledger, and post-boot layer mounting | `ctx.projectPluginLayer` |
-| [`factory-bundle/`](factory-bundle/README.md) | Private manifest: git URL + full commit pins for the seven factory-seeded plugins (`@deepseek-ai/zdsh-factory-bundle`); unpublished, no executable source | — (dependency manifest) |
+| [`factory-bundle/`](factory-bundle/README.md) | Private manifest: git URL + full commit pins for the eight factory-seeded plugins (`@deepseek-ai/zdsh-factory-bundle`); unpublished, no executable source | — (dependency manifest) |
 
 -----
 

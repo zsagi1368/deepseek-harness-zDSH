@@ -69,7 +69,7 @@ jobs:
       - name: Install (immutable)
         run: pnpm install --frozen-lockfile
 
-      - name: Static workspace gates (constraints / tsconfig paths / config catalog)
+      - name: Static workspace gates (constraints / tsconfig paths / config catalog / readme summaries)
         run: |
           pnpm run constraints
           pnpm run verify-tsconfig-paths
