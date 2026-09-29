@@ -380,7 +380,7 @@ export class SeedPreinstaller {
    * cross-drive value, or a junction/symlink escaping the root throws here and
    * settles as a queryable `failed` row via installOne's catch; a legal
    * in-root row returns the identical value as before = zero drift for the
-   * factory seven, K-1.2.1 zero-false-kill discipline).
+   * factory eight, K-1.2.1 zero-false-kill discipline).
    */
   private installSource(entry: SeedEntry): string {
     if (entry.source.startsWith('npm:')) return entry.source
