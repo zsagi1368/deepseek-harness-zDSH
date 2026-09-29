@@ -106,3 +106,76 @@ describe('guardModelSlots against the real official 0.1.7 settings surface', () 
     }
   })
 })
+
+// zDSH (MAIN-HYGIENE, sync-017 DEBT rulings §7): direct locks on the two
+// `cannot import` catch branches — the fail-soft verdict paths for
+// whole-module absence (partial install / registry drift / a symbol removal
+// cascading into a load failure). The existing describes above lock the
+// 'register not a function' face; the catches had zero direct coverage
+// repo-wide. Same proven pattern (vi.doMock + resetModules + recordingLogger),
+// zero src changes. Probe isolation: deps short-circuit in declaration order,
+// so the settings-catch test pins the earlier cordis probe to a passing shape.
+describe('guardModelSlots catch branches: cannot-import fail-soft (DEBT §7)', () => {
+  const CORDIS_MODULE = '@deepseek-ai/cordis'
+
+  /**
+   * Passing shape for the cordis probe (typeof Service === 'function'); one
+   * member keeps it clear of oxlint no-extraneous-class, same precedent as
+   * the negative control's SettingsProvider above.
+   */
+  function passingCordisShape(): { Service: unknown } {
+    return {
+      Service: class {
+        probeShape(): undefined {
+          return undefined
+        }
+      },
+    }
+  }
+
+  afterEach(() => {
+    vi.doUnmock(CORDIS_MODULE)
+    vi.doUnmock(SETTINGS_MODULE)
+    vi.resetModules()
+  })
+
+  it('fail-softs with the literal reason when the cordis import throws', async () => {
+    vi.doMock(CORDIS_MODULE, () => {
+      throw new Error('injected module-resolution failure (partial install / registry drift)')
+    })
+
+    const warnings: string[] = []
+    const enabled = await guardModelSlots(recordingLogger(warnings))
+
+    expect(enabled).toBe(false)
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('[compat] dsh-model-slots disabled')
+    expect(warnings[0]).toContain('cordis:Service')
+
+    const entry = getCompatRoster().get('dsh-model-slots')
+    expect(entry).toMatchObject({ enabled: false })
+    expect(entry?.reason.startsWith('cannot import cordis Service')).toBe(true)
+  })
+
+  it('fail-softs with the literal reason when the settings module import throws', async () => {
+    vi.doMock(CORDIS_MODULE, () => passingCordisShape())
+    vi.doMock(SETTINGS_MODULE, () => {
+      throw new Error('injected module-resolution failure (partial install / registry drift)')
+    })
+
+    const warnings: string[] = []
+    const enabled = await guardModelSlots(recordingLogger(warnings))
+
+    expect(enabled).toBe(false)
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('[compat] dsh-model-slots disabled')
+    expect(warnings[0]).toContain('settings:register')
+
+    const entry = getCompatRoster().get('dsh-model-slots')
+    expect(entry).toMatchObject({ enabled: false })
+    // The catch reason is the raw probe signal only — the long DEBT
+    // attribution wording belongs to the 'register not a function' branch
+    // locked above, and the two must stay distinguishable.
+    expect(entry?.reason.startsWith('cannot import SettingsProvider')).toBe(true)
+  })
+})
