@@ -1,0 +1,20 @@
+{
+  "name": "@deepseek-ai/zdsh-factory-bundle",
+  "version": "0.0.0",
+  "description": "Factory preinstall artifact bundle: pins the git-URL + commit for every zDSH factory-seeded plugin so `pnpm install` lands each artifact under this package's node_modules closure (B4 case, DESIGN-intake-tech.md §1.1). The governance SeedPreinstaller never moves artifacts; it installs them in place via `install({ source: 'local:<...>/node_modules/<pkg>' })`. Batch 2 current set = webstack-verticals (factory-off pilot) + omnivision (boot-enabled) + webstack-bridge (boot-enabled webstack data-plane link). TC-B3-MM1b adds the two harness-honest rows: dsh-filehub + dsh-plugin-center (both installed-at-boot-off until the R-A harness flips their posture). TC-B3-MM2 adds the sixth row, dsh-autopilot — a product-design-off plugin (ADJ-3: the whole engine ships disabled by default, unlike the two harness-honest rows), pinned installed-at-boot-off. TC-B4-W3 adds the seventh row, dsh-webstack — the aggregation-kernel package of the dsh-webstack monorepo (third key off the same repo alongside the verticals/bridge pins; same-repo multi-pin is the established precedent), boot-enabled per the W-DEC ruling: its three tools go live off the box while the coexist data plane stays dormant behind the host's pinned web selectors. TC-O3 adds the eighth row, zdsh-workbench — the zDSH Workbench dock workspace (files/editor/terminal/git/tasks/browse), boot-enabled per the user's O-3 ruling (\"installed by default, disable-able through governance\"), seeded only after the phase-1 source modernization (capabilities + dsh.client + factory-form client bundle + RA1d-family teardown wiring) went green and was pushed. SYNC-P2 adds two host-peer provider rows (@deepseek-ai/cordis, @deepseek-ai/schemastery via workspace:~): pnpm >=11.21 resolvers no longer bind the git plugins' auto-installed optional peers onto the vendored workspace copies through the global link: overrides (11.7.0 did), and an unbound peer would pull a second physical registry copy that the governance SymbolIsolationCheck rejects; hosting both providers in this closure restores the pre-0.1.7 single-instance lock shape.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/schemastery": "workspace:~",
+    "dsh-webstack-verticals": "git+https://github.com/zsagi1368/dsh-webstack.git#f0936f02e6787f4e2ca8bfc61394bfb982ab47a0",
+    "dsh-omnivision": "git+https://github.com/zsagi1368/dsh-omnivision.git#d2decb2c23d527f660c1a0b97fe637e82939c966",
+    "dsh-webstack-bridge": "git+https://github.com/zsagi1368/dsh-webstack.git#f0936f02e6787f4e2ca8bfc61394bfb982ab47a0",
+    "dsh-filehub": "git+https://github.com/zsagi1368/zdsh-filehub.git#36223a6c68a34c43d5ff44b455a5df839174ba5c",
+    "dsh-plugin-center": "git+https://github.com/zsagi1368/zdsh-plugin-center.git#98ac45d9f691c9e3c08645023833fb83ca507da6",
+    "dsh-autopilot": "git+https://github.com/zsagi1368/zdsh-autopilot.git#89d923d00ec57e081f1c237f43e7b2bbc2f72421",
+    "dsh-webstack": "git+https://github.com/zsagi1368/dsh-webstack.git#f0936f02e6787f4e2ca8bfc61394bfb982ab47a0",
+    "zdsh-workbench": "git+https://github.com/zsagi1368/zdsh-workbench.git#a3137e0782a113a00c56e9a1ddf84c698ed6c4e9"
+  }
+}

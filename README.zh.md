@@ -1,67 +1,140 @@
-# DeepSeek Harness
+# zDSH
 
 [English](README.md) | 中文
 
-DeepSeek Harness（`dsh`）是由 [DeepSeek AI](https://deepseek.com) 开发的开源 agent harness（智能体框架）。
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-它采用**一切皆插件**的架构，并由 [Cordis](https://github.com/cordiverse/cordis) 驱动，其设计参见论文 [_A Programming Paradigm for Spatiotemporal Composability_](https://github.com/cordiverse/paper)。
+zDSH 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（由 [DeepSeek AI](https://deepseek.com) 开发的开源 agent harness 智能体框架）的增强分支。它跟踪官方上游版本，同时加入版本自适应的增强功能——当这些功能与核心环境冲突时会自动停用，不影响主环境。
+
+它构建于**一切皆插件**的架构之上，由 [Cordis](https://github.com/cordiverse/cordis) 驱动，其设计参见论文 [_A Programming Paradigm for Spatiotemporal Composability_](https://arxiv.org/abs/2608.25512)。
+
+本仓库（`zsagi1368/deepseek-harness-zDSH`）即 zDSH 分支。活跃开发分支为 `zdsh-latest`，与官方最新发布保持同步。
+
+## 版本
+
+| 组成 | 版本 |
+| --- | --- |
+| 官方底座（[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)） | `0.1.7-rc.2` |
+| zDSH 版本 | `v0.1.7-rc.2-zDSH20260929a` |
+
+zDSH 跟踪官方 `dsh-v0.1.7-rc.2` 基线，随官方发布滚动同步。zDSH 版本规则：`<官方版本>-zDSH<日期><修订字母>`，日期为 zDSH 战役收官日（`20260929`），字母为当日修订序号（`a`）。根 `package.json` 保持官方底座版本零触碰；zDSH 版本以本 README 声明面与配套发布 tag 为准。
+
+## 升级须知
+
+从 `v0.1.5-rc.2-zDSH*` 版本升级会把官方底座从 `0.1.5-rc.2` 迁移到 `0.1.7-rc.2`。升级前请阅读本节——覆盖用户数据面。
+
+- **会话持久化数据不跨版本迁移。** 0.1.5 与 0.1.7 的持久化面互不兼容（社区实证 [#7921](https://github.com/deepseek-ai/deepseek-harness/discussions/7921) 与 [#7983](https://github.com/deepseek-ai/deepseek-harness/discussions/7983)）。升级方向（#7921）：0.1.7-rc.1 → rc.2 升级在 Windows 上触发数据目录重初始化，会话/历史/插件状态丢失——升级前完整备份 `data/` 目录，且不要让 0.1.5 与 0.1.7 两套安装共用同一数据主目录。回退方向（#7983）：0.1.7 删除了共用浏览器持久化键 `dsh.workspace.view.v5` 下的 `sessionUpdatedAtByAccount` 字段（键本身未升版——两版共用同一键），回退到 0.1.5-rc.2 后会话列表渲染为空；会话数据本身不丢——清除该 localStorage 键后刷新即可恢复（分组/排序偏好会重置）。该字段级 schema 变更无官方迁移/兼容处理。官方 0.1.7 引入 Session 日志 V4 并提供一次性批量迁移命令 `pnpm run migrate:sessions-to-v4`（默认操作 `~/.dsh/sessions`；zDSH 的数据主目录在仓库内 `data/`，须显式传 `--sessions-dir`）。
+- **model-slots 用户层槽位覆写 fail-soft 降级。** 官方 0.1.7 settings 重写移除了 `SettingsProvider` 命名空间注册面，`dsh-model-slots` compat 守卫据此仅跳过 settings 段注册，roster 审计中该件报告为禁用。这是 dsh-compat 框架的设计兑现——官方 API 变动时功能自动降级、不拖垮核心：`ModelSlotRegistry` 服务本体仍工作在 raw config（resolve/dispatch/audit 全活）。该债务以 DEBT-MODEL-SLOTS 登记，出现真实生产消费需求时按预案恢复。
+- **治理台 UI 首次可达。** zDSH 治理台 tab 此前在本分支上是孤儿包（挂载行在历史移植中丢失，浏览器半侧不可达）。现已迁至 `packages/zdsh/plugin-governance-ui`（包名改为 `@deepseek-ai/dsh-client-ui-plugin-governance`，避让官方 `ui-plugin-manager` 撞名）并完成 web-app 接线，Web Plugins 设置区的 governance tab（roster 徽章、生命周期/准入操作、健康面）首次可达。官方新件 sidebar Plugins 面板与之并存，两个面互补不覆盖。
+- **八装件 pin 换锚至 0.1.7-rc.2 官方底座。** 八件出厂插件全部携带新供应链 pin；谱面姿态不变（6 mounted / 2 skipped）：
+
+| 插件（id） | 包 | 版本 | Pin（40-hex git commit） |
+| --- | --- | --- | --- |
+| `core/webstack` | `dsh-webstack` | `0.2.0` | `289dab1b17a757bae3f170eb46b772c220471cd8` |
+| `core/webstack-bridge` | `dsh-webstack-bridge` | `0.2.0` | `289dab1b17a757bae3f170eb46b772c220471cd8` |
+| `core/omnivision` | `dsh-omnivision` | `0.1.0-alpha` | `d2decb2c23d527f660c1a0b97fe637e82939c966` |
+| `core/filehub` | `dsh-filehub` | `0.1.0` | `b93894cf941566d0bbff6c445fa16bf083b53611` |
+| `core/plugin-center` | `dsh-plugin-center` | `0.2.0` | `b9e205c7e13c49ed6580d76e79f10304d7c71f40` |
+| `core/workbench` | `zdsh-workbench` | `0.1.0-beta.1` | `aab54ea646552e35ae790ec907e9a475b55afc94` |
+| `core/webstack-verticals` | `dsh-webstack-verticals` | `0.2.0` | `289dab1b17a757bae3f170eb46b772c220471cd8` |
+| `core/autopilot` | `dsh-autopilot` | `0.1.0` | `c5c1c040f199ab0b6b84092d1853509d915c67c5` |
 
 ## 开发者预览
 
-DeepSeek Harness 目前处于 _开发者预览_ 阶段，正在快速迭代。**未来将出现破坏兼容性的变更。**
+zDSH 跟踪的 harness 处于 _开发者预览_ 阶段，正在快速迭代。**未来将出现破坏兼容性的变更。**
+
+运行本项目前，请阅读[安全说明](SAFETY.zh.md)。
+
+## 安装
+
+zDSH 以源码形式分发。克隆本仓库并运行对应平台的安装脚本——所有数据都收拢在仓库目录内：
+
+```sh
+git clone https://github.com/zsagi1368/deepseek-harness-zDSH.git
+cd deepseek-harness-zDSH
+git checkout zdsh-latest
+
+# Windows (PowerShell 5.1+)
+.\install.cmd
+# macOS / Linux / WSL / Git Bash
+./scripts/install.sh
+```
+
+安装脚本会检查前置条件（`Node.js ^22.19.0 || >=24.0.0` 与 `pnpm`），依次执行 `pnpm install --frozen-lockfile` 与 `pnpm run build`，并生成：
+
+- `data/` —— 数据主目录（`DSH_HOME`）。官方模块数据与 zDSH 治理数据（插件注册表、审批账本，以及 `data/zdsh/` 下的已装插件）都保存在这里。
+- `env.ps1` / `env.sh` —— 环境加载脚本，定义 `DSH_HOME`、`DSH_AGENTS_HOME`，以及指向已构建 CLI 的 `dsh` 命令。
+
+首次启动时，治理预装钩子会自动装好出厂插件八件谱（见下文谱表）。
 
 <a id="run"></a>
 
 ## 运行
 
-### 通过 `npm` 运行
-
-安装 `Node.js`，然后运行：
+加载环境后，启动 Web UI：
 
 ```sh
-npx @deepseek-ai/dsh web
+# PowerShell
+. .\env.ps1
+# bash
+source ./env.sh
+
+dsh web
 ```
 
-该命令默认会在 `http://127.0.0.1:3080` 启动 Web UI，本机启动时还会用默认浏览器打开页面。通过 SSH 启动时只打印宿主机 URL，因为本地转发地址由 SSH 客户端或编辑器持有。传入 `--no-open` 可仅运行服务器而不打开浏览器。详见 [Web UI 指南](docs/user/guide/index.zh.md)。
+`dsh web` 默认会在 `http://127.0.0.1:3080` 启动 Web UI，本机启动时还会用默认浏览器打开页面。通过 SSH 启动时只打印宿主机 URL，因为本地转发地址由 SSH 客户端或编辑器持有。传入 `--no-open` 可仅运行服务器而不打开浏览器。
+
+也可以不经安装脚本，直接从检出版运行：
 
 <a id="run-from-source"></a>
 
-### 从源码运行
-
-如需从仓库源码运行：
-
 ```sh
-git clone https://github.com/deepseek-ai/deepseek-harness.git
-cd deepseek-harness
 pnpm install
 pnpm run build
 pnpm dsh web
 ```
 
-`pnpm run build` 会准备仓库产物。`pnpm dsh web` 会直接使用这些已构建产物，不会重新构建。
+## 卸载
 
-## 社区与支持
+在仓库检出目录中运行对应平台的卸载脚本：
 
-- 欢迎通过 [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions) 提交反馈或 bug 报告。
-- 为你的插件仓库添加 [`dsh-plugin`](https://github.com/topics/dsh-plugin) 话题，便于被发现。
-- 欢迎加入 DeepSeek Harness 企微群：扫码添加企微小助手并填写入群问卷，完成后小助手会邀请你入群。
+```sh
+# Windows (PowerShell 5.1+)
+.\uninstall.cmd
+# macOS / Linux / WSL / Git Bash
+./scripts/uninstall.sh
+```
 
-<table>
-  <thead>
-    <tr>
-      <th align="center">企微小助手</th>
-      <th align="center">入群问卷</th>
-      <th align="center">微信公众号</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td align="center"><img src="https://cdn.deepseek.com/harness/readme/community-wecom-assistant.png" alt="DeepSeek Harness 企微小助手二维码" width="180" height="180"></td>
-      <td align="center"><a href="https://trtgsjkv6r.feishu.cn/share/base/form/shrcnIt5twSVdLGD52KJBckGCgg"><img src="https://cdn.deepseek.com/harness/readme/community-wecom-survey.png" alt="DeepSeek Harness 入群问卷二维码" width="180" height="180"></a></td>
-      <td align="center"><img src="https://cdn.deepseek.com/harness/readme/community-wechat-official-account.png" alt="DeepSeek Harness 团队微信公众号二维码" width="180" height="180"></td>
-    </tr>
-  </tbody>
-</table>
+默认模式会移除检出版内所有被 gitignore 忽略的产物（`node_modules`、构建输出、`data/`、`env.ps1` / `env.sh`），恢复纯净检出版状态——它从不触碰仓库目录之外的任何东西。附加选项：`--purge`（PowerShell 为 `-Purge`）会在清理之后连整个仓库目录一并删除；`--clean-legacy`（PowerShell 为 `-CleanLegacy`）会同时删除 zDSH 旧版主目录（`~/.dsh-zdsh`、`~/.zdsh-workbench`、`~/.zdsh-plugin-center`）。`~/.dsh` 属于官方版本数据，仅在显式确认后才会处理；本脚本从不删除 `~/.agents`，仅在存在时报告。
+
+## 出厂插件八件谱
+
+zDSH 以**安装态**交付：下表八件插件出厂自带、由 seed 清单（[`zdsh-factory/seed.json`](zdsh-factory/seed.json)）经治理预装钩子（`SeedPreinstaller`）在首次启动时自动装好并入册。治理面对它们可查、可管、可卸载，且已卸载的出厂插件在后续启动中永不复活（持久 `userUninstalled` 墓碑）。谱终态：**6 mounted / 2 skipped**。
+
+| 插件（id） | 包名 | 版本 | 启动即启用 | 职能 |
+| --- | --- | --- | --- | --- |
+| `core/webstack` | `dsh-webstack` | `0.2.0` | `true` | 三件搜索工具（`web_backend_status` / `web_batch_search` / `web_history`）出厂注册可调；coexist 数据面随宿主选择器休眠 |
+| `core/webstack-bridge` | `dsh-webstack-bridge` | `0.2.0` | `true` | webstack 族数据面链路件 |
+| `core/omnivision` | `dsh-omnivision` | `0.1.0-alpha` | `true` | 视觉能力 |
+| `core/filehub` | `dsh-filehub` | `0.1.0` | `true` | 文件枢纽 |
+| `core/plugin-center` | `dsh-plugin-center` | `0.2.0` | `true` | 插件管理中心 |
+| `core/workbench` | `zdsh-workbench` | `0.1.0-beta.1` | `true` | IDE 级停靠工作区（文件/编辑器/终端/Git/任务/浏览）；dock UI 经 dsh.client 面注入浏览器 roster |
+| `core/webstack-verticals` | `dsh-webstack-verticals` | `0.2.0` | `false` | 垂直域包，包自述 opt-in |
+| `core/autopilot` | `dsh-autopilot` | `0.1.0` | `false` | 产品设计默认关——由用户显式开启，属出厂最终形态，非待接线 |
+
+## zDSH 增强功能
+
+zDSH 在官方 harness 之上加入版本自适应特性；每个特性都会探测已安装的核心，环境不匹配时干净地自我停用，因此上游漂移绝不会破坏基础产品。亮点：
+
+- 模型槽位路由系统（`ctx.modelSlots`）。
+- 带宿主钳制沙箱的项目级插件根（`ctx.projectPluginLayer`）。
+- 插件治理（`ctx.pluginGovernance`）。
+- 自包含安装布局——所有数据都留在仓库检出目录内。
+- 出厂预装机制：seed 清单加治理预装钩子在首次启动时装好八件谱，逐件 fail-open。
+- 插件治理强化：`SymbolIsolationCheck` 在治理装载链上阻断解析为双物理副本（符号隔离破损）的插件，预装复用网关准入通道，chaos 矩阵守住 fail-open 保障——单插件崩溃或畸形绝不连坐其余插件。
+- 安全深审清偿一句带过：出站请求经 SSRF 四道闸（静态校验、DNS 解析核验、重定向逐跳复验、有界响应体）与逐跳 DNS 地址分类，命令载体一律绝对化（禁裸名 spawn）。
+
+详见 [zDSH 子系统指南](docs/subsystems/zdsh.zh.md)。
 
 ## 参与贡献
 
@@ -71,10 +144,38 @@ pnpm dsh web
 
 请先阅读[开发指南](docs/development.zh.md)与[架构文档](docs/architecture.zh.md)。
 
+`pnpm run dev:web` 会在一个终端里完成构建、启动，并在源码修改时重建 client bundle；`make help` 列出 Web 与 Desktop 对应的 Make target。完整表格见开发指南的「应用命令」一节。
+
 面向 agent：请遵循 [AGENTS.md](AGENTS.md)。
+
+## 引用
+
+```bibtex
+@misc{deepseek-harness2026,
+  title={DeepSeek Harness: Everything is a Plugin},
+  author={DeepSeek-AI},
+  year={2026},
+  publisher={GitHub},
+  howpublished={\url{https://github.com/deepseek-ai/deepseek-harness}},
+}
+```
 
 ## 许可证
 
-[MIT](LICENSE)
+[MIT](LICENSE)。第三方依赖及其许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
-第三方依赖及其许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+---
+
+## 关于上游：DeepSeek Harness（官方）
+
+zDSH 是一个分支；原始项目是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)，由 [DeepSeek AI](https://deepseek.com) 开发。官方版本相关信息：
+
+- **官方仓库：** [github.com/deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)
+- **官方文档：** [deepseek-harness.github.io/deepseek-harness](https://deepseek-harness.github.io/deepseek-harness/)
+- **通过 npm 运行（官方包）：**
+
+```sh
+npx @deepseek-ai/dsh web
+```
+
+- **官方社区与支持：** 通过 [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions) 提交反馈，为你的插件仓库添加 [`dsh-plugin`](https://github.com/topics/dsh-plugin) 话题以便被发现，或加入 [DeepSeek Harness Discord 社区](https://discord.gg/Ycq5dCaS4)。

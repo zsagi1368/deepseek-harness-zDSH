@@ -1,6 +1,46 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write README.md
-README.md: 9ccd27b8934449bd0d2311317dc38aee5a5c0cdc
-README.zh.md: 103acdefa6bcc161e71224c8aea94a262ff96a67
+/zdsh:
+  en: 7452471721c46b03
+  zh: a745b97d6ede63af
+/zdsh/versions:
+  en: 81aaa8430c0c4257
+  zh: 3f20cfcb189f1217
+/zdsh/upgrade-notes:
+  en: d0913216412f03d9
+  zh: 59077fdf24a70682
+/zdsh/developer-preview:
+  en: 8141578e7c375ed3
+  zh: 0b8607243b73fa32
+/zdsh/installation:
+  en: 3f7f29c560c72406
+  zh: a0aaddbbd90af7ef
+/zdsh/run:
+  en: 8a004e62b5fbc0b9
+  zh: d557d3acd5423bbf
+/zdsh/uninstall:
+  en: ba76203f16f387b7
+  zh: f14527d0b5153154
+/zdsh/factory-plugin-roster:
+  en: c0478a858a48e721
+  zh: 44cbca4c9939d46a
+/zdsh/zdsh-enhancements:
+  en: 178b1384abec4470
+  zh: 106f9220118ffacc
+/zdsh/contributing:
+  en: cabc2d3e9f8898bd
+  zh: 83b6d238bae29ce3
+/zdsh/development:
+  en: 803ca2b11b497bed
+  zh: 8b4071eb0e7783ef
+/zdsh/citation:
+  en: 6704e9e5a8d49a91
+  zh: 85c9cdd8d56f8e9d
+/zdsh/license:
+  en: 22cc4b360fea2f62
+  zh: c3c223b2593cd9de
+/zdsh/about-the-upstream-deepseek-harness-official:
+  en: b6a2696a512c1f08
+  zh: 7856c79154394647

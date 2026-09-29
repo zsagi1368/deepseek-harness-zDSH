@@ -27,6 +27,9 @@ export const CONTEXT_WINDOW_EXCEEDED_CODE = 'CONTEXT_WINDOW_EXCEEDED'
 /** Canonical provider-neutral code for an exhausted account quota or balance. */
 export const QUOTA_EXCEEDED_CODE = 'QUOTA'
 
+/** Account-token quota that can be replenished through the first-party billing page. */
+export const ACCOUNT_QUOTA_EXCEEDED_CODE = 'ACCOUNT_QUOTA'
+
 /**
  * Canonical provider-neutral code for a response that completed normally but
  * carried no content blocks at all. Providers occasionally emit a degenerate
@@ -37,6 +40,17 @@ export const QUOTA_EXCEEDED_CODE = 'QUOTA'
  * to repeat.
  */
 export const EMPTY_RESPONSE_CODE = 'EMPTY_RESPONSE'
+
+/**
+ * Canonical provider-neutral code for a response the output-token ceiling cut
+ * short while a tool call was being produced. The truncated call cannot be
+ * executed safely (its arguments may be incomplete JSON), and silently ending
+ * the turn would leave the model's intent with no observable outcome, so the
+ * agent loop surfaces this explicit failure instead. Deliberately outside the
+ * default retryable set — repeating at the same ceiling truncates the same way;
+ * the caller must raise the limit or continue manually.
+ */
+export const TRUNCATED_TOOL_CALL_CODE = 'TRUNCATED_TOOL_CALL'
 
 /**
  * Canonical provider-neutral code for a credential that was supplied but
@@ -161,3 +175,12 @@ export function errorChain(value: unknown): string {
 export function isHarnessError(value: unknown): value is HarnessError {
   return value instanceof HarnessError
 }
+
+/**
+ * Canonical code for a request an image-capable route cannot send until more
+ * of its images are offloaded. The failure's `offloadImages` names how many
+ * more of the oldest retained occurrences must be offloaded;
+ * `dsh-compaction-image-offload` records an `image/offload` selection before
+ * the agent or summarizer retries with freshly derived input.
+ */
+export const IMAGE_OFFLOAD_REQUIRED_CODE = 'IMAGE_OFFLOAD_REQUIRED'

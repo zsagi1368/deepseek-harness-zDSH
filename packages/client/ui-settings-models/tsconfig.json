@@ -8,26 +8,34 @@
     "src"
   ],
   "references": [
+    { "path": "../../host/webserver" },
+    { "path": "../../../vendor/schemastery" },
     {
       "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../../zdsh/dsh-compat"
+    },
+    {
+      "path": "../../llm/model-slots"
     },
     {
       "path": "../ui-slots"
     },
     {
-      "path": "../runtime"
+      "path": "../store"
     },
     {
       "path": "../ui-primitives"
     },
     {
-      "path": "../ui-settings"
+      "path": "../ui-renderer"
     },
     {
-      "path": "../locale"
+      "path": "../ui-settings/tsconfig.client.json"
     },
     {
-      "path": "../../runtime-diagnostics/invariants"
+      "path": "../locale/tsconfig.client.json"
     },
     {
       "path": "../../api/remotes/tsconfig.client.json"
