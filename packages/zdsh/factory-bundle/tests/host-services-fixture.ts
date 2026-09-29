@@ -12,7 +12,8 @@
  * supplies `llm` in its ancestor fiber store, so this fixture mounts it for
  * fidelity. DESIGN §10.3's six-service table was authored before that read
  * existed; the RA-F1/RA-F3 close-out is registered in the receipt. This fixture
- * mounts all seven onto a caller-owned context so the REAL `loader.create`
+ * mounts all seven — plus `web`, the eighth service (TC-B4-W3, fidelity ladder
+ * below) — onto a caller-owned context so the REAL `loader.create`
  * mount channel can reach LOADED off factory code paths (DESIGN §10.2 verdict
  * = refined plan A).
  *
