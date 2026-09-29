@@ -6,7 +6,7 @@
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context, Service } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/cordis-plugin-loader'
 import {
@@ -400,6 +400,79 @@ describe('PluginGovernanceGateway Loader mirroring', () => {
     // Mirror mode: the mount decision is the admission decision.
     expect(row?.approvalRequired).toBe(false)
     expect(gateway.health().active).toBeGreaterThan(0)
+  })
+
+  // ==========================================================================
+  //   SYNC-017 §12 族1 判别锁：mirror 装配诊断走宿主 ctx.logger 受控通道，
+  //   console 零写入。产品面定性：headless/JSON 模式 stdout 是事件流契约面，
+  //   mirrorPluginContext 旧形 console.log/warn/error 直写=产品缺陷（e2e
+  //   expected-output 27F 主因，474 处 `[governed …]` 污染）。两态取证：
+  //   旧形（console 直写）spy 必捕获=红；新形零捕获=绿，且正对照断言诊断
+  //   未丢弃——落 cordis LoggerService 受控 exporter（内存面，绿跑不上
+  //   stdout/stderr），保留 `[governed <id>]` 归因前缀（printf %s 形，
+  //   :1373 warn() 先例同款）。
+  // ==========================================================================
+  it('routes mirror diagnostics to the host ctx.logger and never to console', async () => {
+    class MountedFixture extends Service {
+      constructor(ctx: Context) {
+        super(ctx, 'governance-mirror-logger-fixture')
+      }
+    }
+
+    const ctx = new Context()
+    contexts.push(ctx)
+    const storageRoot = mkdtempSync(join(tmpdir(), 'gov-gw-logger-'))
+    storageRoots.push(storageRoot)
+
+    // 受控通道正对照捕获器（app-boot.spec :912 / compatibility-preflight.spec :66 先例形）：
+    // levels.default=3 收全级别；绿跑时该内存面永不写 console。
+    const captured: unknown[][] = []
+    ctx.logger.exporter({ levels: { default: 3 }, export: ({ args }) => { captured.push(args) } })
+
+    const { Loader } = await import('@deepseek-ai/cordis-plugin-loader')
+    await ctx.plugin(Loader)
+    const modules = new Map<string, unknown>([
+      ['@fixtures/dsh-logger', { default: MountedFixture }],
+    ])
+    ctx.loader.internal = {
+      version: 'v2',
+      async import(specifier: string) {
+        if (!modules.has(specifier)) throw new Error(`unexpected Loader import: ${specifier}`)
+        return modules.get(specifier)
+      },
+    } as unknown as NonNullable<typeof ctx.loader.internal>
+
+    await ctx.loader.create({ name: '@fixtures/dsh-logger' })
+    await ctx.loader.await()
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      await ctx.plugin(PluginGovernanceGateway, { storageRoot })
+      const gateway = ctx.get('pluginGovernance') as PluginGovernanceGateway
+      await gateway.syncMountedPlugins()
+
+      // 前提哨兵：锁对象确实走过 mirror 装配（防「什么都没发生」假绿）。
+      expect(gateway.list().plugins.some(p => p.pluginId === gid('fixtures/dsh-logger'))).toBe(true)
+
+      // 判别锁（旧形必红：mirrorPluginContext console.* 直写被 spy 捕获）。
+      expect(logSpy).not.toHaveBeenCalled()
+      expect(warnSpy).not.toHaveBeenCalled()
+      expect(errorSpy).not.toHaveBeenCalled()
+
+      // 正对照：诊断落宿主受控通道，非丢弃——adapter 的 mirroring info 经
+      // `[governed <id>] %s` printf 形进入 exporter 捕获面。
+      const landed = captured.some(args =>
+        args[0] === '[governed fixtures/dsh-logger] %s'
+        && typeof args[1] === 'string'
+        && args[1].includes('CordisAdapter mirroring already-mounted'))
+      expect(landed).toBe(true)
+    } finally {
+      logSpy.mockRestore()
+      warnSpy.mockRestore()
+      errorSpy.mockRestore()
+    }
   })
 
   it('survives a context without a Loader and keeps the roster empty', async () => {

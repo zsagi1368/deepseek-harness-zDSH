@@ -1168,7 +1168,7 @@ export class PluginGovernanceGateway extends TypertRemoteService {
             }
             const result = await this.registry.register(wrapCordisPlugin(
               service as CordisService,
-              mirrorPluginContext(String(pluginId)),
+              mirrorPluginContext(String(pluginId), this.ctx.logger),
               { id: String(pluginId), name: mountedDisplayName(entry.options.name), mirror: true },
             ))
             this.mirrored.add(pluginId)
@@ -1349,7 +1349,7 @@ export class PluginGovernanceGateway extends TypertRemoteService {
       // service for the manifest, and the stub keeps health/status probes
       // defined. Loader entries keep their real mounted service.
       service === undefined ? { start: async () => {}, stop: async () => {} } : service as CordisService,
-      mirrorPluginContext(String(manifestId)),
+      mirrorPluginContext(String(manifestId), this.ctx.logger),
       {
         id: String(manifestId),
         name: mountedDisplayName(manifestId),
@@ -1805,11 +1805,28 @@ function mountedDisplayName(moduleName: string): string {
 }
 
 /**
+ * Printf-style sink for mirror-context diagnostics: the subset of the host
+ * `ctx.logger` (cordis LoggerService) surface this module forwards into.
+ */
+interface MirrorLogger {
+  info(format: string, ...args: unknown[]): void
+  warn(format: string, ...args: unknown[]): void
+  error(format: string, ...args: unknown[]): void
+}
+
+/**
  * Minimal governance-spec context used only to construct mirrored wrappers.
  * The registry substitutes its own context for install/uninstall; this one
- * just carries a logger so adapter diagnostics land somewhere visible.
+ * carries a logger adapter over the host `ctx.logger` controlled channel —
+ * the same sink the gateway's own warn() helper uses — so adapter
+ * diagnostics stay attributable (`[governed <id>]` prefix, printf `%s`
+ * form) and never touch console. stdout is a product surface (headless JSON
+ * event stream); the former console.* bypass polluted it (SYNC-017 §12
+ * family-1, e2e expected-output 27F root cause). Cordis routes logger
+ * output to in-memory exporters (LoggerService ring buffer; app-boot only
+ * collects WARN+ into startup diagnostics), so green runs stay silent.
  */
-function mirrorPluginContext(pluginId: string): GovernedPluginContext {
+function mirrorPluginContext(pluginId: string, logger: MirrorLogger): GovernedPluginContext {
   return {
     services: new Map(),
     emit: () => {},
@@ -1822,9 +1839,9 @@ function mirrorPluginContext(pluginId: string): GovernedPluginContext {
     effect: () => {},
     onDispose: () => {},
     logger: {
-      info: (message) => { console.log(`[governed ${pluginId}] ${message}`) },
-      warn: (message) => { console.warn(`[governed ${pluginId}] ${message}`) },
-      error: (message) => { console.error(`[governed ${pluginId}] ${message}`) },
+      info: (message) => { logger.info(`[governed ${pluginId}] %s`, message) },
+      warn: (message) => { logger.warn(`[governed ${pluginId}] %s`, message) },
+      error: (message) => { logger.error(`[governed ${pluginId}] %s`, message) },
       debug: () => {},
     },
     status: PluginStatus.ACTIVE,
