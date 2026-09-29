@@ -299,6 +299,12 @@
     - id: ui-settings-plugin-inventory
       name: '@deepseek-ai/dsh-client-ui-settings-plugin-inventory'
 
+    # zDSH governance tab: roster badges, lifecycle/admission actions, health
+    # counts, presets — reads the pluginGovernance Remote (host side mounted
+    # via bundle/base cordis.patch.yml `plugin-governance` row).
+    - id: ui-plugin-governance
+      name: '@deepseek-ai/dsh-client-ui-plugin-governance'
+
     - id: ui-conversation
       name: '@deepseek-ai/dsh-client-ui-conversation'
 

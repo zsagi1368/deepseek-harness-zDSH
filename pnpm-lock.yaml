@@ -2473,6 +2473,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-plan':
         specifier: workspace:*
         version: link:../../client/ui-plan
+      '@deepseek-ai/dsh-client-ui-plugin-governance':
+        specifier: workspace:*
+        version: link:../../zdsh/plugin-governance-ui
       '@deepseek-ai/dsh-client-ui-plugin-manager':
         specifier: workspace:*
         version: link:../../client/ui-plugin-manager
