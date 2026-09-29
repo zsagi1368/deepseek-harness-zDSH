@@ -215,7 +215,7 @@ export interface HostServicesFixture {
 }
 
 /**
- * Mount the six host services onto `ctx` (must be called on a context whose
+ * Mount all eight host services onto `ctx` (must be called on a context whose
  * Loader is already mounted). Each name resolves to the REAL service instance
  * when its provider activated, or `undefined` when it was omitted or is still
  * gated behind a missing dependency.
