@@ -584,7 +584,7 @@ describe('RA-1 sandbox mount proof (fixture + real loader.create; fixture is the
     await gateway.settlePreinstall()
     const apChannel = 'factory/core/autopilot'
     expect(gateway.preinstallReport().entries['core/autopilot']?.mount?.status,
-      'RA-1: autopilot must mount under the fixture at pin c5c1c040f1 (inject=[] clears the gate)').toBe('mounted')
+      'RA-1: autopilot must mount under the fixture at pin 89d923d (inject=[] clears the gate)').toBe('mounted')
     expect(entryState(ctx, apChannel), 'RA-1: autopilot entry not ACTIVE in the sandbox boot').toBe(2)
     // The 33C3b bridge routes live on the fixture's capture registrar once
     // the host webServer service is present (AP registers them when the
