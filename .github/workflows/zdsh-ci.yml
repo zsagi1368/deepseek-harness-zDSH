@@ -76,6 +76,16 @@ jobs:
           pnpm run verify-config-catalog
           pnpm run verify-package-readme-summaries
 
+      # Compat roster audit (MAIN-HYGIENE, sync-017 DEBT rulings §15): runs
+      # all six zDSH guards in one module graph (bare-specifier dsh-compat
+      # via tsconfig paths; src-level, no build prerequisite) and fail-closes
+      # unless exactly six roster entries booked — the TMP predecessor's
+      # file://-vs-bare-specifier channel split silently read an empty
+      # roster. stdout carries the COMPAT_ROSTER_JSON / DISABLED_LIST
+      # evidence contract (skill P6 citation face).
+      - name: zDSH compat roster audit (fail-closed, six guards)
+        run: pnpm exec tsx scripts/audit-compat-roster.ts
+
       # External-link liveness for the zDSH identity docs (MAIN-HYGIENE,
       # sync-017 DEBT rulings §5): the official verify-md-links gate skips
       # scheme URLs by design (zDSH zero-diff), and the P7 incident was four
