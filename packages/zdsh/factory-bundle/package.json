@@ -8,13 +8,13 @@
   "dependencies": {
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/schemastery": "workspace:~",
-    "dsh-webstack-verticals": "git+https://github.com/zsagi1368/dsh-webstack.git#f0936f02e6787f4e2ca8bfc61394bfb982ab47a0",
+    "dsh-webstack-verticals": "git+https://github.com/zsagi1368/dsh-webstack.git#cc1a2a0492000d350b9358640702e54162d25a2f",
     "dsh-omnivision": "git+https://github.com/zsagi1368/dsh-omnivision.git#d2decb2c23d527f660c1a0b97fe637e82939c966",
-    "dsh-webstack-bridge": "git+https://github.com/zsagi1368/dsh-webstack.git#f0936f02e6787f4e2ca8bfc61394bfb982ab47a0",
-    "dsh-filehub": "git+https://github.com/zsagi1368/zdsh-filehub.git#36223a6c68a34c43d5ff44b455a5df839174ba5c",
+    "dsh-webstack-bridge": "git+https://github.com/zsagi1368/dsh-webstack.git#cc1a2a0492000d350b9358640702e54162d25a2f",
+    "dsh-filehub": "git+https://github.com/zsagi1368/zdsh-filehub.git#ca69191e9c9c6c040258822dfe3bb96181d18287",
     "dsh-plugin-center": "git+https://github.com/zsagi1368/zdsh-plugin-center.git#98ac45d9f691c9e3c08645023833fb83ca507da6",
     "dsh-autopilot": "git+https://github.com/zsagi1368/zdsh-autopilot.git#89d923d00ec57e081f1c237f43e7b2bbc2f72421",
-    "dsh-webstack": "git+https://github.com/zsagi1368/dsh-webstack.git#f0936f02e6787f4e2ca8bfc61394bfb982ab47a0",
-    "zdsh-workbench": "git+https://github.com/zsagi1368/zdsh-workbench.git#a3137e0782a113a00c56e9a1ddf84c698ed6c4e9"
+    "dsh-webstack": "git+https://github.com/zsagi1368/dsh-webstack.git#cc1a2a0492000d350b9358640702e54162d25a2f",
+    "zdsh-workbench": "git+https://github.com/zsagi1368/zdsh-workbench.git#ab4653a7ea74e67febab9cf5aa50a810a0fb370e"
   }
 }
