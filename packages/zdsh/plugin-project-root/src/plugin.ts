@@ -26,7 +26,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { EntryOptions } from '@deepseek-ai/cordis-plugin-loader'
 import { RunGuard, PluginError, type PluginManifest } from '@deepseek-ai/dsh-plugin-governance'
 import { discoverProjectPlugins, PROJECT_PLUGIN_MANIFEST_FILENAME } from './discover.ts'
-import { gate } from './gate.ts'
+import { gate, PROJECT_PLUGIN_KERNEL_VERSION } from './gate.ts'
 import { resolveProjectPluginEnabled } from './resolve.ts'
 import { guardProjectRoot } from './compat.ts'
 import {
@@ -523,7 +523,9 @@ export async function mountProjectPlugins(
 
   const cwd = options.cwd ?? process.cwd()
   const discovered = discoverProjectPlugins(cwd)
-  const { accepted, report } = await gate(discovered)
+  // Pass the derived kernel version explicitly: this is the production mount
+  // path, and LoadGuard.preLoad judges `dsh.compatible` windows against it.
+  const { accepted, report } = await gate(discovered, { kernelVersion: PROJECT_PLUGIN_KERNEL_VERSION })
   const layer = createProjectPluginLayer(ctx)
   const dataDir = options.dataDir ?? projectTrustsDataDir()
 

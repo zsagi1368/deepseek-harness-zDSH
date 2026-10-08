@@ -69,6 +69,20 @@ describe('LoadGuard', () => {
     expect(inside.allowed).toBe(true)
   })
 
+  it('agrees with the registry on the kernel==max boundary (NF1)', async () => {
+    // Mirrors integration.spec.ts ("rejects a kernel exactly at the declared
+    // upper bound"): `<0.2.0` excludes 0.2.0, so BOTH governance faces must
+    // reject a kernel equal to the bound. This pair was the missing lock — the
+    // registry compared `> 0` and silently admitted the boundary kernel (NF1).
+    const guard = new LoadGuard()
+    const atBound = await guard.preLoad(pluginOf({ dsh: { compatible: '>=0.1.0-rc.8 <0.2.0' } }), '0.2.0')
+    expect(atBound.allowed).toBe(false)
+    expect(atBound.failures[0]?.message).toContain('< 0.2.0')
+
+    const belowBound = await guard.preLoad(pluginOf({ dsh: { compatible: '>=0.1.0-rc.8 <0.2.0' } }), '0.1.9')
+    expect(belowBound.allowed).toBe(true)
+  })
+
   it('validates sandbox resource configuration', async () => {
     const guard = new LoadGuard()
     const resources = testManifest().sandbox.resources

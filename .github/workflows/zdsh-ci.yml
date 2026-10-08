@@ -86,6 +86,21 @@ jobs:
       - name: zDSH compat roster audit (fail-closed, six guards)
         run: pnpm exec tsx scripts/audit-compat-roster.ts
 
+      # Compatible-window gate (sync-020 / DECIDE-dsh-compatible-RULING step
+      # 0.1): reads the eight factory-seeded artifacts' RESOLVED manifests
+      # under node_modules/.pnpm (wildcard over the `<dirName>@` prefix — the
+      # hash suffix changes on every lock regeneration, so no hardcoded hash)
+      # and asserts each dsh.compatible upper bound against rule R (upper =
+      # the base minor's next minor, exclusive), allowing a non-expired entry
+      # from scripts/verify-compatible-window.waiver.json. A missing resolved
+      # product throws instead of skipping. Self-invalidating: when the base
+      # advances past an entry's (major, minor) — either field — the waiver
+      # entries expire and this step goes RED and reports the derived bound.
+      # Needs the install above; non-spec by design
+      # (aggregate baseline count untouched).
+      - name: zDSH compatible window (fail-closed, eight factory artifacts)
+        run: pnpm exec tsx scripts/verify-compatible-window.ts
+
       # External-link liveness for the zDSH identity docs (MAIN-HYGIENE,
       # sync-017 DEBT rulings §5): the official verify-md-links gate skips
       # scheme URLs by design (zDSH zero-diff), and the P7 incident was four

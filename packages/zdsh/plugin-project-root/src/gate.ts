@@ -8,20 +8,58 @@
  * @module @deepseek-ai/dsh-plugin-project-root
  */
 
+import fs from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { LoadGuard, type Plugin } from '@deepseek-ai/dsh-plugin-governance'
 import { clampProjectPluginSandbox } from './clamp.ts'
 import type { DiscoveredProjectPlugin, ProjectPluginCandidate, GateReportEntry } from './types.ts'
 
 /**
- * Kernel version handed to LoadGuard.preLoad, mirroring the running branch
- * version. Keep in sync with the branch release (0.1.1-rc.2 family); project
- * manifests declaring `dsh.compatible` windows are judged against it.
+ * Extract the semantic version from a parsed package manifest.
+ *
+ * @param manifest - parsed `package.json` contents.
+ * @returns the version string, preserving its exact spelling.
+ * @throws when the version is missing or is not a semantic version — the
+ * kernel version is derived, never defaulted to a stale literal.
  */
-export const PROJECT_PLUGIN_KERNEL_VERSION = '0.1.1-rc.2'
+export function kernelVersionFromManifest(manifest: unknown): string {
+  if (typeof manifest !== 'object' || manifest === null || Array.isArray(manifest)) {
+    throw new Error('gate: package.json must contain an object')
+  }
+  const version = (manifest as Record<string, unknown>).version
+  if (typeof version !== 'string' || version.trim() === '') {
+    throw new Error(`gate: package.json declares no version (got ${JSON.stringify(version)}); the kernel version is derived, never defaulted`)
+  }
+  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(version)) {
+    throw new Error(`gate: package.json version ${JSON.stringify(version)} is not a semantic version`)
+  }
+  return version
+}
+
+/**
+ * Read this package's own version. `../package.json` resolves to the package
+ * root from both `src/` (source runs) and `lib/` (bundled installs).
+ *
+ * @returns the validated version.
+ * @throws when the manifest cannot be read or its version is invalid.
+ */
+function readPackageVersion(): string {
+  // The executable's virtual filesystem intercepts string paths, not URL arguments.
+  const filename = fileURLToPath(new URL('../package.json', import.meta.url))
+  return kernelVersionFromManifest(JSON.parse(fs.readFileSync(filename, 'utf8')))
+}
+
+/**
+ * Kernel version handed to LoadGuard.preLoad: this package's own version,
+ * derived from its `package.json`, so it cannot drift from the release that
+ * ships it. Project manifests declaring `dsh.compatible` windows are judged
+ * against it.
+ */
+export const PROJECT_PLUGIN_KERNEL_VERSION = readPackageVersion()
 
 /** Options for {@link gate}. */
 export interface GateOptions {
-  /** Kernel version for LoadGuard.preLoad (defaults to the branch version). */
+  /** Kernel version for LoadGuard.preLoad (defaults to this package's version). */
   kernelVersion?: string
 }
 

@@ -3,11 +3,12 @@
  * capability rejection, with a full report trail for every candidate.
  */
 
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
-import { gate } from '../src/gate.ts'
+import { gate, kernelVersionFromManifest, PROJECT_PLUGIN_KERNEL_VERSION } from '../src/gate.ts'
 import type { DiscoveredProjectPlugin } from '../src/types.ts'
 import { testSandbox, testManifest } from './fixtures.ts'
 
@@ -42,6 +43,23 @@ function candidate(overrides: Partial<DiscoveredProjectPlugin> = {}): Discovered
 }
 
 describe('gate', () => {
+  it('derives the kernel version from this package manifest (no hand-maintained drift)', () => {
+    const manifest: unknown = JSON.parse(
+      readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8'),
+    )
+    const expected = (manifest as { version: string }).version
+    expect(PROJECT_PLUGIN_KERNEL_VERSION).toBe(expected)
+    // The pre-derivation literal that drifted six release lines.
+    expect(PROJECT_PLUGIN_KERNEL_VERSION).not.toBe('0.1.1-rc.2')
+  })
+
+  it('throws instead of defaulting when the manifest carries no usable version', () => {
+    expect(() => kernelVersionFromManifest({})).toThrow(/no version/)
+    expect(() => kernelVersionFromManifest({ version: '' })).toThrow(/no version/)
+    expect(() => kernelVersionFromManifest({ version: 'not-a-version' })).toThrow(/not a semantic version/)
+    expect(() => kernelVersionFromManifest(null)).toThrow(/must contain an object/)
+  })
+
   it('accepts a clean candidate with the clamped sandbox attached', async () => {
     const { accepted, report } = await gate([candidate()])
     expect(accepted).toHaveLength(1)

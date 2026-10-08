@@ -213,7 +213,8 @@ export class DefaultPluginRegistry implements PluginRegistry {
     // 简单兼容性检查
     if (compatible.includes('<')) {
       const maxVersion = compatible.split('<')[1]?.trim()
-      if (maxVersion && semverCompare(kernelVersion, maxVersion) > 0) {
+      // 上界排他：kernel 恰等于上界即在窗口外（与 LoadGuard 的 `>= 0` 对齐，NF1）。
+      if (maxVersion && semverCompare(kernelVersion, maxVersion) >= 0) {
         issues.push(`Plugin requires DSH < ${maxVersion}`)
       }
     }

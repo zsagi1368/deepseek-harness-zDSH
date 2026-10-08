@@ -47,11 +47,20 @@ function comparePrerelease(a: string, b: string): number {
 
 /**
  * Minimal semver comparison: parses "major.minor.patch" and optional
- * prerelease tags. Returns -1 if a < b, 0 if equal, 1 if a > b.
- * Unparseable input degrades to a plain string comparison on the raw value.
+ * prerelease tags. The SIGN of the result carries the precedence order; the
+ * MAGNITUDE is the raw difference of the first differing component — for
+ * example `semverCompare('0.1.1-rc.2', '0.1.5-rc.2')` returns `-4`, not `-1`.
+ * Unparseable input degrades to the zero-version parse, whose prerelease slot
+ * then holds the raw string, so the comparison falls back to a plain string
+ * order on the raw value.
+ *
+ * Callers must compare against 0 (`> 0` / `>= 0` / `< 0`) and never against
+ * `-1` / `1` exactly.
  * @param a - the first version string.
  * @param b - the second version string.
- * @returns -1, 0, or 1 per semver precedence of `a` relative to `b`.
+ * @returns the signed difference per semver precedence of `a` relative to `b`:
+ * negative when `a < b`, `0` when equal, positive when `a > b`. The value is
+ * NOT normalized to -1/0/1.
  */
 export function semverCompare(a: string, b: string): number {
   const [aMaj, aMin, aPat, aPre] = parseSemver(a)

@@ -397,6 +397,24 @@ describe('DefaultPluginRegistry', () => {
     expect(compatibleResult.peerDepsSatisfied).toBe(true)
   })
 
+  it('rejects a kernel exactly at the declared upper bound (NF1: agrees with the LoadGuard)', async () => {
+    // `<X` excludes X itself. The registry compared with `> 0` while the
+    // LoadGuard compared with `>= 0`, so the two governance faces disagreed at
+    // exactly this point (NF1). The mirrored LoadGuard case lives in
+    // guards.spec.ts ("agrees with the registry on the kernel==max boundary").
+    await registry.register(makePlugin({ dsh: { compatible: '>=0.1.0-rc.8 <0.2.0' } }))
+    const plugin = registry.get('test/plugin')!
+    expect(plugin).not.toBeNull()
+
+    const atBound = registry.checkCompatibility(plugin, '0.2.0')
+    expect(atBound.compatible).toBe(false)
+    expect(atBound.issues[0]).toContain('< 0.2.0')
+
+    // One patch below the bound stays inside, so the boundary is exact rather
+    // than a blanket rejection.
+    expect(registry.checkCompatibility(plugin, '0.1.9').compatible).toBe(true)
+  })
+
   it('checkCompatibility survives malformed ranges and compares prereleases', async () => {
     // Malformed tokens fall back to the zero-version parse instead of crashing.
     await registry.register(makePlugin({ dsh: { compatible: '<banana >=0.2.0-x' } }))
