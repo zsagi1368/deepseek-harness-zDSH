@@ -9,9 +9,9 @@
 
 type SemverParts = readonly [number, number, number, string]
 
-/** Parse "major.minor.patch" plus an optional "-prerelease" tag. */
+/** Parse "major.minor.patch" plus optional "-prerelease" tag and "+build" metadata (ignored per semver spec). */
 function parseSemver(version: string): SemverParts {
-  const match = version.trim().match(/^(\d+)\.(\d+)\.(\d+)(?:-(.+))?$/u)
+  const match = version.trim().match(/^(\d+)\.(\d+)\.(\d+)(?:-(.+))?(?:\+(.+))?$/u)
   if (match === null) return [0, 0, 0, version]
   return [Number(match[1]), Number(match[2]), Number(match[3]), match[4] ?? '']
 }

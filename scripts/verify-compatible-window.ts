@@ -350,9 +350,13 @@ for (const spec of ARTIFACTS) {
 // warning, not a violation — the aligned verdict came from the value itself,
 // so an inert line cannot manufacture a false green. (Entries that failed the
 // expiry check are already violations, so they are excluded here.)
-const staleWaivers = [...waivers.keys()].filter(
-  id => verdicts.find(verdict => verdict.id === id)?.verdict === 'aligned',
-)
+// ORPHAN waivers (artifact not in ARTIFACTS) are also warned: a waiver for a
+// non-existent artifact is dead config that should be cleaned up.
+const staleWaivers = [...waivers.keys()].filter((id) => {
+  const verdict = verdicts.find(v => v.id === id)
+  if (verdict === undefined) return true  // orphan: artifact not in ARTIFACTS
+  return verdict.verdict === 'aligned'
+})
 
 const evidence = {
   baseVersion,
@@ -368,7 +372,12 @@ for (const verdict of verdicts) {
   console.error(`[compat-window] ${verdict.verdict.padEnd(9)} ${verdict.detail}`)
 }
 for (const id of staleWaivers) {
-  console.error(`[compat-window] warning: waiver entry ${id} covers no divergence (already aligned); drop the line when convenient`)
+  const verdict = verdicts.find(v => v.id === id)
+  if (verdict === undefined) {
+    console.error(`[compat-window] warning: waiver entry ${id} is ORPHAN (artifact not in ARTIFACTS); drop the line`)
+  } else {
+    console.error(`[compat-window] warning: waiver entry ${id} covers no divergence (already aligned); drop the line when convenient`)
+  }
 }
 
 if (violations.length > 0) {

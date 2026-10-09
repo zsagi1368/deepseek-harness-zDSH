@@ -30,7 +30,7 @@ export function kernelVersionFromManifest(manifest: unknown): string {
   if (typeof version !== 'string' || version.trim() === '') {
     throw new Error(`gate: package.json declares no version (got ${JSON.stringify(version)}); the kernel version is derived, never defaulted`)
   }
-  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(version)) {
+  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u.test(version)) {
     throw new Error(`gate: package.json version ${JSON.stringify(version)} is not a semantic version`)
   }
   return version
