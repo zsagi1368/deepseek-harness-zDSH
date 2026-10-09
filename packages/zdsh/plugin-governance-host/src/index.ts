@@ -45,6 +45,7 @@ import { TarExtractionError, extractNpmPackageTarball } from './install/tarball.
 import { writeFileAtomicSync } from './atomic-write-sync.ts'
 import { resolveContainedPath, resolveFactoryModulePath } from './path-containment.ts'
 import { SeedPreinstaller } from './preinstall/preinstaller.ts'
+import { mountProjectPluginsOnHost } from './project-source.ts'
 import type {
   DisablePluginRequest,
   GovernedCapabilityView,
@@ -263,6 +264,15 @@ export interface Config {
    *   the src-launch compat contract forbids (profile-resolution.ts:296-301).
    */
   factorySeeds?: FactorySeedsMode
+  /**
+   * Whether service init mounts the project-plugin layer (the NF4 wiring seam).
+   *
+   * Default `false`: a default deployment mounts no project plugins and the
+   * `dsh.compatible` gate stays inert. Set `true` to gate plugins discovered
+   * under the session project root through the host clamp + LoadGuard.preLoad
+   * chain and classify them in the roster as `source: 'project'`.
+   */
+  projectPlugins?: boolean
 }
 
 /** The three {@link Config.factorySeeds} postures. */
@@ -332,6 +342,11 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     // (factorySeedsRunAtBoot), so the default here only documents the wire
     // shape rather than being the single source of the fallback.
     factorySeeds: z.union(['auto', 'boot', 'off']).default(DEFAULT_FACTORY_SEEDS),
+    // Same `.default` idiom as the fields above: schemastery's `Schema` has no
+    // `.optional`, and an unset field resolves to the inert posture on the code
+    // path too, so the default documents the wire shape rather than being the
+    // single source of the fallback.
+    projectPlugins: z.boolean().default(false),
   })
 
   private readonly registry: PluginRegistry
@@ -363,6 +378,8 @@ export class PluginGovernanceGateway extends TypertRemoteService {
   private readonly preinstaller: SeedPreinstaller
   /** Whether service init fires the boot preinstall pass (SYNC-P3-CFIX gate). */
   private readonly preinstallAtBoot: boolean
+  /** Whether service init mounts the project-plugin layer (NF4 wiring seam). */
+  private readonly mountProjectPluginsAtBoot: boolean
 
   /**
    * @param ctx - owning Host context.
@@ -401,6 +418,9 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     // config plus this module's own runtime mode, neither of which can change
     // for the lifetime of the service.
     this.preinstallAtBoot = factorySeedsRunAtBoot(config.factorySeeds)
+    // Opt-in project-plugin mount (NF4): resolved once at construction, like the
+    // preinstall posture above — config cannot change for the service lifetime.
+    this.mountProjectPluginsAtBoot = config.projectPlugins === true
     this.preinstaller = new SeedPreinstaller({
       seedPath,
       resultsPath: join(this.persistence.dataDir, 'preinstall-results.json'),
@@ -485,6 +505,12 @@ export class PluginGovernanceGateway extends TypertRemoteService {
     // Await the first mirror pass (L2: no async micro-window between service
     // ready and populated roster). Subsequent syncs remain lazy via list().
     await this.syncMountedPlugins()
+    // NF4: mount the project-plugin layer so a project-root plugin is gated by
+    // the host clamp + LoadGuard.preLoad chain and classified as source=project.
+    // Opt-in (Config.projectPlugins); the inert posture is a no-op.
+    if (this.mountProjectPluginsAtBoot) {
+      await mountProjectPluginsOnHost(this.ctx, true)
+    }
     // Fire-and-forget the factory preinstall pass so a broken or absent seed
     // never delays or aborts boot (R-1.1.4); tests await the settle seam.
     // SYNC-P3-CFIX: gated by `factorySeeds` — a src launch skips it under the

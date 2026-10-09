@@ -28,6 +28,9 @@
     },
     {
       "path": "../../util/atomic-write"
+    },
+    {
+      "path": "../plugin-project-root"
     }
   ]
 }
