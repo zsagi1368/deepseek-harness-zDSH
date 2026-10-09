@@ -8,13 +8,13 @@
   "dependencies": {
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/schemastery": "workspace:~",
-    "dsh-webstack-verticals": "git+https://github.com/zsagi1368/dsh-webstack.git#cc1a2a0492000d350b9358640702e54162d25a2f",
-    "dsh-omnivision": "git+https://github.com/zsagi1368/dsh-omnivision.git#d2decb2c23d527f660c1a0b97fe637e82939c966",
-    "dsh-webstack-bridge": "git+https://github.com/zsagi1368/dsh-webstack.git#cc1a2a0492000d350b9358640702e54162d25a2f",
-    "dsh-filehub": "git+https://github.com/zsagi1368/zdsh-filehub.git#ca69191e9c9c6c040258822dfe3bb96181d18287",
-    "dsh-plugin-center": "git+https://github.com/zsagi1368/zdsh-plugin-center.git#98ac45d9f691c9e3c08645023833fb83ca507da6",
-    "dsh-autopilot": "git+https://github.com/zsagi1368/zdsh-autopilot.git#89d923d00ec57e081f1c237f43e7b2bbc2f72421",
-    "dsh-webstack": "git+https://github.com/zsagi1368/dsh-webstack.git#cc1a2a0492000d350b9358640702e54162d25a2f",
-    "zdsh-workbench": "git+https://github.com/zsagi1368/zdsh-workbench.git#ab4653a7ea74e67febab9cf5aa50a810a0fb370e"
+    "dsh-webstack-verticals": "git+https://github.com/zsagi1368/dsh-webstack.git#ba9e3435ba1402ede7341d11d393fd10e6ec314d",
+    "dsh-omnivision": "git+https://github.com/zsagi1368/dsh-omnivision.git#e247138bfb094121765106d254748410c6d928fd",
+    "dsh-webstack-bridge": "git+https://github.com/zsagi1368/dsh-webstack.git#ba9e3435ba1402ede7341d11d393fd10e6ec314d",
+    "dsh-filehub": "git+https://github.com/zsagi1368/zdsh-filehub.git#33a211d9e4dd752f71fa26af90c1f0c77a6104f6",
+    "dsh-plugin-center": "git+https://github.com/zsagi1368/zdsh-plugin-center.git#8f581223f8a50b4923b359dbf0248b6d6f357434",
+    "dsh-autopilot": "git+https://github.com/zsagi1368/zdsh-autopilot.git#9f9687ceb96918ff78c142154dba3adbc0b30b15",
+    "dsh-webstack": "git+https://github.com/zsagi1368/dsh-webstack.git#ba9e3435ba1402ede7341d11d393fd10e6ec314d",
+    "zdsh-workbench": "git+https://github.com/zsagi1368/zdsh-workbench.git#25affdf1bef93fe53f425f0d517bbf70d209cd82"
   }
 }
