@@ -74,3 +74,78 @@ export function semverCompare(a: string, b: string): number {
   if (aPre === '' && bPre === '') return 0
   return comparePrerelease(aPre, bPre)
 }
+
+/**
+ * Check whether a version satisfies a semver range.
+ *
+ * Supports space-separated AND conditions (e.g. `">=0.1.0 <0.2.0"`),
+ * and the operators `>=`, `<=`, `>`, `<`, `=`, `^`, `~`, and exact versions.
+ * Prerelease versions are included in the comparison (includePrerelease
+ * semantics), matching the reader-semantics discipline of `dsh.compatible`.
+ *
+ * @param version - the version to test.
+ * @param range - the semver range expression.
+ * @returns `true` when the version satisfies every condition in the range.
+ */
+export function semverSatisfies(version: string, range: string): boolean {
+  const trimmed = range.trim()
+  if (trimmed === '' || trimmed === '*') return true
+
+  // Split by whitespace for AND conditions; every part must pass.
+  const parts = trimmed.split(/\s+/).filter(part => part !== '')
+  for (const part of parts) {
+    if (!satisfiesSingle(version, part)) {
+      return false
+    }
+  }
+  return true
+}
+
+/** Evaluate a single condition (no whitespace) against a version. */
+function satisfiesSingle(version: string, condition: string): boolean {
+  if (condition.startsWith('^')) {
+    return satisfiesCaret(version, condition.slice(1))
+  }
+  if (condition.startsWith('~')) {
+    return satisfiesTilde(version, condition.slice(1))
+  }
+  if (condition.startsWith('>=')) {
+    return semverCompare(version, condition.slice(2)) >= 0
+  }
+  if (condition.startsWith('<=')) {
+    return semverCompare(version, condition.slice(2)) <= 0
+  }
+  if (condition.startsWith('>')) {
+    return semverCompare(version, condition.slice(1)) > 0
+  }
+  if (condition.startsWith('<')) {
+    return semverCompare(version, condition.slice(1)) < 0
+  }
+  if (condition.startsWith('=')) {
+    return semverCompare(version, condition.slice(1)) === 0
+  }
+  // Bare version = exact match
+  return semverCompare(version, condition) === 0
+}
+
+/** `^1.2.3` := `>=1.2.3 <2.0.0`; `^0.2.3` := `>=0.2.3 <0.3.0`; `^0.0.3` := `>=0.0.3 <0.0.4`. */
+function satisfiesCaret(version: string, base: string): boolean {
+  if (semverCompare(version, base) < 0) return false
+  const [maj, min] = parseSemver(base)
+  if (maj > 0) {
+    return parseSemver(version)[0] === maj
+  }
+  if (min > 0) {
+    const [vMaj, vMin] = parseSemver(version)
+    return vMaj === 0 && vMin === min
+  }
+  return semverCompare(version, base) === 0
+}
+
+/** `~1.2.3` := `>=1.2.3 <1.3.0`. */
+function satisfiesTilde(version: string, base: string): boolean {
+  if (semverCompare(version, base) < 0) return false
+  const [maj, min] = parseSemver(base)
+  const [vMaj, vMin] = parseSemver(version)
+  return vMaj === maj && vMin === min
+}

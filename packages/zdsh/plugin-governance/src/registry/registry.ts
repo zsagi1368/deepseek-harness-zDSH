@@ -17,7 +17,7 @@ import {
   validatePluginId,
   normalizePluginId,
 } from '../spec/index.js'
-import { semverCompare } from '../semver.js'
+import { semverCompare, semverSatisfies } from '../semver.js'
 
 /**
  * DefaultPluginRegistry - 默认插件注册表实现
@@ -227,8 +227,25 @@ export class DefaultPluginRegistry implements PluginRegistry {
     }
 
     // 检查 peer dependencies
-    // 这里应该检查实际安装的版本；暂时假设满足
-    const peerDepsSatisfied = true
+    const peerDeps = (plugin.manifest as Partial<Plugin['manifest']>).dsh?.peerDependencies
+    let peerDepsSatisfied = true
+    if (peerDeps && Object.keys(peerDeps).length > 0) {
+      for (const [depName, range] of Object.entries(peerDeps)) {
+        // 在已注册插件中查找匹配的包（支持 namespace/name、@scope/name、dsh-xxx 等格式）
+        const normalizedDep = normalizePluginId(depName)
+        const depPlugin = this.plugins.get(normalizedDep) || this.plugins.get(depName)
+        if (!depPlugin) {
+          peerDepsSatisfied = false
+          issues.push(`Peer dependency not satisfied: ${depName}@${range} (not registered)`)
+        } else {
+          const depVersion = depPlugin.manifest.version
+          if (!semverSatisfies(depVersion, range)) {
+            peerDepsSatisfied = false
+            issues.push(`Peer dependency not satisfied: ${depName}@${depVersion} does not meet ${range}`)
+          }
+        }
+      }
+    }
 
     return {
       compatible: issues.length === 0,

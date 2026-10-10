@@ -447,6 +447,78 @@ describe('DefaultPluginRegistry', () => {
     const preFloor = registry.get('test/pre-floor')!
     expect(registry.checkCompatibility(preFloor, '0.2.0-rc').compatible).toBe(false)
   })
+
+  it('NF2: checkCompatibility verifies peer dependency satisfaction', async () => {
+    // Register a peer dependency plugin first
+    await registry.register(makePlugin({ id: 'test/peer-dep', version: '2.0.0' }))
+    const peerDep = registry.get('test/peer-dep')!
+    expect(peerDep).not.toBeNull()
+
+    // Plugin declaring a satisfied peer dependency
+    await registry.register(
+      makePlugin({
+        id: 'test/consumer',
+        dsh: {
+          compatible: '>=0.1.0',
+          peerDependencies: { 'test/peer-dep': '^2.0.0' },
+        },
+      }),
+    )
+    const consumer = registry.get('test/consumer')!
+    const satisfied = registry.checkCompatibility(consumer, '0.1.0')
+    expect(satisfied.compatible).toBe(true)
+    expect(satisfied.peerDepsSatisfied).toBe(true)
+    expect(satisfied.issues).toHaveLength(0)
+
+    // Plugin declaring a version-mismatched peer dependency
+    await registry.register(
+      makePlugin({
+        id: 'test/consumer-bad-version',
+        dsh: {
+          compatible: '>=0.1.0',
+          peerDependencies: { 'test/peer-dep': '^3.0.0' },
+        },
+      }),
+    )
+    const badVersion = registry.get('test/consumer-bad-version')!
+    const versionMismatch = registry.checkCompatibility(badVersion, '0.1.0')
+    expect(versionMismatch.compatible).toBe(false)
+    expect(versionMismatch.peerDepsSatisfied).toBe(false)
+    expect(versionMismatch.issues).toHaveLength(1)
+    expect(versionMismatch.issues[0]).toContain('test/peer-dep')
+    expect(versionMismatch.issues[0]).toContain('does not meet')
+
+    // Plugin declaring a missing peer dependency
+    await registry.register(
+      makePlugin({
+        id: 'test/consumer-missing',
+        dsh: {
+          compatible: '>=0.1.0',
+          peerDependencies: { 'test/nonexistent': '^1.0.0' },
+        },
+      }),
+    )
+    const missing = registry.get('test/consumer-missing')!
+    const missingResult = registry.checkCompatibility(missing, '0.1.0')
+    expect(missingResult.compatible).toBe(false)
+    expect(missingResult.peerDepsSatisfied).toBe(false)
+    expect(missingResult.issues).toHaveLength(1)
+    expect(missingResult.issues[0]).toContain('test/nonexistent')
+    expect(missingResult.issues[0]).toContain('not registered')
+
+    // Plugin with no peer dependencies should always pass
+    await registry.register(
+      makePlugin({
+        id: 'test/consumer-no-peer',
+        dsh: { compatible: '>=0.1.0' },
+      }),
+    )
+    const noPeer = registry.get('test/consumer-no-peer')!
+    const noPeerResult = registry.checkCompatibility(noPeer, '0.1.0')
+    expect(noPeerResult.compatible).toBe(true)
+    expect(noPeerResult.peerDepsSatisfied).toBe(true)
+    expect(noPeerResult.issues).toHaveLength(0)
+  })
 })
 
 describe('BasePlugin lifecycle helpers', () => {
