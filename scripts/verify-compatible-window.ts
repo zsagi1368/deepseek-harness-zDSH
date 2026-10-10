@@ -131,7 +131,7 @@ export interface WaiverEntry {
 export interface WaiverFile {
   /** Rule R restated (cross-reference only; the script owns the rule). */
   rule: string
-  /** Lower-bound provenance note (B3: intake-wide convention, not per-repo). */
+  /** Lower-bound source record (B3: intake-wide convention, not per-repo). */
   lowerBoundNote: string
   entries: WaiverEntry[]
 }

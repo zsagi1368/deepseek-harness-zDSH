@@ -123,7 +123,7 @@ export interface PluginManifest {
      * 规则 R（唯一值形态规则）：**上界 = 底座 minor 的下一个 minor（排他）**，
      * 即底座 `0.<minor>.<patch>` 对应 `<0.<minor+1>.0`（底座 0.2.x ⇒ `<0.3.0`，
      * 底座 0.3.x ⇒ `<0.4.0`）；**下界 = 实际构建过的最低底座**，规则 R 不动它
-     * （`>=0.1.5-rc.2` 为 intake 期统一规约、非逐仓实测，见裁决 §6 B3 provenance）。
+     * （`>=0.1.5-rc.2` 为 intake 期统一规约、非逐仓实测，见裁决 §6 B3 证据记录）。
      * 上界与规则 R 派生值不符时，`scripts/verify-compatible-window.ts` 门禁变红，
      * 由下一次 pin 轮转强制对齐——判据是规则而非记忆。
      *

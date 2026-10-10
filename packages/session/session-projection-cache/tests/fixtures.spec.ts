@@ -131,23 +131,16 @@ async function placeDoc(root: string, id: string, name: string): Promise<Fixture
 async function assertRewrite(ctx: Context, root: string, id: SessionId): Promise<void> {
   const session = ctx.sessions.create(id)
   session.append('fixtures-test/set-title', { title: '重写标题' })
-  session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+  await ctx.sessionProjectionCache.write(session)
   const path = join(root, projectionCacheDomainSpec.name, 'sessions', `${id}.json`)
-  // zDSH (FLAKE-BATCH, 2026-09-28): the rewrite lands via the fire-and-forget flushSoft chain
-  // ('turn/end' trigger); under full-run parallel load the 5s poll budget starved and vi.waitFor
-  // threw its last assertion error (assertion-signature load flake, isolated run is ms-fast).
-  // Budget widening only — the expect bodies below are unchanged, so a real rewrite regression
-  // still fails on content regardless of timing. 20s stays inside the 30s suite budget.
-  await vi.waitFor(async () => {
-    const doc = JSON.parse(await readFile(path, 'utf8')) as FixtureDoc
-    expect(doc.version).toBe(projectionCacheDomainSpec.version)
-    expect(doc.record.identity).toMatchObject({
-      formatVersion: SESSION_FORMAT_VERSION,
-      isSeeded: false,
-      inheritedEventCount: 0,
-    })
-    expect(doc.record.rows['title']?.val).toBe('重写标题')
-  }, { timeout: 20_000 })
+  const doc = JSON.parse(await readFile(path, 'utf8')) as FixtureDoc
+  expect(doc.version).toBe(projectionCacheDomainSpec.version)
+  expect(doc.record.identity).toMatchObject({
+    formatVersion: SESSION_FORMAT_VERSION,
+    isSeeded: false,
+    inheritedEventCount: 0,
+  })
+  expect(doc.record.rows['title']?.val).toBe('重写标题')
 }
 
 afterEach(async () => {
