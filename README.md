@@ -15,9 +15,9 @@ This repository (`zsagi1368/deepseek-harness-zDSH`) is the zDSH fork. The active
 | Component | Version |
 | --- | --- |
 | Official base ([DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)) | `0.2.0-rc.2` |
-| zDSH release | `v0.2.0-rc.2-zDSH20261010a` |
+| zDSH release | `v0.2.0-rc.2-zDSH20261010b` |
 
-zDSH tracks the official `dsh-v0.2.0-rc.2` baseline and re-syncs on every official release. zDSH version rule: `<official-version>-zDSH<date><revision-letter>`, where the date is the zDSH campaign close date (`20261010`) and the letter counts same-day revisions (`a`). The root `package.json` keeps the official base version untouched; the zDSH version is declared on this README surface and on the matching release tag.
+zDSH tracks the official `dsh-v0.2.0-rc.2` baseline and re-syncs on every official release. zDSH version rule: `<official-version>-zDSH<date><revision-letter>`, where the date is the zDSH campaign close date (`20261010`) and the letter counts same-day revisions (`b`). The root `package.json` keeps the official base version untouched; the zDSH version is declared on this README surface and on the matching release tag.
 
 ## Upgrade notes
 
