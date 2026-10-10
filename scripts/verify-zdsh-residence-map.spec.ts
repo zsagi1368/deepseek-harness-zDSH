@@ -171,15 +171,25 @@ describe('checkResidenceMap', () => {
     const findings = checkResidenceMap({
       map: TEST_MAP,
       upstream: upstream({ packageNames: new Map() }),
-      localPackageNames: new Map([['@deepseek-ai/dsh-invariants', 'packages/runtime-diagnostics/invariants/package.json']]),
-      dependencies: new Map([['@deepseek-ai/dsh-compat', ['@deepseek-ai/dsh-invariants']]]),
+      localPackageNames: new Map([['@deepseek-ai/dsh-session', 'packages/core/session/package.json']]),
+      dependencies: new Map([['@deepseek-ai/dsh-compat', ['@deepseek-ai/dsh-session']]]),
     })
     expect(findings).toEqual([{
       kind: 'broken-link',
       artifact: '@deepseek-ai/dsh-compat',
-      detail: '@deepseek-ai/dsh-compat depends on @deepseek-ai/dsh-invariants, which the local workspace supplies'
+      detail: '@deepseek-ai/dsh-compat depends on @deepseek-ai/dsh-session, which the local workspace supplies'
         + ' but upstream upstream/test no longer declares',
     }])
+  })
+
+  it('treats a retained upstream removal as a known exception, not a broken link', () => {
+    const findings = checkResidenceMap({
+      map: TEST_MAP,
+      upstream: upstream({ packageNames: new Map() }),
+      localPackageNames: new Map([['@deepseek-ai/dsh-invariants', 'packages/runtime-diagnostics/invariants/package.json']]),
+      dependencies: new Map([['@deepseek-ai/dsh-compat', ['@deepseek-ai/dsh-invariants']]]),
+    })
+    expect(findings).toEqual([])
   })
 
   it('never reports zDSH-internal or non-workspace dependency edges as broken links', () => {

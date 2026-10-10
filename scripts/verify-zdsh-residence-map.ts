@@ -15,7 +15,8 @@
  *   zDSH artifact used to occupy; not a git conflict after T2 (the artifact
  *   moved), but a semantic double-residence that P1 must adjudicate.
  * - `broken-link`: upstream deleted a workspace-supplied package that a zDSH
- *   artifact depends on (dependency edge would dangle after the merge).
+ *   artifact depends on (dependency edge would dangle after the merge). Edges to
+ *   a {@link RETAINED_UPSTREAM_REMOVALS} package are known exceptions, not findings.
  *
  * Run: `tsx scripts/verify-zdsh-residence-map.ts [--ref <git-ref>] [--json]`.
  * The default ref is `upstream/master`; fetching that ref is a P0/P1 step
@@ -31,6 +32,19 @@ const ROOT = resolve(import.meta.dirname, '..')
 const GATE = 'verify-zdsh-residence-map'
 const DEFAULT_REF = 'upstream/master'
 const HOST_ORG_PREFIX = '@deepseek-ai/'
+
+/**
+ * Packages upstream removed that zDSH deliberately retains: a zDSH artifact may
+ * keep depending on them without a merge action, so their edges are not broken
+ * links. Each entry states the retention decision.
+ */
+const RETAINED_UPSTREAM_REMOVALS: ReadonlyMap<string, string> = new Map([
+  ['@deepseek-ai/dsh-invariants',
+    'zDSH retains the package-owned invariant registry (and the /invariant companion '
+    + 'subpath aliases) for the type chain after the official 0.2.1-alpha.2 '
+    + 'runtime-invariants removal; the service is not mounted, so no runtime '
+    + 'behavior depends on the official decision'],
+])
 
 /** Workspace manifest globs that define the host-supplied package index. */
 const WORKSPACE_MANIFEST_GLOBS = ['packages/*/*/package.json', 'vendor/*/package.json'] as const
@@ -181,6 +195,7 @@ export function checkResidenceMap(input: ResidenceCheckInput): readonly Residenc
       // registry/git-pinned dependencies are outside this gate's model.
       if (!input.localPackageNames.has(dependency)) continue
       if (input.upstream.packageNames.has(dependency)) continue
+      if (RETAINED_UPSTREAM_REMOVALS.has(dependency)) continue
       findings.push({
         kind: 'broken-link',
         artifact: packageName,
