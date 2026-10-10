@@ -148,9 +148,8 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })))
 })
 
-// zDSH (FLAKE-BATCH, 2026-09-28): 30s suite budget (PDF-FLAKE precedent) so the
-// write-behind rewrite poll in assertRewrite has headroom under full-run parallel load;
-// paired with the waitFor budget widening above. Assertions unchanged.
+// zDSH (FLAKE-BATCH, 2026-09-28): 30s suite budget (PDF-FLAKE precedent) as the
+// full-run parallel-load margin for this suite. Assertions unchanged.
 // SYNC-P2: budget replayed onto the official checkpoint JSON preservation suite (0.1.7-rc.2) too.
 describe('checkpoint JSON preservation', { timeout: 30_000 }, () => {
   it('preserves opaque keys through StorageDomain read, put, and reopen', async () => {

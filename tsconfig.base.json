@@ -354,6 +354,7 @@
       // explicit subpath for source-mode dynamic imports (session-log-export precedent).
       "@deepseek-ai/dsh-client-ui-plugin-governance/client": ["./packages/zdsh/plugin-governance-ui/src/client"],
       "@deepseek-ai/dsh-compat": ["./packages/zdsh/dsh-compat/src"],
+      "@deepseek-ai/dsh-compat/invariant": ["./packages/zdsh/dsh-compat/src/invariant.ts"],
       "@deepseek-ai/dsh-util-values": ["./packages/util/values/src"],
       "@deepseek-ai/dsh-util-code-language": ["./packages/util/code-language/src"],
       // util/ folders are role-named without the util- prefix their npm names carry,
