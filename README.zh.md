@@ -15,9 +15,9 @@ zDSH 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（�
 | 组成 | 版本 |
 | --- | --- |
 | 官方底座（[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)） | `0.2.1-alpha.2` |
-| zDSH 版本 | `v0.2.1-alpha.2-zDSH20261011c` |
+| zDSH 版本 | `v0.2.1-alpha.2-zDSH20261011d` |
 
-zDSH 跟踪官方 `dsh-v0.2.1-alpha.2` 基线，随官方发布滚动同步。zDSH 版本规则：`<官方版本>-zDSH<日期><修订字母>`，日期为 zDSH 战役收官日（`20261011`），字母为当日修订序号（`c`）。根 `package.json` 保持官方底座版本零触碰；zDSH 版本以本 README 声明面与配套发布 tag 为准。
+zDSH 跟踪官方 `dsh-v0.2.1-alpha.2` 基线，随官方发布滚动同步。zDSH 版本规则：`<官方版本>-zDSH<日期><修订字母>`，日期为 zDSH 战役收官日（`20261011`），字母为当日修订序号（`d`）。根 `package.json` 保持官方底座版本零触碰；zDSH 版本以本 README 声明面与配套发布 tag 为准。
 
 ## 升级须知
 
@@ -43,7 +43,7 @@ zDSH 跟踪官方 `dsh-v0.2.1-alpha.2` 基线，随官方发布滚动同步。zD
 - **更小的配置与 CLI 变更。** `agent-instructions` 不再接受 `dshHome`——请改用 `DSH_HOME`；`dsh plugin` 只在转发的 pnpm 参数之前读取 `--profile`（`dsh plugin --profile web add <package>`）；账号登录传输失败现在报 `no-response` 而非 `network`；Desktop 测试构建的更新策略认证弹窗默认关闭，除非在 `desktop/settings.json` 设置 `updates.allowTestAuthPopupWindow`。来源：[`instruction-home-override`](docs/upgrade-guide/v0.2.1-alpha.1/instruction-home-override/guide.zh.md)、[`plugin-option-placement`](docs/upgrade-guide/v0.2.1-alpha.1/plugin-option-placement/guide.zh.md)、[`account-sign-in-errors`](docs/upgrade-guide/v0.2.0-rc.2/account-sign-in-errors/guide.zh.md)、[`desktop-test-auth-popup`](docs/upgrade-guide/v0.2.1-alpha.1/desktop-test-auth-popup/guide.zh.md)。
 - **zDSH 只保留不变式类型链，不挂载运行时注册表。** `dsh-invariants` 包与四个自研 `./invariant` 配套件（`dsh-model-slots`、`dsh-plugin-governance`、`dsh-plugin-project-root`、`dsh-compat`）留在树内并保持可编译；没有任何出厂组合挂载 `ctx.invariants`，运行时诊断保持未接线——按官方废弃架构的现状接受。来源：[`packages/runtime-diagnostics/invariants/README.zh.md`](packages/runtime-diagnostics/invariants/README.zh.md)。
 - **zDSH 的会话标题槽位路由保持工作。** `title` 模型槽位（`ctx.modelSlots`）仍路由辅助标题调用；`dsh-session-title-llm` 已随本次同步迁移到官方 `executeSessionTitleLlm` 提供方 API，包测试通过（21 例）。基于 `registerSessionTitleLlmProvider` 的自定义标题提供方须改为直接 `ctx.sessionTitle.register()` 加 `executeSessionTitleLlm`。来源：[`dsh-model-slots`](packages/llm/model-slots/README.zh.md)、[`dsh-session-title-llm`](packages/session/session-title-llm/README.zh.md)、[`session-title-provider-strategy`](docs/upgrade-guide/v0.2.1-alpha.1/session-title-provider-strategy/guide.zh.md)。
-- **出厂插件 pin 尚未轮转到 alpha.2 底座。** [`zdsh-factory/seed.json`](zdsh-factory/seed.json) 仍携带上一轮同步战役的值轮转锚（面向 `0.2.0-rc.2` 底座的 pin）；面向 alpha.2 适配锚的 pin 轮转进行中，将作为单独变更落地。八件谱及其 6 mounted / 2 skipped 姿态不变。
+- **出厂插件 pin 已轮转到 alpha.2 底座。** [`zdsh-factory/seed.json`](zdsh-factory/seed.json) 与 [`packages/zdsh/factory-bundle/package.json`](packages/zdsh/factory-bundle/package.json) 已携带 alpha.2 适配锚（webstack 族、filehub、workbench、autopilot 重新钉锚；omnivision 与 plugin-center 未变）。八件谱及其 6 mounted / 2 skipped 姿态不变。
 
 ### 升级到 0.1.7-rc.2 底座
 
