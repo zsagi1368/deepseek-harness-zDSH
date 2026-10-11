@@ -7,7 +7,8 @@ import { parseArgs } from 'node:util'
 import { build } from 'tsdown'
 import { create as createTar } from 'tar'
 import { verifyRuntimeClosure } from './verify-runtime-closure.ts'
-import { pnpmInvocation, restoreLegacyHoists } from './executable-packaging.ts'
+import { restoreLegacyHoists } from './executable-packaging.ts'
+import { pnpmInvocation as resolvePnpmInvocation, type DetectedPnpm } from './pnpm-invocation.ts'
 import { materializeStagedLinks, deduplicateStagedWorkspacePackages } from './build-exe-for-python-sdk-staging.ts'
 import { resolveLinuxNodePtyAddon } from './executable-native-pty.ts'
 import { artifactManifestSchema, fileDigest, payloadFiles, SSH_HELPER_TARGETS, verifyPayload, type SshHelperTarget } from './ssh-helper/artifact.ts'
@@ -36,6 +37,39 @@ async function run(command: string, args: string[]): Promise<void> {
 }
 
 async function pnpm(...args: string[]): Promise<void> { const [command, argv] = pnpmInvocation(args); await run(command, argv) }
+
+/**
+ * Explicit resolution for this script's context (TC-B4-S2d): the pnpm package
+ * bin derived from PNPM_HOME, then PATH `pnpm` off Windows; on Windows a real
+ * JavaScript entrypoint is required (shell-free spawn cannot run a .cmd shim).
+ * Injected into the shared trust model below in place of the health recipe.
+ */
+function detectPnpmForSshHelper(): DetectedPnpm {
+  const home = process.env.PNPM_HOME?.trim()
+  if (home !== undefined && home !== '') {
+    const packageBin = resolve(home, '..', 'pnpm', 'bin')
+    for (const filename of ['pnpm.mjs', 'pnpm.cjs']) {
+      const candidate = resolve(packageBin, filename)
+      if (existsSync(candidate)) return { kind: 'entrypoint', path: candidate }
+    }
+  }
+  if (process.platform === 'win32') {
+    throw new Error('build-exe-for-ssh-helper: pnpm must expose a JavaScript entrypoint through npm_execpath or PNPM_HOME on Windows.')
+  }
+  return { kind: 'command', path: 'pnpm' }
+}
+
+/**
+ * Resolve the shell-free pnpm invocation through the shared trust model
+ * (scripts/pnpm-invocation.ts, TC-B4-S2c face 2): `npm_execpath` is honored
+ * only when its basename is genuinely pnpm — an npm/yarn entrypoint (e.g.
+ * npm-cli.js under `npx`) falls to the explicit context resolution above
+ * instead of being misused as pnpm. Same wiring as build-exe-for-python-sdk.ts.
+ */
+function pnpmInvocation(args: string[]): [command: string, args: string[]] {
+  const invocation = resolvePnpmInvocation(args, process.env, detectPnpmForSshHelper)
+  return [invocation.command, invocation.args]
+}
 
 async function compileRuntime(dependencies: Readonly<Record<string, string>>): Promise<void> {
   await pnpm('exec', 'tsx', 'native/system/scripts/build.ts')
