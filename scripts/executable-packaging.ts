@@ -5,6 +5,12 @@ import { dirname, extname, join, resolve, sep } from 'node:path'
 
 /**
  * Resolve pnpm without invoking a command shell, including Windows shims.
+ *
+ * zDSH: the executable builders (`build-exe-for-python-sdk`, `build-exe-for-ssh-helper`)
+ * route through the shared trust model in `scripts/pnpm-invocation.ts` instead —
+ * it verifies `npm_execpath` is genuinely pnpm before honoring it, which this
+ * copy does not. This copy is kept as the upstream shape to minimize merge
+ * friction; do not import it for new call sites.
  * @param args - pnpm arguments.
  * @returns the executable and its argument vector.
  */
