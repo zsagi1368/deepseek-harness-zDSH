@@ -149,9 +149,12 @@ describe('ProcessSandbox.exec whitelist mode', () => {
 
   it('executes the same token the allow list checked', async () => {
     const sandbox = new ProcessSandbox('p-base-consistency', baseConfig(), 'entry.js')
-    // The quoted executable clears the allow list as `node`; pre-fix the argv
-    // still carried the quotes, so node looked for a script named `"-v"`.
-    expect((await sandbox.exec('"node" -v')).stdout).toMatch(/^v\d+/u)
+    // The quoted executable clears the allow list as the bare `node` the sandbox
+    // executes. Pre-fix the base extraction already stripped quotes (the allow check
+    // has always used `extractCommandBase`), but the naive argv split kept the payload
+    // quotes, so node evaluated the string literal `"console.log(40+2)"` and printed
+    // nothing.
+    expect((await sandbox.exec('"node" -e "console.log(40+2)"')).stdout).toContain('42')
   })
 
   it('bypasses the allow list only when fullyAuthorized AND host grant are both set', async () => {
