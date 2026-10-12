@@ -15,9 +15,9 @@ zDSH 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（�
 | 组成 | 版本 |
 | --- | --- |
 | 官方底座（[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)） | `0.2.1-alpha.2` |
-| zDSH 版本 | `v0.2.1-alpha.2-zDSH20261011d` |
+| zDSH 版本 | `v0.2.1-alpha.2-zDSH20261012a` |
 
-zDSH 跟踪官方 `dsh-v0.2.1-alpha.2` 基线，随官方发布滚动同步。zDSH 版本规则：`<官方版本>-zDSH<日期><修订字母>`，日期为 zDSH 战役收官日（`20261011`），字母为当日修订序号（`d`）。根 `package.json` 保持官方底座版本零触碰；zDSH 版本以本 README 声明面与配套发布 tag 为准。
+zDSH 跟踪官方 `dsh-v0.2.1-alpha.2` 基线，随官方发布滚动同步。zDSH 版本规则：`<官方版本>-zDSH<日期><修订字母>`，日期为 zDSH 战役收官日（`20261012`），字母为当日修订序号（`a`）。根 `package.json` 保持官方底座版本零触碰；zDSH 版本以本 README 声明面与配套发布 tag 为准。
 
 ## 升级须知
 
@@ -42,7 +42,7 @@ zDSH 跟踪官方 `dsh-v0.2.1-alpha.2` 基线，随官方发布滚动同步。zD
 - **可选能力包需显式安装。** hook 桥、webhook 包、Ralph 行与 skill badge 不再默认安装或组合：请连同必需 peer 一并加入 profile（例如 `dsh plugin --profile web add @deepseek-ai/dsh-hooks-claude-code @deepseek-ai/dsh-hook-protocol`），并在覆盖某 bundle 的行之前先选中该 bundle。来源：[`experimental-package-composition`](docs/upgrade-guide/v0.2.1-alpha.1/experimental-package-composition/guide.zh.md)。
 - **更小的配置与 CLI 变更。** `agent-instructions` 不再接受 `dshHome`——请改用 `DSH_HOME`；`dsh plugin` 只在转发的 pnpm 参数之前读取 `--profile`（`dsh plugin --profile web add <package>`）；账号登录传输失败现在报 `no-response` 而非 `network`；Desktop 测试构建的更新策略认证弹窗默认关闭，除非在 `desktop/settings.json` 设置 `updates.allowTestAuthPopupWindow`。来源：[`instruction-home-override`](docs/upgrade-guide/v0.2.1-alpha.1/instruction-home-override/guide.zh.md)、[`plugin-option-placement`](docs/upgrade-guide/v0.2.1-alpha.1/plugin-option-placement/guide.zh.md)、[`account-sign-in-errors`](docs/upgrade-guide/v0.2.0-rc.2/account-sign-in-errors/guide.zh.md)、[`desktop-test-auth-popup`](docs/upgrade-guide/v0.2.1-alpha.1/desktop-test-auth-popup/guide.zh.md)。
 - **zDSH 只保留不变式类型链，不挂载运行时注册表。** `dsh-invariants` 包与四个自研 `./invariant` 配套件（`dsh-model-slots`、`dsh-plugin-governance`、`dsh-plugin-project-root`、`dsh-compat`）留在树内并保持可编译；没有任何出厂组合挂载 `ctx.invariants`，运行时诊断保持未接线——按官方废弃架构的现状接受。来源：[`packages/runtime-diagnostics/invariants/README.zh.md`](packages/runtime-diagnostics/invariants/README.zh.md)。
-- **zDSH 的会话标题槽位路由保持工作。** `title` 模型槽位（`ctx.modelSlots`）仍路由辅助标题调用；`dsh-session-title-llm` 已随本次同步迁移到官方 `executeSessionTitleLlm` 提供方 API，包测试通过（21 例）。基于 `registerSessionTitleLlmProvider` 的自定义标题提供方须改为直接 `ctx.sessionTitle.register()` 加 `executeSessionTitleLlm`。来源：[`dsh-model-slots`](packages/llm/model-slots/README.zh.md)、[`dsh-session-title-llm`](packages/session/session-title-llm/README.zh.md)、[`session-title-provider-strategy`](docs/upgrade-guide/v0.2.1-alpha.1/session-title-provider-strategy/guide.zh.md)。
+- **zDSH 的会话标题槽位路由保持工作。** `title` 模型槽位（`ctx.modelSlots`）仍路由辅助标题调用；`dsh-session-title-llm` 已随本次同步迁移到官方 `executeSessionTitleLlm` 提供方 API，包测试通过（21 例）。基于 `registerSessionTitleLlmProvider` 的自定义标题提供方须改为直接 `ctx.sessionTitle.register()` 加 `executeSessionTitleLlm`。其可写入设置的用户层在同一替代面上生效：该 profile 行使用固定 entry id `llm-model-slots`，其自身 Config 的两个策略字段均为 volatile，因此经「设置 → 模型」写入的覆写会就地提交到运行中的 entry，后续辅助调用随之改道而无需重挂载（roster 审计保持该件 enabled/ok）。来源：[`dsh-model-slots`](packages/llm/model-slots/README.zh.md)、[`dsh-session-title-llm`](packages/session/session-title-llm/README.zh.md)、[`session-title-provider-strategy`](docs/upgrade-guide/v0.2.1-alpha.1/session-title-provider-strategy/guide.zh.md)。
 - **出厂插件 pin 已轮转到 alpha.2 底座。** [`zdsh-factory/seed.json`](zdsh-factory/seed.json) 与 [`packages/zdsh/factory-bundle/package.json`](packages/zdsh/factory-bundle/package.json) 已携带 alpha.2 适配锚（webstack 族、filehub、workbench、autopilot 重新钉锚；omnivision 与 plugin-center 未变）。八件谱及其 6 mounted / 2 skipped 姿态不变。
 
 ### 升级到 0.1.7-rc.2 底座
