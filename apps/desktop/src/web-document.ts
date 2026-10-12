@@ -95,7 +95,9 @@ function isForwardablePath(pathname: string): boolean {
  * GETs a renderer legitimately sends without `Origin`. Both signals are browser-controlled and cannot
  * be set from page script, so a request that carries neither is not renderer-sourced — native code, a
  * preload, or a foreign document — and is refused instead of being handed the Host's cookie. The path
- * must also belong to {@link FORWARDABLE_PATH_PREFIXES}.
+ * must also belong to {@link FORWARDABLE_PATH_PREFIXES}, and may not carry a `\`: a backslash is a
+ * literal character in the `dsh-app:` source pathname but a separator in the `http:` target, where
+ * the copied path would normalize onto a different Host route than the one checked here.
  * @param request - Request from the application origin.
  * @param host - Owned Host URL.
  * @param cookie - Host-issued authentication cookie.
@@ -109,7 +111,7 @@ export async function forwardWebRequest(request: Request, host: string, cookie: 
   } else if (origin !== 'dsh-app://app') {
     return new Response(null, { status: 403 })
   }
-  if (!isForwardablePath(source.pathname)) return new Response(null, { status: 403 })
+  if (source.pathname.includes('\\') || !isForwardablePath(source.pathname)) return new Response(null, { status: 403 })
   const target = new URL(host)
   target.pathname = source.pathname
   target.search = source.search

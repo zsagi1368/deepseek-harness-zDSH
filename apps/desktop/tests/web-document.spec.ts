@@ -131,3 +131,17 @@ it('refuses a Host path outside the renderer-consumed prefixes', async () => {
   expect((await forwardWebRequest(rendererGet('dsh-app://app/open-in-app/apps'), 'http://127.0.0.1:1234/', 'c')).status).toBe(200)
   expect(fetch).not.toHaveBeenCalled()
 })
+
+it('refuses a pathname a backslash would re-normalize on the Host URL', async () => {
+  const fetch = vi.fn().mockResolvedValue(new Response('ok'))
+  vi.stubGlobal('fetch', fetch)
+  // `\` is a literal path character in the `dsh-app:` source, so both paths clear the
+  // prefix check; copied onto the `http:` Host URL it acts as a separator, and the
+  // target normalizes the `..` away (`/oauth`, `/oauth/callback`) — the path requested
+  // from the Host would not be the path this allow list checked.
+  for (const url of ['dsh-app://app/api/a\\..\\..\\oauth', 'dsh-app://app/plugins\\..\\oauth/callback']) {
+    const response = await forwardWebRequest(rendererGet(url), 'http://127.0.0.1:1234/', 'session=owned')
+    expect(response.status, url).toBe(403)
+  }
+  expect(fetch).not.toHaveBeenCalled()
+})
