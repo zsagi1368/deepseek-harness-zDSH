@@ -2269,7 +2269,7 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-model-slots`
 
-- `source`: [`packages/llm/model-slots/src/index.ts:98`](../packages/llm/model-slots/src/index.ts)
+- `source`: [`packages/llm/model-slots/src/index.ts:95`](../packages/llm/model-slots/src/index.ts)
 
 ```ts config-catalog
 /** Deployment-level slot policy supplied as plugin configuration or direct construction. */
