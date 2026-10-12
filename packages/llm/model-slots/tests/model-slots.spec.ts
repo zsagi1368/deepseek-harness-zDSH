@@ -96,6 +96,19 @@ describe('MODEL_SLOTS_SETTINGS_SCHEMA', () => {
   })
 })
 
+describe('ModelSlotRegistry.Config (settings-writable surface)', () => {
+  it('marks both policy fields volatile so the settings face can write them', () => {
+    // The settings face refuses a write outside a volatile path, and the
+    // Loader commits a volatile-only change into the running entry instead of
+    // remounting it; this pair is what makes the entry's own Config the
+    // user-layer write face on the 0.1.7 settings surface. The resolved-value
+    // side of the same contract (a live reference re-pointing a slot without a
+    // remount) is locked in loader-composition.spec.ts.
+    expect(ModelSlotRegistry.Config.dict?.slots?.meta.volatile).toBe(true)
+    expect(ModelSlotRegistry.Config.dict?.fallback?.meta.volatile).toBe(true)
+  })
+})
+
 describe('resolve precedence', () => {
   it.each([MODEL_SLOT_TITLE, MODEL_SLOT_COMPACTION_SUMMARIZE, MODEL_SLOT_PLAN] as const)(
     'prefers the explicit slot statement over the deployment default and the main route for %s',
