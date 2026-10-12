@@ -22312,7 +22312,7 @@
         "packages/llm/model-slots/src/index.ts#ModelSlotSource"
       ],
       "sources": [
-        "packages/llm/model-slots/src/index.ts:43"
+        "packages/llm/model-slots/src/index.ts:40"
       ]
     },
     {
@@ -24856,7 +24856,7 @@
         "packages/llm/model-slots/src/index.ts#ModelSlotDispatchEventData"
       ],
       "sources": [
-        "packages/llm/model-slots/src/index.ts:46"
+        "packages/llm/model-slots/src/index.ts:43"
       ]
     },
     {

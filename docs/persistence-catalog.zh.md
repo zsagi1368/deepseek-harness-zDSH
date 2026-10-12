@@ -879,7 +879,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 'slots/dispatch': ModelSlotDispatchEventData
 ```
 
-来源：[`packages/llm/model-slots/src/index.ts:60`](../packages/llm/model-slots/src/index.ts)
+来源：[`packages/llm/model-slots/src/index.ts:57`](../packages/llm/model-slots/src/index.ts)
 
 ### `step/*`
 
@@ -4222,7 +4222,7 @@ SHA-256: `f09e5e7acf5ff5ccd193ff2eeec015fa2ff7c29d98bc465f8c3302058d47e29b`
 
 SHA-256: `b5179f11c20399c4cc20662a3c01195e2c971708ac7ecb3e6e7911c98289e014`
 
-来源：[`packages/llm/model-slots/src/index.ts:46`](../packages/llm/model-slots/src/index.ts)
+来源：[`packages/llm/model-slots/src/index.ts:43`](../packages/llm/model-slots/src/index.ts)
 
 | 属性 | 存在性 | 类型 |
 |---|---|---|
@@ -4241,7 +4241,7 @@ SHA-256: `b5179f11c20399c4cc20662a3c01195e2c971708ac7ecb3e6e7911c98289e014`
 
 SHA-256: `0ea83f814076a21d409beac1e4759e6191e29e9694b576d52a66e0c653da441b`
 
-来源：[`packages/llm/model-slots/src/index.ts:43`](../packages/llm/model-slots/src/index.ts)
+来源：[`packages/llm/model-slots/src/index.ts:40`](../packages/llm/model-slots/src/index.ts)
 
 以下类型之一：
 

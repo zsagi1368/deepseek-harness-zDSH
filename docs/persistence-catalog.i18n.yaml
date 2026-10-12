@@ -189,8 +189,8 @@
   en: 075156e5884607b2
   zh: 075156e5884607b2
 /session-persistence-event-catalog/events/slots/slots-dispatch-log-only:
-  en: 4ceca63cf0c3a4e9
-  zh: 09f2b412b47883ed
+  en: 545bb5fe03010a90
+  zh: fda178a36b65e079
 /session-persistence-event-catalog/events/step:
   en: bd0dcbbc352b771a
   zh: bd0dcbbc352b771a
@@ -1122,11 +1122,11 @@
   en: 78226c042885a32b
   zh: 29393de6b44ce4eb
 /session-persistence-event-catalog/resolved-persistence-types/modelslotdispatcheventdata:
-  en: 3d894a742fc559eb
-  zh: cb565d507361763a
+  en: 424f1213c1348355
+  zh: 430d12aec4598a37
 /session-persistence-event-catalog/resolved-persistence-types/modelslotsource:
-  en: 2d77f0e07bca782b
-  zh: 8db736069fab476d
+  en: 48c7d8912e3f2ac3
+  zh: fea7485153fbe098
 /session-persistence-event-catalog/resolved-persistence-types/oneshotscheduledispatchchange:
   en: a3300babe57b6b67
   zh: 4aaf06a149b399c3
