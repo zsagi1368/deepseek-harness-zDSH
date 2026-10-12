@@ -132,7 +132,11 @@ describe('real Loader composition', () => {
     loaded.logger.warn = ((message: unknown) => { warnings.push(String(message)) }) as typeof loaded.logger.warn
 
     const entry = [...loaded.loader.entries()].find(row => row.options.id === 'llm-model-slots')
-    await entry?.update({ config: { slots: { nope: { provider: 'x', model: 'y' } } } })
+    // The unknown *slot key* is refused earlier now (by the schema, before the
+    // write lands — see the closed-vocabulary case below); what still reaches
+    // the registry is a route entry whose field set the open entry object lets
+    // through, and that is the rejection this case locks.
+    await entry?.update({ config: { slots: { title: { provider: 'x', model: 'y', exotic: true } } } })
 
     expect(loaded.get('modelSlots')?.resolve(MODEL_SLOT_TITLE)).toEqual({
       slot: MODEL_SLOT_TITLE,
@@ -141,6 +145,41 @@ describe('real Loader composition', () => {
       source: 'slot',
     })
     expect(warnings.filter(line => line.includes('live slot policy rejected'))).toHaveLength(1)
+  })
+
+  it('keeps the running routes when the loader tries to commit a foreign slot key', async () => {
+    const loaded = await loadYaml([
+      "- name: '@deepseek-ai/dsh-session'",
+      '- id: llm-model-slots',
+      "  name: '@deepseek-ai/dsh-model-slots'",
+      '  config:',
+      '    slots:',
+      '      title:',
+      '        provider: aux-provider',
+      '        model: aux-model',
+    ])
+    const warnings: string[] = []
+    loaded.logger.warn = ((message: unknown) => { warnings.push(String(message)) }) as typeof loaded.logger.warn
+    const entry = [...loaded.loader.entries()].find(row => row.options.id === 'llm-model-slots')
+
+    // The loader's volatile commit resolves the candidate through the Config
+    // schema, so the closed key set rejects the foreign id there: the running
+    // references never receive it and the registry never has to fall back.
+    await entry?.update({ config: { slots: { nope: { provider: 'x', model: 'y' } } } })
+
+    expect(warnings.some(line => line.includes('volatile config update failed'))).toBe(true)
+    expect(warnings.filter(line => line.includes('live slot policy rejected'))).toEqual([])
+    expect(loaded.get('modelSlots')?.resolve(MODEL_SLOT_TITLE)).toEqual({
+      slot: MODEL_SLOT_TITLE,
+      provider: 'aux-provider',
+      model: 'aux-model',
+      source: 'slot',
+    })
+    // The rejected raw config stays retained on the entry (the loader keeps it
+    // for the next activation) — which is exactly why the settings face must
+    // refuse it before persisting; that pre-persist gate is locked in
+    // settings-write-gate.spec.ts.
+    expect(entry?.options.config).toEqual({ slots: { nope: { provider: 'x', model: 'y' } } })
   })
 
   it('rejects stale model-slots config after Schemastery normalization', async () => {

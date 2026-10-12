@@ -197,8 +197,11 @@ const slotRouteSchema = z.object({
   apiKeyEnv: z.string().pattern(/^[A-Z][A-Z0-9_]*$/),
 })
 
-/** One entry per built-in slot id. */
-const slotRoutesSchema = z.dict(slotRouteSchema)
+/** One entry per built-in slot id: the key schema pins the closed vocabulary on
+ * the dict itself, so a foreign slot id is refused while the configuration is
+ * still being validated — before the settings face persists it — instead of
+ * landing in the profile and leaving the next boot without this service. */
+const slotRoutesSchema = z.dict(slotRouteSchema, z.union([...MODEL_SLOT_IDS].map(id => z.const(id))))
 
 /**
  * Settings-mirror schema: the same field set the registry's own Config

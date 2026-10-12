@@ -4,6 +4,7 @@ import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import type { Session } from '@deepseek-ai/dsh-session'
 import ModelSlotRegistry, {
   MODEL_SLOT_COMPACTION_SUMMARIZE,
+  MODEL_SLOT_IDS,
   MODEL_SLOT_PLAN,
   MODEL_SLOT_TITLE,
   MODEL_SLOTS_SETTINGS_SCHEMA,
@@ -93,6 +94,26 @@ describe('MODEL_SLOTS_SETTINGS_SCHEMA', () => {
       .toThrow()
     expect(() => MODEL_SLOTS_SETTINGS_SCHEMA({ slots: { title: { provider: 'a', model: 'b', apiKeyEnv: 'ANTHROPIC_API_KEY' } } }))
       .not.toThrow()
+  })
+
+  it('pins the closed slot vocabulary at the schema layer, not only at the registry', () => {
+    // The vocabulary is a closed built-in set (vocabulary.ts MODEL_SLOT_IDS);
+    // the dict's key schema derives from it, so a foreign key fails validation
+    // in the loader's pre-persist resolveConfig instead of landing in the
+    // profile and taking this entry's service down on the next boot — where the
+    // Models page could not repair it, since SettingsForms.describe() hides
+    // non-ACTIVE entries.
+    for (const id of MODEL_SLOT_IDS) {
+      expect(() => MODEL_SLOTS_SETTINGS_SCHEMA({ slots: { [id]: { provider: 'a', model: 'b' } } })).not.toThrow()
+    }
+    expect(() => MODEL_SLOTS_SETTINGS_SCHEMA({ slots: { nope: { provider: 'a', model: 'b' } } }))
+      .toThrow(/expected "title" \| "compaction\.summarize" \| "vision" \| "plan" but got "nope"/)
+    // The runtime Config carries the same node, so the loader gate closes too.
+    expect(() => ModelSlotRegistry.Config({ slots: { nope: { provider: 'a', model: 'b' } } })).toThrow(/"nope"/)
+    // An empty or omitted policy still validates: the closed keys reject
+    // foreign ids without materializing unset ones.
+    expect(() => MODEL_SLOTS_SETTINGS_SCHEMA({})).not.toThrow()
+    expect(() => MODEL_SLOTS_SETTINGS_SCHEMA({ slots: {} })).not.toThrow()
   })
 })
 
