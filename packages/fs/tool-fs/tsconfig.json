@@ -4,7 +4,9 @@
     "rootDir": "src",
     "outDir": "lib/types"
   },
-  "include": ["src"],
+  "include": [
+    "src"
+  ],
   "references": [
     {
       "path": "../../../vendor/cosmokit"
@@ -19,6 +21,9 @@
       "path": "../../llm/llm"
     },
     {
+      "path": "../../llm/model-slots"
+    },
+    {
       "path": "../../core/tools"
     },
     {
@@ -31,9 +36,6 @@
       "path": "../fs-observation-policy"
     },
     {
-      "path": "../../runtime-diagnostics/invariants"
-    },
-    {
       "path": "../../sandbox/sandbox"
     },
     {
@@ -44,6 +46,12 @@
     },
     {
       "path": "../../attachment/attachment"
+    },
+    {
+      "path": "../../util/code-language"
+    },
+    {
+      "path": "../../session/working-directory"
     }
   ]
 }

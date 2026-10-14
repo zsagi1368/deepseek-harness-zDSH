@@ -27,6 +27,9 @@
       "path": "../../core/system-prompt"
     },
     {
+      "path": "../../llm/model-slots"
+    },
+    {
       "path": "../../interaction/user-questions"
     },
     {
@@ -34,9 +37,6 @@
     },
     {
       "path": "../../session/session-projection"
-    },
-    {
-      "path": "../../runtime-diagnostics/invariants"
     }
   ]
 }

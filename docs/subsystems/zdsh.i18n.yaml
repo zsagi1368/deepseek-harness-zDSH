@@ -1,0 +1,7 @@
+# Bilingual-pair consistency record for zdsh.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/subsystems/zdsh.md
+/zdsh-enhanced-services:
+  en: 2b54781e9c060c65
+  zh: da84bcd3a9ee2009

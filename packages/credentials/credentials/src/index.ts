@@ -9,9 +9,12 @@
  */
 
 import { Context, Service } from '@deepseek-ai/cordis'
-import type { CredentialKey, CredentialRecord, CredentialRef } from './types.ts'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import type { CredentialInfo, CredentialKey, CredentialRecord, CredentialRef } from './types.ts'
 
-export type { ApiKeyRecord, CredentialKey, CredentialRecord, CredentialRef, GrantRecord } from './types.ts'
+export type {
+  ApiKeyRecord, CredentialInfo, CredentialKey, CredentialRecord, CredentialRef, GrantRecord,
+} from './types.ts'
 
 const REF_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/
 
@@ -27,7 +30,7 @@ export function credentialRef(value: string): CredentialRef {
   if (!isCredentialRefName(value)) {
     throw new TypeError(`credential ref "${value}" must match ${String(REF_PATTERN)}`)
   }
-  return value as CredentialRef
+  return brandString<CredentialRef>(value)
 }
 
 /**
@@ -69,7 +72,7 @@ export function credentialKey(scope: string, id: string): CredentialKey {
       throw new TypeError(`credential key segment "${segment}" must match ${String(KEY_SEGMENT_PATTERN)}`)
     }
   }
-  return `${scope}/${id}` as CredentialKey
+  return brandString<CredentialKey>(`${scope}/${id}`)
 }
 
 /**
@@ -117,16 +120,6 @@ export interface ResolvedCredential {
   value: string
   /** Provider-defined source layer id (the local provider uses `env`, `file`, `project-env`, and `user-env`). */
   source: string
-}
-
-/** Source and writability facts for one reference, safe for configuration UIs — never the value. */
-export interface CredentialInfo {
-  /** Whether {@link CredentialProvider.resolve} would currently return a value. */
-  configured: boolean
-  /** Source layer currently supplying the value; absent while unconfigured. */
-  source?: string
-  /** Whether {@link CredentialProvider.set} would currently succeed for this reference. */
-  writable: boolean
 }
 
 /** Presence and writability facts for one record, safe for configuration UIs — never the value. */
@@ -265,10 +258,7 @@ export abstract class CredentialProvider extends Service {
   /**
    * Fan `credentials/reference-updated` out with contained listener failures: every
    * listener runs, and a sync throw or async rejection is logged without
-   * changing the committed operation's outcome — except `INVARIANT`-coded
-   * failures, which rethrow after every listener ran (the rethrow reaches the
-   * caller only from synchronous listeners, so invariant checks on this event
-   * must not be async functions). Providers call this only after the write or
+   * changing the committed operation's outcome. Providers call this only after the write or
    * reload actually committed, so a broken observer can never make a durable
    * change look failed.
    * @param ref - the reference whose stored value changed.
@@ -291,7 +281,6 @@ export abstract class CredentialProvider extends Service {
      contract, and extracting it would couple the two seams' event semantics. */
   /** The contained dispatch both notifications run through; see {@link notifyUpdated}. */
   private fanOut(event: 'credentials/reference-updated' | 'credentials/record-updated', subject: string): void {
-    let invariantFailure: unknown
     const args = [event, subject]
     for (const listener of this.ctx.events.dispatch('emit', args) as Array<(...listenerArgs: unknown[]) => unknown>) {
       try {
@@ -302,14 +291,9 @@ export abstract class CredentialProvider extends Service {
           })
         }
       } catch (error) {
-        if ((error as { code?: unknown } | null)?.code === 'INVARIANT') {
-          invariantFailure ??= error
-          continue
-        }
         this.warnListenerFailure(event, subject, error)
       }
     }
-    if (invariantFailure !== undefined) throw invariantFailure as Error
   }
   /* jscpd:ignore-end */
 

@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { PROTOCOL_VERSION } from '@agentclientprotocol/sdk'
-import { CallId } from '@deepseek-ai/dsh-llm'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import ApprovalService, { type ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
+import ApprovalService, { APPROVAL_POLICIES, type ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
 import { makeBridgeHarness, type BridgeHarness } from './harness.ts'
 
 describe('ACP machine permission policy', () => {
@@ -21,20 +21,31 @@ describe('ACP machine permission policy', () => {
     const { sessionId } = await harness.client.newSession({ cwd: process.cwd(), mcpServers: [] })
     const agent = harness.ctx.agents.get(SessionId(sessionId))!
     agent.session.append('turn/start', { turn: 1 })
-    return { agent, toolName: 'bash', callId: CallId('call-9'), ...overrides }
+    agent.session.append('step/start', { turn: 1, step: 1 })
+    agent.session.append('tool/call', { turn: 1, step: 1, callId: ToolCallId('call-9'), name: 'bash', arguments: '{}' })
+    return { agent, toolName: 'bash', callId: ToolCallId('call-9'), ...overrides }
   }
 
   it('maps the two advertised one-shot choices', async () => {
     harness = await makeBridgeHarness()
-    harness.onPermission = () => ({ outcome: { outcome: 'selected', optionId: 'allow-once' } })
+    harness.onPermission = () => {
+      expect(harness?.sessionUpdates.at(-1)?.update).toMatchObject({
+        sessionUpdate: 'tool_call',
+        toolCallId: 'call-9',
+      })
+      return { outcome: { outcome: 'selected', optionId: 'allow-once' } }
+    }
     const request = await ownedRequest()
     await expect(harness.ctx.approval.request(request)).resolves.toBe('allowed-once')
+    // The one-shot options correspond one-to-one with the user-approval
+    // policy tiers ('ask' → allow-once, 'never' → reject-once).
+    expect(APPROVAL_POLICIES).toEqual(['ask', 'never'])
     expect(harness.permissionRequests[0]).toMatchObject({
       sessionId: request.agent.session.id,
       toolCall: { toolCallId: 'call-9' },
       options: [
-        { optionId: 'allow-once', kind: 'allow_once' },
-        { optionId: 'reject-once', kind: 'reject_once' },
+        { optionId: 'allow-once', name: 'Allow once', kind: 'allow_once' },
+        { optionId: 'reject-once', name: 'Reject', kind: 'reject_once' },
       ],
     })
 
@@ -60,10 +71,17 @@ describe('ACP machine permission policy', () => {
   it('delegates a same-id foreign agent', async () => {
     harness = await makeBridgeHarness()
     const request = await ownedRequest()
+    const events = [{ type: 'turn/start', seq: 0, time: 0, data: { turn: 1 } }]
     const foreign = {
-      session: { id: request.agent.session.id, events: [{ type: 'turn/start' }], append: () => ({}) },
+      session: {
+        id: request.agent.session.id,
+        seq: events.length,
+        eventAt: (seq: number) => events[seq],
+        snapshotEvents: () => events,
+        append: () => ({}),
+      },
     } as unknown as Agent
-    await expect(harness.ctx.approval.request({ agent: foreign, toolName: 'bash', callId: CallId('call') }))
+    await expect(harness.ctx.approval.request({ agent: foreign, toolName: 'bash', callId: ToolCallId('call') }))
       .resolves.toBe('unavailable')
     expect(harness.permissionRequests).toHaveLength(0)
   })
