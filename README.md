@@ -79,10 +79,19 @@ zDSH is distributed as source. Clone this repository and run the installer for y
 git clone https://github.com/zsagi1368/deepseek-harness-zDSH.git
 cd deepseek-harness-zDSH
 git checkout zdsh-latest
+```
 
-# Windows (PowerShell 5.1+)
+> **Note:** Choose ONE of the following blocks for your platform. The `source` command is a bash builtin; on PowerShell, use dot-sourcing (`. .\env.ps1`) instead.
+
+**Windows (PowerShell 5.1+):**
+
+```powershell
 .\install.cmd
-# macOS / Linux / WSL / Git Bash
+```
+
+**macOS / Linux / WSL / Git Bash:**
+
+```bash
 ./scripts/install.sh
 ```
 
@@ -97,12 +106,17 @@ On the first boot, the governance preinstall hook automatically installs the fac
 
 Load the environment, then start the Web UI:
 
-```sh
-# PowerShell
-. .\env.ps1
-# bash
-source ./env.sh
+**Windows (PowerShell 5.1+):**
 
+```powershell
+. .\env.ps1
+dsh web
+```
+
+**macOS / Linux / WSL / Git Bash:**
+
+```bash
+source ./env.sh
 dsh web
 ```
 
@@ -122,10 +136,15 @@ pnpm dsh web
 
 Run the uninstaller for your platform from a repository checkout:
 
-```sh
-# Windows (PowerShell 5.1+)
+**Windows (PowerShell 5.1+):**
+
+```powershell
 .\uninstall.cmd
-# macOS / Linux / WSL / Git Bash
+```
+
+**macOS / Linux / WSL / Git Bash:**
+
+```bash
 ./scripts/uninstall.sh
 ```
 
