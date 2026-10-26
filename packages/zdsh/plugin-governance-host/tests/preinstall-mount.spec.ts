@@ -184,6 +184,29 @@ export const LIB_ONLY_MEMBER = 'no apply, no default: a pure library barrel'
 export class VerticalRegistryLike {}
 `
 
+// A fixture whose fiber stays PENDING: it declares a service dependency that
+// never arrives. The fiber EXISTS, and `fiber.await()` still resolves for it —
+// a PENDING fiber keeps `epoch === INACTIVE` and clears `inertia` once its
+// first reload cycle drains, so the `await()` settle in the mount hook cannot
+// tell "present" from "providing".
+const PENDING_FIXTURE = `
+export const name = 'mount-channel-pending-fixture'
+export const inject = ['@fixture/never-provided-service']
+export function apply(ctx) { ctx.effect(() => () => {}) }
+`
+
+/** Poll until `predicate` holds; fail loudly with `label` rather than hang. */
+async function waitFor(predicate: () => boolean, label: string): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt++) {
+    if (predicate()) return
+    await new Promise(resolve => setTimeout(resolve, 10))
+  }
+  throw new Error(`timeout waiting for ${label}`)
+}
+
+const fiberState = (fiber: unknown): number | undefined =>
+  (fiber as { state?: number } | undefined)?.state
+
 // ============================================================================
 // Fake-loader track: the channel CONTRACT (create args), no real import.
 // ============================================================================
@@ -202,8 +225,10 @@ describe('mount channel contract — fake loader records every create() arg', ()
       create: async (options: CreateCall) => { calls.push(options) },
       // SYNC-P3: the 0.1.7 mount channel inspects the entry/fiber face after
       // create (fail-closed when uncheckable) — the double models a created
-      // entry whose fiber settles clean.
-      resolve: (id: string) => ({ options: { name: '', id }, fiber: { await: async () => {} } }),
+      // entry whose fiber settles clean. W8 added the state requirement: the
+      // double must model ACTIVE (FiberState.ACTIVE = 2), or the channel
+      // correctly refuses to call it mounted.
+      resolve: (id: string) => ({ options: { name: '', id }, fiber: { await: async () => {}, state: 2 } }),
     }
     const ctx = new Context()
     contexts.push(ctx)
@@ -349,6 +374,55 @@ describe('mount channel over the REAL cordis loader — tmpdir fixtures', () => 
   })
 })
 
+// A fixture whose fiber stays PENDING: it declares a service dependency that
+// never arrives. The fiber EXISTS, and `fiber.await()` still resolves for it —
+// a PENDING fiber keeps `epoch === INACTIVE` and clears `inertia` once its
+// first reload cycle drains, so the `await()` settle in the mount hook cannot
+// tell "present" from "providing".
+describe('mount channel — a PRESENT fiber is not a MOUNTED plugin (W8)', () => {
+  it('fixture premise: a declared-but-absent service leaves the fiber PENDING while it still exists', async () => {
+    const pendingDir = fixturePlugin('@fixture/mount-pending-premise', PENDING_FIXTURE)
+    const ctx = new Context()
+    contexts.push(ctx)
+    const { Loader } = await import('@deepseek-ai/cordis-plugin-loader')
+    await ctx.plugin(Loader)
+    await ctx.loader.create({ name: pathToFileURL(join(pendingDir, 'index.js')).href })
+
+    const entries = [...ctx.loader.entries()]
+    expect(entries, 'create must have produced exactly one entry').toHaveLength(1)
+    const entry = entries[0]!
+    // The fiber EXISTS …
+    expect(entry.fiber, 'the entry must own a fiber for this case to mean anything').toBeDefined()
+    // … it never left PENDING (FiberState.PENDING = 0) …
+    expect((entry.fiber as unknown as { state?: number } | undefined)?.state, 'fixture premise: the fiber must still be PENDING').toBe(0)
+    // … and `await()` settles on it WITHOUT throwing — which is exactly why
+    // awaiting the fiber alone cannot prove a mount.
+    await expect(entry.fiber!.await()).resolves.toBeDefined()
+  })
+
+  it('records skipped (service-gated, entry kept) when the created entry never reaches ACTIVE', async () => {
+    const pendingDir = fixturePlugin('@fixture/mount-pending', PENDING_FIXTURE)
+    const { ctx, gateway } = await bootGatewayWithRealLoader(writeSeed([
+      { id: 'fixture/mount-pending', package: '@fixture/mount-pending', version: '1.0.0', pin: 'b'.repeat(40), source: `local:${pendingDir}`, integrity: null, enabledAtBoot: true, family: 'fixture', failPolicy: 'fail-open' },
+    ]))
+    await gateway.settlePreinstall()
+
+    const row = gateway.preinstallReport().entries['fixture/mount-pending']
+    expect(row?.status, 'admission is unaffected: the artifact was still installed').toBe('installed')
+    // The false-green shape (W8): a fiber that exists but never became active
+    // must NOT be reported as mounted. A3b: the PENDING settle is SERVICE-GATED
+    // — the declared injects are absent on this host face, the artifact did
+    // not break — so the verdict is a queryable skip, not a failure.
+    expect(row?.mount?.status).toBe('skipped')
+    expect(row?.mount?.reason).toMatch(/never became active/)
+    // The entry STAYS in the tree at PENDING: the artifact-integrity lock the
+    // gate-p P5 / ra1 probe tables read — a broken artifact is the case that
+    // gets compensated away, and this is not one.
+    const entry = ctx.loader.resolve('factory/fixture/mount-pending')
+    expect(fiberState(entry.fiber), 'the service-gated entry must survive at PENDING').toBe(0)
+  })
+})
+
 describe('mount channel over the REAL cordis loader — the three real artifacts', () => {
   it('LIVE smoke (TC-B2-23A): bridge really mounts via ctx.loader.create and the bridge service resolves', async () => {
     const { ctx, gateway } = await bootGatewayWithRealLoader(writeRepoSeed([rowOf('core/webstack-bridge')]))
@@ -450,6 +524,113 @@ describe('mount channel over the REAL cordis loader — the three real artifacts
     expect(parsed.entries['core/omnivision']?.mount?.status).toBe('mounted')
     expect(parsed.entries['core/webstack-bridge']?.mount?.status).toBe('mounted')
     expect(typeof parsed.entries['core/webstack-bridge']?.mount?.at).toBe('number')
+  })
+})
+
+// ============================================================================
+// A3 — the operator's enable reaches a factory-off preinstall, and the roster
+// never reports an unmounted entry as active. The roster's `status` feeds the
+// plugin-manager UI's isEnabled (PluginManagerSettingsTab), so a false active
+// offered the disable button on something that never started (the plugin
+// audit's P0: webstack-verticals / autopilot were exactly that shape).
+// ============================================================================
+
+describe('roster honesty for preinstall rows (A3)', () => {
+  it('audit P0 shape: the factory-off row reports disabled while its mounted sibling reports active', async () => {
+    const { gateway } = await bootGatewayWithRealLoader(writeRepoSeed([
+      rowOf('core/webstack-verticals'), // production posture: enabledAtBoot=false
+      rowOf('core/webstack-bridge'),    // boot-enabled sibling as the control
+    ]))
+    await gateway.settlePreinstall()
+    const rows = gateway.list().plugins
+    expect(gateway.preinstallReport().entries['core/webstack-verticals']?.mount?.status).toBe('skipped')
+    expect(rows.find(plugin => plugin.pluginId === cid('core/webstack-verticals'))?.status).toBe('disabled')
+    expect(rows.find(plugin => plugin.pluginId === cid('core/webstack-bridge'))?.status).toBe('active')
+  })
+
+  it('a boot-enabled entry whose mount is service-gated never reports active (the W8 shape reaches the roster)', async () => {
+    const pendingDir = fixturePlugin('@fixture/roster-pending', PENDING_FIXTURE)
+    const validDir = fixturePlugin('@fixture/roster-valid', VALID_FIXTURE)
+    const { gateway } = await bootGatewayWithRealLoader(writeSeed([
+      { id: 'fixture/roster-pending', package: '@fixture/roster-pending', version: '1.0.0', pin: 'c'.repeat(40), source: `local:${pendingDir}`, integrity: null, enabledAtBoot: true, family: 'fixture', failPolicy: 'fail-open' },
+      { id: 'fixture/roster-valid', package: '@fixture/roster-valid', version: '1.0.0', pin: 'd'.repeat(40), source: `local:${validDir}`, integrity: null, enabledAtBoot: true, family: 'fixture', failPolicy: 'fail-open' },
+    ]))
+    await gateway.settlePreinstall()
+    // The registry enabled the pending row at boot (its setBootState(true)), so
+    // the registry alone says active; the service-gated skip is what makes
+    // that a lie — the declared service never arrives on this host face.
+    expect(gateway.preinstallReport().entries['fixture/roster-pending']?.mount?.status).toBe('skipped')
+    expect(gateway.list().plugins.find(plugin => plugin.pluginId === cid('fixture/roster-pending'))?.status).toBe('disabled')
+    expect(gateway.list().plugins.find(plugin => plugin.pluginId === cid('fixture/roster-valid'))?.status).toBe('active')
+  })
+
+  it('a no-factory preinstall keeps its registry truth (nothing to mount by design is not "declared off")', async () => {
+    const noFactoryDir = scratch()
+    writeFileSync(join(noFactoryDir, 'package.json'), JSON.stringify({
+      name: '@fixture/roster-no-factory',
+      version: '1.0.0',
+      dsh: {
+        autoApprove: true,
+        compatible: '>=0.0.0',
+        capabilities: [{ type: 'tool', tool: { name: 'roster_no_factory_tool', description: 'fixture', schema: { type: 'object' } } }],
+      },
+    }))
+    const { gateway } = await bootGatewayWithRealLoader(writeSeed([
+      { id: 'fixture/roster-no-factory', package: '@fixture/roster-no-factory', version: '1.0.0', pin: 'e'.repeat(40), source: `local:${noFactoryDir}`, integrity: null, enabledAtBoot: true, family: 'fixture', failPolicy: 'fail-open' },
+    ]))
+    await gateway.settlePreinstall()
+    expect(gateway.preinstallReport().entries['fixture/roster-no-factory']?.mount?.status).toBe('skipped')
+    expect(gateway.preinstallReport().entries['fixture/roster-no-factory']?.mount?.reason).toMatch(/no service factory/)
+    // The skip is by-design: downgrading it would blank the settings of every
+    // tool-only preinstall for no reason.
+    expect(gateway.list().plugins.find(plugin => plugin.pluginId === cid('fixture/roster-no-factory'))?.status).toBe('active')
+  })
+})
+
+describe('enable reaches a factory-off preinstall (A3)', () => {
+  it('enable really mounts: a factory/<id> row appears, its fiber reaches ACTIVE, and the ledger flips to mounted', async () => {
+    const { ctx, gateway } = await bootGatewayWithRealLoader(writeRepoSeed([
+      rowOf('core/webstack-verticals'),
+    ]))
+    await gateway.settlePreinstall()
+    expect(gateway.preinstallReport().entries['core/webstack-verticals']?.mount?.status).toBe('skipped')
+    expect(gateway.list().plugins.find(plugin => plugin.pluginId === cid('core/webstack-verticals'))?.status).toBe('disabled')
+
+    const enabled = await gateway.enable({ pluginId: cid('core/webstack-verticals') })
+    expect(enabled.ok).toBe(true)
+
+    // R5's false-green lesson: fiber.await() resolves on a PENDING fiber, so
+    // the assertion is the STATE, not the await.
+    const entry = () => ctx.loader.resolve('factory/core/webstack-verticals')
+    await waitFor(() => fiberState(entry().fiber) === 2, 'the on-demand mount to reach ACTIVE')
+    expect(ctx.get('x-vertical'), 'the mounted verticals apply provides its service').toBeTruthy()
+    expect(gateway.preinstallReport().entries['core/webstack-verticals']?.mount?.status).toBe('mounted')
+    expect(gateway.list().plugins.find(plugin => plugin.pluginId === cid('core/webstack-verticals'))?.status).toBe('active')
+  })
+
+  it('reverse: when the on-demand mount does not take, enable must not report active', async () => {
+    // A barrel factory: the mount channel rejects it (`invalid plugin`), so
+    // enable can only record the decision — the ledger mount column stays
+    // failed and the roster must keep reporting disabled. This is the shape
+    // "只改状态不挂载" would produce if enable skipped the mount or the roster
+    // trusted the registry alone.
+    const barrelDir = fixturePlugin('@fixture/factory-off-barrel', BARREL_FIXTURE)
+    const { ctx, gateway } = await bootGatewayWithRealLoader(writeSeed([
+      { id: 'fixture/factory-off-barrel', package: '@fixture/factory-off-barrel', version: '1.0.0', pin: 'a'.repeat(40), source: `local:${barrelDir}`, integrity: null, enabledAtBoot: false, family: 'fixture', failPolicy: 'fail-open' },
+    ]))
+    await gateway.settlePreinstall()
+    const id = 'fixture/factory-off-barrel'
+    expect(gateway.preinstallReport().entries[id]?.mount?.status).toBe('skipped')
+
+    const enabled = await gateway.enable({ pluginId: cid(id) })
+    expect(enabled.ok).toBe(true)
+    // No live row may appear (the mount failed and the channel compensates),
+    // and the roster must say so instead of the registry's active.
+    let probed: unknown
+    try { probed = ctx.loader.resolve(`factory/${id}`) } catch { probed = undefined }
+    expect(probed, 'a failed mount leaves no live entry').toBeUndefined()
+    expect(gateway.preinstallReport().entries[id]?.mount?.status).toBe('failed')
+    expect(gateway.list().plugins.find(plugin => plugin.pluginId === cid(id))?.status).toBe('disabled')
   })
 })
 
