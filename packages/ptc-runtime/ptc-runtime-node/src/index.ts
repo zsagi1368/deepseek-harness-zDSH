@@ -19,7 +19,7 @@ import type { LaunchConfig } from './launch.ts'
 export type { LaunchConfig } from './launch.ts'
 import { OutputLedger } from './output-ledger.ts'
 import { drainOutput } from './output-stream.ts'
-import { STARTUP_ENVIRONMENT_NAMES } from './environment.ts'
+import { HARNESS_HOME_ENVIRONMENT_NAMES, STARTUP_ENVIRONMENT_NAMES } from './environment.ts'
 import { decodePtcJsonWire, encodePtcJsonWire } from './json-wire.ts'
 import type { ProgramBootData } from './protocol.ts'
 
@@ -233,6 +233,15 @@ export class NodePtcRuntime extends PtcRuntime {
       const env: NodeJS.ProcessEnv = Object.fromEntries(Object.keys(process.env)
         .filter(key => !STARTUP_ENVIRONMENT_NAMES.has(key.toUpperCase()) && key.toUpperCase() !== 'ELECTRON_RUN_AS_NODE')
         .map(key => [key, undefined]))
+      // The provider treats this object as the child's WHOLE environment, so a
+      // kept name has to be written back, not merely spared by the filter
+      // above. Without the harness home a program that runs the `dsh` CLI
+      // resolves the default home under the OS home directory and installs
+      // into a different installation than the one running it.
+      for (const key of HARNESS_HOME_ENVIRONMENT_NAMES) {
+        const value = process.env[key]
+        if (value !== undefined) env[key] = value
+      }
       if (packaged) {
         env.DSH_PTC_RUNTIME_NODE = '1'
         env.NODE_OPTIONS = heapFlag

@@ -1,5 +1,6 @@
 import { mkdtemp, mkdir, readFile, readdir, rm, symlink } from 'node:fs/promises'
 import { homedir } from 'node:os'
+import { HARNESS_HOME_ENVIRONMENT_NAMES as HARNESS_HOME } from '../src/environment.ts'
 import { createServer, type Socket } from 'node:net'
 import { delimiter, join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -43,9 +44,23 @@ describe('Node program process', () => {
     const { run, cwd } = await setup()
     const result = await run({ program: 'const n: number = 6; console.log("ready"); return { n: n * 7, cwd: process.cwd(), env: { ...process.env } };', bindings: [] })
     expect(result.error).toBeUndefined()
-    expect(result.value).toEqual({ n: 42, cwd, env: {} })
+    expect(result.value).toEqual({ n: 42, cwd, env: Object.fromEntries([...HARNESS_HOME]
+      .filter(key => process.env[key] !== undefined)
+      .map(key => [key, process.env[key] as string])) })
     expect(result.logs).toEqual(['ready'])
     expect(result.sandbox).toEqual({ mode: 'danger-full-access', denied: false })
+  })
+
+  it('carries the harness home, so a nested dsh command targets the same installation', async () => {
+    // Why the home variables survive at all: a program that runs the `dsh` CLI
+    // must not fall back to the default home under the OS home directory and
+    // install into a different installation than the one running it.
+    vi.stubEnv('DSH_HOME', join(homedir(), 'probe-home'))
+    onTestFinished(() => { vi.unstubAllEnvs() })
+    const { run } = await setup()
+    const result = await run({ program: 'return { home: process.env.DSH_HOME ?? null };', bindings: [] })
+    expect(result.error).toBeUndefined()
+    expect(result.value).toEqual({ home: join(homedir(), 'probe-home') })
   })
 
   it('keeps native startup paths available for nested Node creation with an empty model environment', async () => {
@@ -56,10 +71,10 @@ describe('Node program process', () => {
     })
     expect(result.error).toBeUndefined()
     const value = result.value as { env: string[]; status: number | null; error: string | null; childKeys: string[] }
-    expect(value.env).toEqual([])
+    expect(value.env.filter(key => !HARNESS_HOME.has(key.toUpperCase()))).toEqual([])
     expect(value.status).toBe(0)
     expect(value.error).toBeNull()
-    const nativeKeys = ['PATH', 'PATHEXT', 'SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP']
+    const nativeKeys = ['PATH', 'PATHEXT', 'SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP', ...HARNESS_HOME]
     // CoreFoundation initializes this entry independently when a macOS child starts.
     if (process.platform === 'darwin') nativeKeys.push('__CF_USER_TEXT_ENCODING')
     expect(value.childKeys.filter(key => !nativeKeys.includes(key.toUpperCase()))).toEqual([])
@@ -86,7 +101,7 @@ describe('Node program process', () => {
     })
     expect(result.error).toBeUndefined()
     const value = result.value as { env: string[]; native: { env: string[]; temp: string }; observed: string }
-    expect(value.env).toEqual([])
+    expect(value.env.filter(key => !HARNESS_HOME.has(key.toUpperCase()))).toEqual([])
     expect(value.native.env).not.toContain('DSH_TEST_RUNTIME_SECRET')
     expect(value.native.temp.startsWith(`${temp}\\dsh-`)).toBe(true)
     expect(value.observed).toBe('native-temp')
@@ -271,7 +286,7 @@ describe('Node program process', () => {
       process.env.PATH = `${root}${delimiter}${previousPath ?? ''}`
       const result = await run({ program: 'return { env: Object.keys(process.env) };', bindings: [] })
       expect(result.error).toBeUndefined()
-      expect(result.value).toEqual({ env: [] })
+      expect(result.value).toEqual({ env: [...HARNESS_HOME].filter(key => process.env[key] !== undefined) })
     } finally {
       substitute.mockRestore()
       if (previousPath === undefined) delete process.env.PATH
