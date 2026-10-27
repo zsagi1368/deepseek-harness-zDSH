@@ -79,10 +79,19 @@ zDSH 以源码形式分发。克隆本仓库并运行对应平台的安装脚本
 git clone https://github.com/zsagi1368/deepseek-harness-zDSH.git
 cd deepseek-harness-zDSH
 git checkout zdsh-latest
+```
 
-# Windows (PowerShell 5.1+)
+> **注意：** 按你的平台从下面各节中选择对应代码块。`source` 是 bash 内建命令；在 PowerShell 中请改用点源加载（`. .\env.ps1`）。
+
+**Windows（PowerShell 5.1+）：**
+
+```powershell
 .\install.cmd
-# macOS / Linux / WSL / Git Bash
+```
+
+**macOS / Linux / WSL / Git Bash：**
+
+```bash
 ./scripts/install.sh
 ```
 
@@ -93,18 +102,21 @@ git checkout zdsh-latest
 
 首次启动时，治理预装钩子会自动装好出厂插件八件谱（见下文谱表）。
 
-<a id="run"></a>
-
 ## 运行
 
 加载环境后，启动 Web UI：
 
-```sh
-# PowerShell
-. .\env.ps1
-# bash
-source ./env.sh
+**Windows（PowerShell 5.1+）：**
 
+```powershell
+. .\env.ps1
+dsh web
+```
+
+**macOS / Linux / WSL / Git Bash：**
+
+```bash
+source ./env.sh
 dsh web
 ```
 
@@ -124,10 +136,15 @@ pnpm dsh web
 
 在仓库检出目录中运行对应平台的卸载脚本：
 
-```sh
-# Windows (PowerShell 5.1+)
+**Windows（PowerShell 5.1+）：**
+
+```powershell
 .\uninstall.cmd
-# macOS / Linux / WSL / Git Bash
+```
+
+**macOS / Linux / WSL / Git Bash：**
+
+```bash
 ./scripts/uninstall.sh
 ```
 
