@@ -250,6 +250,11 @@ export function PluginManagerSettingsTab({
                             </span>
                           ) : null}
                         </span>
+                        {row.origin === 'preinstall' && (
+                          <span className={css.originBadge} data-origin="preinstall">
+                            {t('sourcePreinstall')}
+                          </span>
+                        )}
                       </td>
                       <td>
                         <span className={css.statusBadge} data-status={row.status}>{status}</span>

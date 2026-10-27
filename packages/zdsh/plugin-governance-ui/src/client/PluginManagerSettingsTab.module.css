@@ -139,7 +139,8 @@
 .approvalBadge,
 .deferredTag,
 .sourceBadge,
-.warningTag {
+.warningTag,
+.originBadge {
   display: inline-block;
   border-radius: 999px;
   corner-shape: round;
