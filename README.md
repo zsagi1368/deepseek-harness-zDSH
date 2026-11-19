@@ -1,3 +1,9 @@
+> [!WARNING]
+> **⛔ 本仓库已存档（2026-11-18）— 不再继续开发与更新。** 官方 DeepSeek Harness 近期升级已修复大量问题，本仓库的维护使命随之完成；仓库已设为只读存档，如需继续使用或改造请自行 fork。仍在活跃开发的相关项目：[dsh-zcontext](https://github.com/zsagi1368/dsh-zcontext) 与 [zDSH-Go](https://github.com/zsagi1368/zDSH-Go)。
+>
+> **⛔ ARCHIVED (2026-11-18) — No longer under active development.** Recent official DeepSeek Harness upgrades have fixed many of the issues this project addressed, so its maintenance mission is complete; the repo is now a read-only archive — fork it if you want to continue. Related projects still under active development: [dsh-zcontext](https://github.com/zsagi1368/dsh-zcontext) & [zDSH-Go](https://github.com/zsagi1368/zDSH-Go).
+
+
 # zDSH
 
 English | [中文](README.zh.md)
